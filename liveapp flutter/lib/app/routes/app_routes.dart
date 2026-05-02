@@ -1,0 +1,31 @@
+abstract class Routes {
+  static const login = '/login';
+  static const home  = '/home';
+  static const liveWaiting = '/live/waiting';
+  static const liveVideo   = '/live/video';
+  static const liveAudio   = '/live/audio';
+  static const devLiveVideo = '/dev/live/video';
+  static const devLiveVideoPk = '/dev/live/video-pk';
+  static const devLiveAudio = '/dev/live/audio';
+  static const notifications  = '/notifications'; // 👈 NEW
+  static const liveUsers = '/live-users';
+  static const incomingCall = '/incoming-call';
+  static const outgoingCall = '/outgoing-call';
+  static const activeCall = '/active-call';
+  static const callHistory = '/call-history';
+  static const profile = '/profile';
+  static const editProfile = '/profile/edit';
+  static const profileBlockedUsers = '/profile/blocked-users';
+  static const profileUnblockRequests = '/profile/unblock-requests';
+  static const profileModerationHistory = '/profile/moderation-history';
+  static const following = '/profile/following';
+  static const followers = '/profile/followers';
+  static const walletHistory = '/wallet/history';
+  static const subscriptions = '/subscriptions';
+  static const themeCenter = '/theme-center';
+  static const entryCatalog = '/entry-catalog';
+  static const myApplications = '/me/applications';
+  static const applyAgency = '/applications/agency';
+  static const applyHost = '/applications/host';
+  static const enrollAgency = '/applications/host-enroll';
+}

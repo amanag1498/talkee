@@ -1,0 +1,44 @@
+.DS_Store
+**/.DS_Store
+
+.idea/
+.vscode/
+.fleet/
+.zed/
+
+# Flutter
+liveapp flutter/.dart_tool/
+liveapp flutter/build/
+liveapp flutter/.flutter-plugins
+liveapp flutter/.flutter-plugins-dependencies
+liveapp flutter/.pub-cache/
+liveapp flutter/.pub/
+liveapp flutter/**/doc/api/
+liveapp flutter/**/ios/Flutter/.last_build_id
+liveapp flutter/android/app/debug/
+liveapp flutter/android/app/profile/
+liveapp flutter/android/app/release/
+
+# Laravel
+liveapp laravel/vendor/
+liveapp laravel/node_modules/
+liveapp laravel/public/build/
+liveapp laravel/public/hot
+liveapp laravel/public/storage
+liveapp laravel/storage/*.key
+liveapp laravel/storage/pail
+liveapp laravel/.env
+liveapp laravel/.env.backup
+liveapp laravel/.env.production
+liveapp laravel/auth.json
+liveapp laravel/.phpunit.cache/
+liveapp laravel/.phpunit.result.cache
+
+# Node websocket service
+live-presence-ws nodejs/node_modules/
+live-presence-ws nodejs/.env
+
+# Logs and temp
+*.log
+npm-debug.log*
+yarn-error.log*

@@ -1,0 +1,7175 @@
+// Host-only video page (full-screen layout, zero-lag reactions)
+// Layout:
+//  - TopCenter: Live HUD
+//  - TopLeft:   Back
+//  - TopRight:  Remote strip (scroll)
+//  - LeftCenter:  Reaction RAIL (expandable, vertical, scrollable)
+//  - RightCenter: Tool RAIL (Mic/Cam/Flip) with slide-in animations
+//  - BottomLeft:  End button
+//  - BottomCenter: Lower-third banner (when visible)
+// Rendering:
+//  - Emoji bursts: pre-baked ui.Image cache; no saveLayer; capped pool
+
+import 'dart:async';
+import 'dart:convert';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'package:livekit_client/livekit_client.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart'
+    show RTCVideoRenderer, RTCVideoView, RTCVideoViewObjectFit;
+import 'package:flutter_webrtc/flutter_webrtc.dart' as webrtc;
+
+import '../../banners/models/banner_item.dart';
+import '../../banners/services/banner_service.dart';
+import '../../../app/theme/brand.dart';
+import '../../../app/routes/app_routes.dart';
+import '../../../app/widgets/haptics.dart';
+import '../../../services/app_settings_service.dart';
+import '../../../services/auth_service.dart';
+import '../../../services/live_rooms_ws_service.dart';
+import '../../profile/widgets/public_profile_card_sheet.dart';
+import '../dev/live_room_dev_fixtures.dart';
+import '../models/live_gift_item.dart';
+import '../models/live_pk_battle_model.dart';
+import '../models/live_room_chat_message.dart';
+import '../models/live_room_model.dart';
+import '../services/live_service.dart';
+import '../widgets/entry_effect_overlay.dart';
+import '../widgets/gift_animation_overlay_manager.dart';
+import '../widgets/live_room_chat_overlay.dart';
+import '../widgets/live_room_gift_sheet.dart';
+import '../widgets/pk_battle_overlay.dart';
+import '../widgets/room_join_animation_overlay_manager.dart';
+import '../widgets/themed_room_frame.dart';
+
+class VideoCallPage extends StatefulWidget {
+  final LiveRoomModel room; // requires: wsUrl, token, roomId
+  final LiveService live;
+  final bool initialMicOn;
+  final bool initialCamOn;
+  final bool viewerOnly;
+  final bool devMode;
+  const VideoCallPage({
+    super.key,
+    required this.room,
+    required this.live,
+    this.initialMicOn = false,
+    this.initialCamOn = true,
+    this.viewerOnly = false,
+    this.devMode = false,
+  });
+
+  @override
+  State<VideoCallPage> createState() => _VideoCallPageState();
+}
+
+class _VideoCallPageState extends State<VideoCallPage>
+    with SingleTickerProviderStateMixin {
+  Room? _room;
+  EventsListener<RoomEvent>? _listener;
+
+  final RTCVideoRenderer _renderer = RTCVideoRenderer();
+  bool _rendererReady = false;
+  webrtc.MediaStream? _previewStream;
+  LocalVideoTrack? _boundTrack;
+
+  bool _connecting = false;
+  String? _error;
+  bool _micOn = false;
+  bool _camOn = true;
+  bool _frontFacing = true;
+
+  bool _camBusy = false, _flipBusy = false;
+
+  DateTime? _liveStart;
+  Timer? _hudTimer;
+  Timer? _heartbeatTimer;
+  String _timerText = 'LIVE • 00:00';
+
+  bool _localSpeaking = false;
+  late final AnimationController _glow = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1300),
+  )..repeat(reverse: true);
+
+  Timer? _noFrameWatchdog;
+  bool _cameraRestartedOnce = false;
+  bool _leaveSent = false;
+  bool _endSent = false;
+  bool _roomSocketJoined = false;
+  bool _exiting = false;
+  StreamSubscription<Map<String, dynamic>>? _seatEventsSub;
+  StreamSubscription<Map<String, dynamic>>? _giftEventsSub;
+  StreamSubscription<Map<String, dynamic>>? _roomLifecycleSub;
+  StreamSubscription<Map<String, dynamic>>? _pkEventsSub;
+  StreamSubscription<Map<String, dynamic>>? _socketConnectionSub;
+  StreamSubscription<Map<String, dynamic>>? _chatEventsSub;
+  StreamSubscription<Map<String, dynamic>>? _chatErrorsSub;
+  StreamSubscription<Map<String, dynamic>>? _moderationEventsSub;
+  StreamSubscription<Map<String, dynamic>>? _moderationErrorsSub;
+  StreamSubscription<Map<String, dynamic>>? _moderationSystemMessagesSub;
+  StreamSubscription<Map<String, dynamic>>? _profileEventsSub;
+  StreamSubscription<Map<String, dynamic>>? _joinEventsSub;
+  DateTime? _lastSeatEventAt;
+  String _currentRole = 'viewer';
+  int? _myUserId;
+  bool _seatActionBusy = false;
+  String? _seatError;
+  int? _pendingRequestId;
+  String? _requestStatus;
+  List<Map<String, dynamic>> _pendingRequests = const [];
+  List<Map<String, dynamic>> _speakers = const [];
+  int _speakerCount = 0;
+  int _maxSpeakers = 4;
+  bool _giftBusy = false;
+  String? _giftError;
+  List<LiveGiftItem> _availableGifts = const [];
+  bool _speakerTransitionBusy = false;
+  String? _recentGiftMessage;
+  Timer? _recentGiftTimer;
+  Room? _opponentRoom;
+  EventsListener<RoomEvent>? _opponentListener;
+  LivePkBattleModel? _pkBattle;
+  LivePkBattleModel? _incomingPkInvite;
+  bool _pkBusy = false;
+  bool _opponentConnecting = false;
+  bool _opponentMediaUnavailable = false;
+  String? _pkOverlayTitle;
+  String? _pkOverlaySubtitle;
+  Timer? _pkOverlayTimer;
+  Timer? _devPkTransitionTimer;
+  final RoomJoinAnimationOverlayManager _joinAnimationOverlay =
+      RoomJoinAnimationOverlayManager();
+  final GiftAnchorRegistry _giftAnchors = GiftAnchorRegistry();
+  final GiftAnimationOverlayManager _giftAnimationOverlay =
+      GiftAnimationOverlayManager();
+  Set<String> _trackedParticipantIds = <String>{};
+  bool _joinAnimationsArmed = false;
+  final ValueNotifier<List<LiveRoomChatMessage>> _chatMessages =
+      ValueNotifier<List<LiveRoomChatMessage>>(const <LiveRoomChatMessage>[]);
+  Worker? _themeSyncWorker;
+  bool _handlingBackNavigation = false;
+
+  final _emojiKey = GlobalKey<_EmojiBurstState>();
+
+  PremiumThemeTokens get _tokens => getPremiumThemeTokens(
+    Get.find<AppSettingsService>().activePremiumThemeVariant,
+  );
+  @override
+  void initState() {
+    super.initState();
+    _currentRole =
+        (widget.room.role ?? (widget.viewerOnly ? 'viewer' : 'host'))
+            .toLowerCase();
+    _myUserId = Get.find<AuthService>().currentUser?.id;
+    _micOn = widget.initialMicOn;
+    _camOn = widget.initialCamOn;
+    _themeSyncWorker = ever<AppSettingsPayload?>(
+      Get.find<AppSettingsService>().payload,
+      (_) => _syncOwnChatTheme(),
+    );
+    if (widget.devMode) {
+      _seedDevPreview();
+      return;
+    }
+    _bootstrap();
+  }
+
+  void _seedDevPreview() {
+    _connecting = false;
+    _error = null;
+    _timerText = 'LIVE • 18:42';
+    _localSpeaking = true;
+    _availableGifts = LiveRoomDevFixtures.mockGiftCatalog();
+    _chatMessages.value = LiveRoomDevFixtures.videoMessages();
+    _speakers = const <Map<String, dynamic>>[
+      {
+        'user_id': 401,
+        'name': 'Maya',
+        'is_host': false,
+        'is_vip': true,
+        'active_theme_key': 'aurora',
+      },
+      {
+        'user_id': 402,
+        'name': 'Karan',
+        'is_host': false,
+        'is_vip': false,
+        'active_theme_key': 'inferno',
+      },
+      {
+        'user_id': 403,
+        'name': 'Zoya',
+        'is_host': false,
+        'is_vip': true,
+        'active_theme_key': 'ice',
+      },
+    ];
+    _speakerCount = 4;
+    _maxSpeakers = 6;
+    _pendingRequests = const <Map<String, dynamic>>[
+      {
+        'id': 9001,
+        'request_id': 9001,
+        'user_id': 421,
+        'user': {
+          'id': 421,
+          'name': 'Riya',
+          'avatar_url': '',
+          'level': 9,
+          'is_vip': true,
+        },
+      },
+      {
+        'id': 9002,
+        'request_id': 9002,
+        'user_id': 422,
+        'user': {
+          'id': 422,
+          'name': 'Kabir',
+          'avatar_url': '',
+          'level': 6,
+          'is_vip': false,
+        },
+      },
+    ];
+    final prefillPk = widget.room.pkActive;
+    if (prefillPk != null &&
+        prefillPk.isNotEmpty &&
+        prefillPk['battle_id'] != null) {
+      _pkBattle = LivePkBattleModel.fromJson(
+        _buildDevPkBattlePayload(durationSeconds: 30),
+      );
+      _incomingPkInvite = null;
+      _opponentConnecting = false;
+      _opponentMediaUnavailable = true;
+    }
+    if (!_isHost) {
+      _pendingRequestId = 9901;
+      _requestStatus = 'pending';
+    }
+    if (_isHost && widget.room.roomType == 'video') {
+      _startDevPkCycle(initiallyActive: _pkBattle?.isActive == true);
+    }
+  }
+
+  Map<String, dynamic> _buildDevPkBattlePayload({
+    required int durationSeconds,
+  }) {
+    final now = DateTime.now();
+    final endsAt = now.add(Duration(seconds: durationSeconds));
+    return <String, dynamic>{
+      'battle_id': 'dev-pk-${now.millisecondsSinceEpoch}',
+      'status': 'active',
+      'duration_seconds': durationSeconds,
+      'score_a': 12400,
+      'score_b': 9800,
+      'started_at': now.toIso8601String(),
+      'ends_at': endsAt.toIso8601String(),
+      'updated_at': now.toIso8601String(),
+      'winner_room_id': null,
+      'room_a': <String, dynamic>{
+        'id': widget.room.roomId,
+        'name': 'Team Aman',
+      },
+      'room_b': <String, dynamic>{
+        'id': 'dev-video-pk-room-b',
+        'name': 'Team Zoya',
+      },
+      'host_a': <String, dynamic>{
+        'user_id': 501,
+        'name': 'Host Aman',
+        'active_theme_key': 'gold_black',
+        'is_vip': true,
+      },
+      'host_b': <String, dynamic>{
+        'user_id': 502,
+        'name': 'Zoya',
+        'active_theme_key': 'aurora',
+        'is_vip': true,
+      },
+    };
+  }
+
+  void _startDevPkCycle({required bool initiallyActive}) {
+    _devPkTransitionTimer?.cancel();
+    if (initiallyActive) {
+      _scheduleDevPkExit();
+    } else {
+      _scheduleDevPkEntry();
+    }
+  }
+
+  void _scheduleDevPkEntry() {
+    _devPkTransitionTimer?.cancel();
+    _devPkTransitionTimer = Timer(const Duration(seconds: 4), () {
+      if (!mounted) return;
+      _mockDevEnterPkBattle();
+    });
+  }
+
+  void _scheduleDevPkExit() {
+    _devPkTransitionTimer?.cancel();
+    _devPkTransitionTimer = Timer(const Duration(seconds: 30), () {
+      if (!mounted) return;
+      _mockDevExitPkBattle();
+    });
+  }
+
+  void _mockDevEnterPkBattle() {
+    final battle = LivePkBattleModel.fromJson(
+      _buildDevPkBattlePayload(durationSeconds: 30),
+    );
+    setState(() {
+      _pkBattle = battle;
+      _incomingPkInvite = null;
+      _opponentConnecting = false;
+      _opponentMediaUnavailable = true;
+      _pkOverlayTitle = 'PK Battle Started';
+      _pkOverlaySubtitle = 'Host stage switched into a 30 second PK preview.';
+    });
+    _appendChatMessage(
+      LiveRoomChatMessage.system(
+        roomId: widget.room.roomId,
+        roomType: widget.room.roomType,
+        message: 'PK battle started for 30 seconds.',
+      ),
+    );
+    _clearPkOverlayLater();
+    _scheduleDevPkExit();
+  }
+
+  void _mockDevExitPkBattle() {
+    setState(() {
+      _pkBattle = null;
+      _incomingPkInvite = null;
+      _opponentConnecting = false;
+      _opponentMediaUnavailable = false;
+      _pkOverlayTitle = 'PK Battle Ended';
+      _pkOverlaySubtitle = 'Returning to the normal host video room preview.';
+    });
+    _appendChatMessage(
+      LiveRoomChatMessage.system(
+        roomId: widget.room.roomId,
+        roomType: widget.room.roomType,
+        message: 'PK battle ended. Back to normal host stage.',
+      ),
+    );
+    _clearPkOverlayLater();
+    _scheduleDevPkEntry();
+  }
+
+  void _clearPkOverlayLater() {
+    _pkOverlayTimer?.cancel();
+    _pkOverlayTimer = Timer(const Duration(seconds: 4), () {
+      if (!mounted) return;
+      setState(() {
+        _pkOverlayTitle = null;
+        _pkOverlaySubtitle = null;
+      });
+    });
+  }
+
+  Future<void> _bootstrap() async {
+    await _renderer.initialize();
+    _rendererReady = true;
+    await _refreshSeatSnapshot();
+    await _loadGiftCatalog();
+    _bindSeatEvents();
+    _bindGiftEvents();
+    _bindRoomLifecycleEvents();
+    _bindChatEvents();
+    _bindModerationEvents();
+    if (_pkCapable) {
+      _bindPkEvents();
+      _bindSocketConnectionEvents();
+      await _syncPkState(prefill: widget.room.pkActive);
+    }
+    _connect();
+  }
+
+  @override
+  void dispose() {
+    if (!_endSent) {
+      _leaveSessionOnce();
+    }
+    _leaveSocketRoom();
+    _hudTimer?.cancel();
+    _heartbeatTimer?.cancel();
+    _noFrameWatchdog?.cancel();
+    _recentGiftTimer?.cancel();
+    _pkOverlayTimer?.cancel();
+    _devPkTransitionTimer?.cancel();
+    _glow.dispose();
+    _detachPreview();
+    _listener?.dispose();
+    _opponentListener?.dispose();
+    _seatEventsSub?.cancel();
+    _giftEventsSub?.cancel();
+    _roomLifecycleSub?.cancel();
+    _pkEventsSub?.cancel();
+    _socketConnectionSub?.cancel();
+    _chatEventsSub?.cancel();
+    _chatErrorsSub?.cancel();
+    _moderationEventsSub?.cancel();
+    _moderationErrorsSub?.cancel();
+    _moderationSystemMessagesSub?.cancel();
+    _profileEventsSub?.cancel();
+    _joinEventsSub?.cancel();
+    _chatMessages.dispose();
+    _joinAnimationOverlay.dispose();
+    _giftAnimationOverlay.dispose();
+    _giftAnchors.dispose();
+    _themeSyncWorker?.dispose();
+    try {
+      _room?.disconnect();
+    } catch (_) {}
+    try {
+      _opponentRoom?.disconnect();
+    } catch (_) {}
+    _room?.dispose();
+    _opponentRoom?.dispose();
+    if (_rendererReady) {
+      _renderer.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _leaveSessionOnce() async {
+    if (_leaveSent) return;
+    _leaveSent = true;
+    if (widget.devMode) return;
+    try {
+      await widget.live.leave(widget.room.roomId);
+    } catch (_) {}
+  }
+
+  Future<void> _endSessionOnce() async {
+    if (_endSent) return;
+    _endSent = true;
+    if (widget.devMode) return;
+    try {
+      await widget.live.end(widget.room.roomId);
+    } catch (_) {}
+  }
+
+  void _joinSocketRoom() {
+    if (_roomSocketJoined) return;
+    _roomSocketJoined = true;
+    try {
+      if (Get.isRegistered<RoomsSocketService>()) {
+        Get.find<RoomsSocketService>().joinRoom(widget.room.roomId);
+      }
+    } catch (_) {}
+  }
+
+  void _leaveSocketRoom() {
+    if (!_roomSocketJoined) return;
+    _roomSocketJoined = false;
+    try {
+      if (Get.isRegistered<RoomsSocketService>()) {
+        Get.find<RoomsSocketService>().leaveRoom(widget.room.roomId);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _connect() async {
+    final url = widget.room.wsUrl;
+    final token = widget.room.token;
+    if (url == null || token == null) {
+      setState(() => _error = 'Missing ws_url or token');
+      return;
+    }
+
+    setState(() {
+      _connecting = true;
+      _error = null;
+    });
+
+    try {
+      final room = Room(
+        roomOptions: const RoomOptions(adaptiveStream: true, dynacast: true),
+        connectOptions: const ConnectOptions(autoSubscribe: true),
+      );
+      final l = room.createListener();
+      _listener = l;
+
+      l.on<RoomReconnectingEvent>(
+        (_) => setState(() => _error = 'Reconnecting…'),
+      );
+      l.on<RoomReconnectedEvent>((_) async {
+        if (!mounted) return;
+        setState(() => _error = null);
+        _syncJoinAnimations(room, animate: false);
+        if (_pkCapable) {
+          await _syncPkState();
+        }
+      });
+      l.on<RoomDisconnectedEvent>((e) {
+        if (!mounted || _exiting) return;
+        final reason = (e.reason ?? 'unknown').toString();
+        if (!_isHost) {
+          unawaited(
+            _exitBecauseRoomEnded(
+              reason == 'client initiated' ? 'host_ended' : 'host_disconnected',
+            ),
+          );
+          return;
+        }
+        setState(() => _error = 'Disconnected: $reason');
+      });
+
+      l.on<LocalTrackPublishedEvent>((_) async => _attachLocalPreview(room));
+      l.on<LocalTrackUnpublishedEvent>((_) async => _detachPreview());
+      l.on<ParticipantConnectedEvent>((event) {
+        if (!mounted) return;
+        _handleParticipantConnected(event.participant, room);
+        setState(() {});
+        unawaited(_refreshSeatSnapshot());
+      });
+      l.on<ParticipantDisconnectedEvent>((_) {
+        if (!mounted) return;
+        _syncJoinAnimations(room, animate: false);
+        setState(() {});
+        unawaited(_refreshSeatSnapshot());
+      });
+      l.on<TrackSubscribedEvent>((_) {
+        if (!mounted) return;
+        setState(() {});
+      });
+      l.on<TrackUnsubscribedEvent>((_) {
+        if (!mounted) return;
+        setState(() {});
+      });
+      l.on<TrackMutedEvent>((_) {
+        if (!mounted) return;
+        setState(() {});
+      });
+      l.on<TrackUnmutedEvent>((_) {
+        if (!mounted) return;
+        setState(() {});
+      });
+
+      l.on<ActiveSpeakersChangedEvent>((_) {
+        final lp = room.localParticipant;
+        final isSpeaking = lp != null && room.activeSpeakers.contains(lp);
+        if (isSpeaking != _localSpeaking)
+          setState(() => _localSpeaking = isSpeaking);
+      });
+
+      l.on<DataReceivedEvent>((ev) {
+        try {
+          final msg = String.fromCharCodes(ev.data);
+          if (msg.startsWith('rx:')) {
+            _emojiKey.currentState?.burst(msg.substring(3));
+          }
+        } catch (_) {}
+      });
+
+      await room.connect(url, token);
+      _trackedParticipantIds = _currentParticipantIds(room);
+      _joinAnimationsArmed = true;
+      _joinSocketRoom();
+
+      if (_isViewerOnly) {
+        await room.localParticipant?.setCameraEnabled(false);
+        await room.localParticipant?.setMicrophoneEnabled(false);
+        _camOn = false;
+        _micOn = false;
+        await _detachPreview();
+      } else {
+        await room.localParticipant?.setCameraEnabled(
+          _camOn,
+          cameraCaptureOptions: const CameraCaptureOptions(
+            cameraPosition: CameraPosition.front,
+          ),
+        );
+        await room.localParticipant?.setMicrophoneEnabled(_micOn);
+        _frontFacing = true;
+
+        if (_camOn) {
+          await _waitForLocalTrack(room, timeoutMs: 750);
+          await _attachLocalPreview(room);
+        } else {
+          await _detachPreview();
+        }
+      }
+
+      _liveStart = DateTime.now();
+      _hudTimer?.cancel();
+      _hudTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted || _liveStart == null) return;
+        final diff = DateTime.now().difference(_liveStart!);
+        final hh = diff.inHours;
+        final mm = diff.inMinutes.remainder(60).toString().padLeft(2, '0');
+        final ss = diff.inSeconds.remainder(60).toString().padLeft(2, '0');
+        final hPrefix = hh > 0 ? '$hh:' : '';
+        setState(() => _timerText = 'LIVE • $hPrefix$mm:$ss');
+      });
+      if (_isHost) {
+        _heartbeatTimer?.cancel();
+        _heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (
+          _,
+        ) async {
+          try {
+            await widget.live.heartbeat(widget.room.roomId);
+          } catch (_) {}
+        });
+      }
+
+      setState(() {
+        _room = room;
+        _connecting = false;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _showSelfJoinAnimation();
+      });
+
+      _noFrameWatchdog?.cancel();
+      _noFrameWatchdog = Timer(const Duration(milliseconds: 1200), () async {
+        if (!mounted) return;
+        if (_camOn &&
+            _localCameraTrack(room) == null &&
+            !_cameraRestartedOnce) {
+          _cameraRestartedOnce = true;
+          try {
+            await room.localParticipant?.setCameraEnabled(false);
+            await Future.delayed(const Duration(milliseconds: 250));
+            await room.localParticipant?.setCameraEnabled(
+              true,
+              cameraCaptureOptions: const CameraCaptureOptions(
+                cameraPosition: CameraPosition.front,
+              ),
+            );
+            await _waitForLocalTrack(room, timeoutMs: 750);
+          } catch (_) {}
+          await _attachLocalPreview(room);
+          setState(() {});
+        }
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _connecting = false;
+      });
+    }
+  }
+
+  Future<void> _attachLocalPreview(Room room) async {
+    final t = _localCameraTrack(room);
+    if (t == null) return;
+    if (_boundTrack == t && _renderer.srcObject != null) return;
+    _boundTrack = t;
+
+    try {
+      _renderer.srcObject = null;
+      await _previewStream?.dispose();
+      _previewStream = await webrtc.createLocalMediaStream('lk-preview');
+      await _previewStream!.addTrack(t.mediaStreamTrack);
+      _renderer.srcObject = _previewStream;
+      if (mounted) setState(() {});
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Preview bind failed: $e');
+    }
+  }
+
+  Future<void> _detachPreview() async {
+    try {
+      _renderer.srcObject = null;
+      await _previewStream?.dispose();
+    } catch (_) {}
+    _previewStream = null;
+    _boundTrack = null;
+  }
+
+  Future<LocalVideoTrack?> _waitForLocalTrack(
+    Room room, {
+    int timeoutMs = 750,
+  }) async {
+    final t0 = DateTime.now();
+    LocalVideoTrack? t;
+    while (DateTime.now().difference(t0).inMilliseconds < timeoutMs) {
+      t = _localCameraTrack(room);
+      if (t != null) return t;
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
+    return null;
+  }
+
+  LocalVideoTrack? _localCameraTrack(Room room) {
+    final lp = room.localParticipant;
+    if (lp == null) return null;
+    for (final pub in lp.trackPublications.values) {
+      if (pub.source == TrackSource.camera ||
+          pub.source == TrackSource.unknown) {
+        final tr = pub.track;
+        if (tr is LocalVideoTrack) return tr;
+      }
+    }
+    return null;
+  }
+
+  /* ===================== Controls ===================== */
+
+  Future<void> _toggleMic() async {
+    if (!_canPublishMedia) return;
+    final lp = _room?.localParticipant;
+    if (lp == null) return;
+    final next = !(lp.isMicrophoneEnabled());
+    await lp.setMicrophoneEnabled(next);
+    if (!mounted) return;
+    setState(() => _micOn = next);
+  }
+
+  Future<void> _toggleCam() async {
+    if (!_canPublishMedia) return;
+    if (_camBusy) return;
+    _camBusy = true;
+    try {
+      final room = _room;
+      final lp = room?.localParticipant;
+      if (lp == null) return;
+
+      final enabling = !(lp.isCameraEnabled());
+
+      if (!enabling) {
+        await lp.setCameraEnabled(false);
+        await _detachPreview();
+        if (mounted) setState(() => _camOn = false);
+        return;
+      }
+
+      final pos = _frontFacing ? CameraPosition.front : CameraPosition.back;
+      await lp.setCameraEnabled(
+        true,
+        cameraCaptureOptions: CameraCaptureOptions(cameraPosition: pos),
+      );
+
+      await _waitForLocalTrack(room!, timeoutMs: 750);
+      await _attachLocalPreview(room);
+
+      _noFrameWatchdog?.cancel();
+      _noFrameWatchdog = Timer(const Duration(milliseconds: 800), () async {
+        if (!mounted) return;
+        if (_localCameraTrack(room) == null && !_cameraRestartedOnce) {
+          _cameraRestartedOnce = true;
+          try {
+            await lp.setCameraEnabled(false);
+            await Future.delayed(const Duration(milliseconds: 200));
+            await lp.setCameraEnabled(
+              true,
+              cameraCaptureOptions: CameraCaptureOptions(cameraPosition: pos),
+            );
+            await _waitForLocalTrack(room, timeoutMs: 700);
+          } catch (_) {}
+          await _attachLocalPreview(room);
+          if (mounted) setState(() {});
+        }
+      });
+
+      if (mounted) setState(() => _camOn = true);
+    } finally {
+      _camBusy = false;
+    }
+  }
+
+  Future<void> _flipCamera() async {
+    if (!_canPublishMedia) return;
+    if (_flipBusy) return;
+    _flipBusy = true;
+    try {
+      _frontFacing = !_frontFacing;
+      final room = _room;
+      final lp = room?.localParticipant;
+      if (lp == null) return;
+
+      if (!lp.isCameraEnabled()) {
+        if (mounted) setState(() {}); // mirror update
+        return;
+      }
+
+      final pos = _frontFacing ? CameraPosition.front : CameraPosition.back;
+
+      await lp.setCameraEnabled(false);
+      await Future.delayed(const Duration(milliseconds: 150));
+      await lp.setCameraEnabled(
+        true,
+        cameraCaptureOptions: CameraCaptureOptions(cameraPosition: pos),
+      );
+
+      await _waitForLocalTrack(room!, timeoutMs: 750);
+      await _attachLocalPreview(room);
+      if (mounted) setState(() => _camOn = true);
+    } finally {
+      _flipBusy = false;
+    }
+  }
+
+  Future<void> _sendReaction(String emoji) async {
+    final lp = _room?.localParticipant;
+    if (lp == null) return;
+    _emojiKey.currentState?.burst(emoji);
+    try {
+      lp.publishData('rx:$emoji'.codeUnits, reliable: false);
+    } catch (_) {}
+  }
+
+  Future<void> _endSession() async {
+    if (_exiting) return;
+    final ok = await _showActionSheet(
+      title: 'End Live',
+      message: 'This will end the live room for everyone.',
+      primaryLabel: 'End Live',
+      destructive: true,
+    );
+    if (ok != true) return;
+
+    _exiting = true;
+    _giftAnimationOverlay.clear();
+    await _endSessionOnce();
+    _leaveSocketRoom();
+    try {
+      await _room?.disconnect();
+    } catch (_) {}
+    if (mounted) Get.back();
+  }
+
+  Future<void> _exitViewerSession() async {
+    if (_exiting) return;
+    final ok = await _showActionSheet(
+      title: _currentRole == 'speaker' ? 'Leave Live' : 'Leave Room',
+      message:
+          _currentRole == 'speaker'
+              ? 'You will leave the speaker stage and return to the previous screen.'
+              : 'You will leave this live room.',
+      primaryLabel: _currentRole == 'speaker' ? 'Leave Live' : 'Leave Room',
+    );
+    if (ok != true) return;
+    _exiting = true;
+    _giftAnimationOverlay.clear();
+    await _leaveSessionOnce();
+    _leaveSocketRoom();
+    try {
+      await _room?.disconnect();
+    } catch (_) {}
+    if (mounted) Get.back();
+  }
+
+  Future<bool> _handleBackNavigation() async {
+    if (_handlingBackNavigation) return false;
+    _handlingBackNavigation = true;
+    try {
+      if (!_isHost) {
+        await _exitViewerSession();
+        return false;
+      }
+      await _endSession();
+      return false;
+    } finally {
+      _handlingBackNavigation = false;
+    }
+  }
+
+  bool get _isHost => _currentRole == 'host';
+  bool get _canModerate => _isHost;
+  bool get _isViewerOnly => _currentRole == 'viewer';
+  bool get _canPublishMedia =>
+      _currentRole == 'host' || _currentRole == 'speaker';
+  bool get _pkActive => _pkBattle?.isActive == true;
+  bool get _pkCapable =>
+      widget.room.roomType == 'video' &&
+      Get.find<AppSettingsService>().pkBattlesEnabled;
+
+  Set<String> _currentParticipantIds(Room room) {
+    return room.remoteParticipants.values
+        .map((participant) => participant.identity.trim())
+        .where((identity) => identity.isNotEmpty)
+        .toSet();
+  }
+
+  void _handleParticipantConnected(Participant participant, Room room) {
+    final participantId = participant.identity.trim();
+    if (participantId.isEmpty) return;
+
+    if (!_joinAnimationsArmed) {
+      _trackedParticipantIds = _currentParticipantIds(room)..add(participantId);
+      return;
+    }
+
+    if (_trackedParticipantIds.contains(participantId)) {
+      _trackedParticipantIds = _currentParticipantIds(room)..add(participantId);
+      return;
+    }
+
+    _trackedParticipantIds = _currentParticipantIds(room)..add(participantId);
+    _showJoinAnimationForParticipant(participant);
+  }
+
+  void _syncJoinAnimations(Room room, {required bool animate}) {
+    final currentIds = _currentParticipantIds(room);
+    if (!_joinAnimationsArmed) {
+      _trackedParticipantIds = currentIds;
+      return;
+    }
+
+    final joinedIds =
+        animate ? currentIds.difference(_trackedParticipantIds).toList() : const <String>[];
+    _trackedParticipantIds = currentIds;
+
+    if (!animate || joinedIds.isEmpty || !mounted) {
+      return;
+    }
+
+    for (final participantId in joinedIds) {
+      final participant = room.remoteParticipants[participantId];
+      if (participant == null) continue;
+      _showJoinAnimationForParticipant(participant);
+    }
+  }
+
+  void _showJoinAnimationForParticipant(Participant participant) {
+    if (!mounted) return;
+    final request = _joinAnimationRequestForParticipant(participant);
+    if (request == null) return;
+    _showJoinAnimationRequest(request);
+  }
+
+  void _showJoinAnimationFromSocketEvent(Map<String, dynamic> event) {
+    final userId =
+        event['user_id']?.toString().trim().isNotEmpty == true
+            ? event['user_id'].toString().trim()
+            : null;
+    final name = event['name']?.toString().trim() ?? '';
+    if (userId == null || name.isEmpty) return;
+
+    final request = RoomJoinAnimationRequest(
+      userId: userId,
+      name: name,
+      avatarUrl: event['avatar_url']?.toString(),
+      themeKey:
+          event['active_theme_key']?.toString().trim().isNotEmpty == true
+              ? event['active_theme_key'].toString().trim()
+              : 'midnight',
+      isHost: event['is_host'] == true,
+      isVip: event['is_vip'] == true,
+      level: _safeInt(event['level']),
+    );
+    _showJoinAnimationRequest(request);
+  }
+
+  void _showJoinAnimationRequest(RoomJoinAnimationRequest request) {
+    final knownIdentity = _trackedParticipantIds.contains(request.userId);
+    final knownUserId = _trackedParticipantIds.contains('user-${request.userId}');
+    if (knownIdentity || knownUserId) return;
+    _trackedParticipantIds = {
+      ..._trackedParticipantIds,
+      request.userId,
+      'user-${request.userId}',
+    };
+    _joinAnimationOverlay.show(context, request);
+  }
+
+  void _showSelfJoinAnimation() {
+    final currentUser = Get.find<AuthService>().currentUser;
+    final userId = _myUserId;
+    if (currentUser == null || userId == null) return;
+
+    final request = RoomJoinAnimationRequest(
+      userId: userId.toString(),
+      name: currentUser.name.trim().isNotEmpty ? currentUser.name.trim() : 'You',
+      avatarUrl: currentUser.avatarUrl?.trim().isNotEmpty == true
+          ? currentUser.avatarUrl!.trim()
+          : null,
+      themeKey: Get.find<AppSettingsService>().activePremiumThemeVariant,
+      isHost: _isHost,
+      isVip: currentUser.roles.any(
+        (role) => role.toLowerCase() == 'vip' || role.toLowerCase() == 'premium',
+      ),
+      level: currentUser.level,
+    );
+    _joinAnimationOverlay.show(context, request);
+  }
+
+  RoomJoinAnimationRequest? _joinAnimationRequestForParticipant(
+    Participant participant,
+  ) {
+    final metadata = _participantMetadata(participant);
+    final name = _joinParticipantName(participant, metadata);
+    if (name.isEmpty) return null;
+
+    return RoomJoinAnimationRequest(
+      userId:
+          metadata['user_id']?.toString().trim().isNotEmpty == true
+              ? metadata['user_id'].toString().trim()
+              : participant.identity,
+      name: name,
+      avatarUrl:
+          metadata['avatar_url']?.toString() ?? metadata['avatar']?.toString(),
+      themeKey:
+          metadata['active_theme_key']?.toString().trim().isNotEmpty == true
+              ? metadata['active_theme_key'].toString().trim()
+              : 'midnight',
+      isHost:
+          metadata['is_host'] == true ||
+          (metadata['role']?.toString().toLowerCase() == 'host') ||
+          participant.identity.startsWith('host-'),
+      isVip: metadata['is_vip'] == true,
+      level: _safeInt(metadata['level']),
+    );
+  }
+
+  Map<String, dynamic> _participantMetadata(Participant participant) {
+    final raw = participant.metadata;
+    if (raw == null || raw.trim().isEmpty) {
+      return const <String, dynamic>{};
+    }
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {}
+    return const <String, dynamic>{};
+  }
+
+  String _joinParticipantName(
+    Participant participant,
+    Map<String, dynamic> metadata,
+  ) {
+    final metadataName = metadata['name']?.toString().trim() ?? '';
+    if (metadataName.isNotEmpty) {
+      return metadataName;
+    }
+    final directName = participant.name.trim();
+    if (directName.isNotEmpty) {
+      return directName;
+    }
+    final identity = participant.identity.trim();
+    if (identity.startsWith('user:')) {
+      return 'User ${identity.split(':').last}';
+    }
+    return identity.isEmpty ? 'Someone' : identity;
+  }
+
+  String _participantThemeKey(Participant participant) {
+    final metadata = _participantMetadata(participant);
+    final rawThemeKey = metadata['active_theme_key']?.toString().trim();
+    if (rawThemeKey?.isNotEmpty == true) {
+      return normalizePremiumThemeVariant(rawThemeKey!);
+    }
+    if (participant is LocalParticipant) {
+      return Get.find<AppSettingsService>().activePremiumThemeVariant;
+    }
+    return 'midnight';
+  }
+
+  bool _participantIsVip(Participant participant) {
+    final metadata = _participantMetadata(participant);
+    return metadata['is_vip'] == true;
+  }
+
+  String _pkHostThemeKey(Map<String, dynamic>? host) {
+    final rawThemeKey = host?['active_theme_key']?.toString().trim();
+    if (rawThemeKey?.isNotEmpty == true) {
+      return normalizePremiumThemeVariant(rawThemeKey!);
+    }
+    return 'midnight';
+  }
+
+  bool _pkHostIsVip(Map<String, dynamic>? host) {
+    return host?['is_vip'] == true;
+  }
+
+  int get _viewerCount {
+    final room = _room;
+    if (room == null) return 0;
+    return room.remoteParticipants.length + 1;
+  }
+
+  String get _hostDisplayName {
+    final fallback =
+        widget.room.title?.trim().isNotEmpty == true
+            ? widget.room.title!.trim()
+            : 'Talkee Host';
+    if (_isHost) {
+      return Get.find<AuthService>().currentUser?.name ?? fallback;
+    }
+    final room = _room;
+    if (room == null) return fallback;
+    for (final participant in room.remoteParticipants.values) {
+      if (participant.identity.startsWith('host-')) {
+        return participant.name.isNotEmpty ? participant.name : fallback;
+      }
+    }
+    return fallback;
+  }
+
+  String? get _viewerStatusText {
+    switch (_requestStatus) {
+      case 'pending':
+        return 'Request pending. Waiting for host approval.';
+      case 'accepted':
+        return 'You are now live.';
+      case 'rejected':
+        return 'Host declined your request.';
+      case 'removed':
+        return 'You were moved back to audience.';
+      case 'cancelled':
+        return 'Request cancelled.';
+      default:
+        return null;
+    }
+  }
+
+  int? _safeInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  Future<void> _showParticipantProfileCard({
+    required int userId,
+    required String name,
+    required String subtitle,
+    required String themeKey,
+    required bool isVip,
+    required bool isHost,
+    required bool speaking,
+    int? level,
+    String? avatarUrl,
+  }) {
+    return _showParticipantActionsSheet(
+      userId: userId,
+      name: name,
+      subtitle: subtitle,
+      themeKey: themeKey,
+      isVip: isVip,
+      isHost: isHost,
+      speaking: speaking,
+      level: level,
+      avatarUrl: avatarUrl,
+    );
+  }
+
+  Future<void> _showParticipantActionsSheet({
+    required int userId,
+    required String name,
+    required String subtitle,
+    required String themeKey,
+    required bool isVip,
+    required bool isHost,
+    required bool speaking,
+    int? level,
+    String? avatarUrl,
+  }) async {
+    final canModerate =
+        _isHost && _myUserId != null && userId > 0 && userId != _myUserId;
+    var isBlocked = false;
+    if (canModerate) {
+      try {
+        final rows = await widget.live.fetchHostBlockedUsers();
+        isBlocked = rows.any((row) => _safeInt(row['user_id']) == userId);
+      } catch (_) {}
+    }
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: _tokens.cardGradient,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: _tokens.borderColor),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _videoParticipantActionTile(
+                    icon: Icons.person_rounded,
+                    title: 'View profile',
+                    subtitle: 'Open the participant profile card',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      _openParticipantProfile(
+                        userId: userId,
+                        name: name,
+                        subtitle: subtitle,
+                        themeKey: themeKey,
+                        isVip: isVip,
+                        isHost: isHost,
+                        speaking: speaking,
+                        level: level,
+                        avatarUrl: avatarUrl,
+                      );
+                    },
+                  ),
+                  _videoParticipantActionTile(
+                    icon: Icons.flag_rounded,
+                    title: 'Report user',
+                    subtitle: 'Send a moderation report',
+                    onTap: userId == _myUserId ? null : () {
+                      Navigator.of(context).pop();
+                      _showReportSheet(
+                        reportedUserId: userId,
+                        reportedName: name,
+                      );
+                    },
+                  ),
+                  if (canModerate)
+                    _videoParticipantActionTile(
+                      icon: Icons.person_remove_rounded,
+                      title: 'Kick from room',
+                      subtitle: 'Remove this user from the current room only',
+                      destructive: true,
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        _kickParticipant(userId, name);
+                      },
+                    ),
+                  if (canModerate)
+                    _videoParticipantActionTile(
+                      icon:
+                          isBlocked
+                              ? Icons.lock_open_rounded
+                              : Icons.block_rounded,
+                      title: isBlocked ? 'Unblock user' : 'Block permanently',
+                      subtitle:
+                          isBlocked
+                              ? 'Allow this user to join your rooms again'
+                              : 'Remove and block from all your rooms',
+                      destructive: !isBlocked,
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        if (isBlocked) {
+                          _unblockParticipant(userId, name);
+                        } else {
+                          _blockParticipant(userId, name);
+                        }
+                      },
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _openParticipantProfile({
+    required int userId,
+    required String name,
+    required String subtitle,
+    required String themeKey,
+    required bool isVip,
+    required bool isHost,
+    required bool speaking,
+    int? level,
+    String? avatarUrl,
+  }) {
+    if (widget.devMode) {
+      return showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: Colors.transparent,
+        isScrollControlled: true,
+        builder:
+            (_) => _VideoParticipantProfileFallbackSheet(
+              name: name,
+              subtitle: subtitle,
+              themeKey: themeKey,
+              isVip: isVip,
+              isHost: isHost,
+              speaking: speaking,
+              userId: userId,
+              level: level,
+              avatarUrl: avatarUrl,
+            ),
+      );
+    }
+    return showPublicProfileCardSheet(
+      context,
+      userId: userId,
+      initialName: name,
+      initialSubtitle: subtitle,
+      initialThemeKey: themeKey,
+      initialIsVip: isVip,
+      initialIsHost: isHost,
+      initialSpeaking: speaking,
+      initialLevel: level,
+      initialAvatarUrl: avatarUrl,
+    );
+  }
+
+  Widget _videoParticipantActionTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback? onTap,
+    bool destructive = false,
+  }) {
+    final iconColor =
+        destructive ? _tokens.dangerColor : _tokens.primaryButtonGradient.first;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Ink(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: _tokens.glassColor.withOpacity(.14),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: _tokens.borderColor.withOpacity(.20)),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, color: iconColor, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: _tokens.textPrimary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          color: _tokens.textSecondary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: _tokens.textSecondary.withOpacity(.72),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildChatTrailingActions() {
+    final actions = <Widget>[];
+    final showGiftInChatFooter = !_pkActive;
+
+    if (_isHost) {
+      actions.add(
+        _ExpandableFooterCluster(
+          primaryIcon: Icons.tune_rounded,
+          primaryAccent: const Color(0xFF5D8BFF),
+          primaryBadgeCount: _pkCapable && _pkActive ? 0 : _pendingRequests.length,
+          actions: [
+            _FooterActionItem(
+              icon: _micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
+              onTap: _toggleMic,
+              active: _micOn,
+            ),
+            _FooterActionItem(
+              icon: _camOn ? Icons.videocam_rounded : Icons.videocam_off_rounded,
+              onTap: _toggleCam,
+              active: _camOn,
+            ),
+            _FooterActionItem(
+              icon: Icons.groups_rounded,
+              onTap: _showHostModerationSheet,
+              badgeCount: _pendingRequests.length,
+              accent: const Color(0xFF5D8BFF),
+            ),
+            if (_pkCapable)
+              _FooterActionItem(
+                icon:
+                    _pkActive
+                        ? Icons.stop_circle_outlined
+                        : Icons.sports_martial_arts_rounded,
+                onTap:
+                    _pkActive ? _endPkBattle : _showPkInviteSheet,
+                accent: const Color(0xFF7B50C5),
+              ),
+          ],
+        ),
+      );
+      return actions;
+    }
+
+    if (_currentRole == 'speaker') {
+      if (showGiftInChatFooter) {
+        actions.add(
+          KeyedSubtree(
+            key: _giftAnchors.keyFor(GiftAnchorRegistry.giftButton),
+            child: _FooterCircleAction(
+              icon:
+                  _giftBusy ? Icons.hourglass_top_rounded : Icons.redeem_rounded,
+              onTap: _giftBusy ? null : _openGiftSheet,
+              accent: const Color(0xFFFF8BC2),
+              busy: _giftBusy,
+            ),
+          ),
+        );
+      }
+      actions.add(
+        _ExpandableFooterCluster(
+          primaryIcon: Icons.tune_rounded,
+          primaryAccent: const Color(0xFF57E6B1),
+          actions: [
+            _FooterActionItem(
+              icon: _micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
+              onTap: _toggleMic,
+              active: _micOn,
+            ),
+            _FooterActionItem(
+              icon: _camOn ? Icons.videocam_rounded : Icons.videocam_off_rounded,
+              onTap: _toggleCam,
+              active: _camOn,
+            ),
+            _FooterActionItem(
+              icon: Icons.cameraswitch_rounded,
+              onTap: _flipCamera,
+            ),
+          ],
+        ),
+      );
+      return actions;
+    }
+
+    if (showGiftInChatFooter) {
+      actions.add(
+        KeyedSubtree(
+          key: _giftAnchors.keyFor(GiftAnchorRegistry.giftButton),
+          child: _FooterCircleAction(
+            icon:
+                _giftBusy ? Icons.hourglass_top_rounded : Icons.redeem_rounded,
+            onTap: _giftBusy ? null : _openGiftSheet,
+            accent: const Color(0xFFFF8BC2),
+            busy: _giftBusy,
+          ),
+        ),
+      );
+    }
+    if (!_pkActive) {
+      actions.add(
+        _ExpandableFooterCluster(
+          primaryIcon:
+              (_pendingRequestId != null && _requestStatus == 'pending')
+                  ? Icons.hourglass_top_rounded
+                  : Icons.record_voice_over_rounded,
+          primaryAccent: const Color(0xFF5D8BFF),
+          primaryBusy: _seatActionBusy,
+          actions: [
+            _FooterActionItem(
+              icon:
+                  (_pendingRequestId != null && _requestStatus == 'pending')
+                      ? Icons.close_rounded
+                      : Icons.record_voice_over_rounded,
+              onTap:
+                  _seatActionBusy
+                      ? null
+                      : ((_pendingRequestId != null && _requestStatus == 'pending')
+                          ? _cancelJoinRequest
+                          : _requestToJoinAsSpeaker),
+              accent: const Color(0xFF5D8BFF),
+              busy: _seatActionBusy,
+            ),
+          ],
+        ),
+      );
+    }
+    return actions;
+  }
+
+  void _appendChatMessage(LiveRoomChatMessage message) {
+    final next = List<LiveRoomChatMessage>.from(_chatMessages.value);
+    if (next.any((existing) => existing.id == message.id)) {
+      return;
+    }
+    next.add(message);
+    if (next.length > 100) {
+      next.removeRange(0, next.length - 100);
+    }
+    _chatMessages.value = next;
+  }
+
+  void _syncOwnChatTheme() {
+    final myUserId = _myUserId;
+    if (myUserId == null) return;
+    final activeThemeKey = Get.find<AppSettingsService>().activePremiumThemeVariant;
+    final current = _chatMessages.value;
+    var changed = false;
+    final next =
+        current.map((message) {
+          if (message.isSystem || message.senderId != myUserId) {
+            return message;
+          }
+          if (message.senderActiveThemeKey == activeThemeKey) {
+            return message;
+          }
+          changed = true;
+          return message.copyWith(senderActiveThemeKey: activeThemeKey);
+        }).toList(growable: false);
+    if (changed) {
+      _chatMessages.value = next;
+    }
+  }
+
+  void _applyUserProfileToChatMessages({
+    required int userId,
+    String? activeThemeKey,
+    bool? isVip,
+    int? level,
+  }) {
+    final current = _chatMessages.value;
+    var changed = false;
+    final next =
+        current.map((message) {
+          if (message.isSystem || message.senderId != userId) {
+            return message;
+          }
+          final resolvedThemeKey = activeThemeKey ?? message.senderActiveThemeKey;
+          final resolvedVip = isVip ?? message.senderIsVip;
+          final resolvedLevel = level ?? message.senderLevel;
+          if (message.senderActiveThemeKey == resolvedThemeKey &&
+              message.senderIsVip == resolvedVip &&
+              message.senderLevel == resolvedLevel) {
+            return message;
+          }
+          changed = true;
+          return message.copyWith(
+            senderActiveThemeKey: resolvedThemeKey,
+            senderIsVip: resolvedVip,
+            senderLevel: resolvedLevel,
+          );
+        }).toList(growable: false);
+    if (changed) {
+      _chatMessages.value = next;
+    }
+  }
+
+  void _appendSystemChatMessage(String message) {
+    _appendChatMessage(
+      LiveRoomChatMessage.system(
+        roomId: widget.room.roomId,
+        roomType: widget.room.roomType,
+        message: message,
+      ),
+    );
+  }
+
+  bool _currentUserLooksVip() {
+    final roles = Get.find<AuthService>().currentUser?.roles ?? const <String>[];
+    return roles.any((role) {
+      final normalized = role.toLowerCase();
+      return normalized.contains('vip') ||
+          normalized.contains('premium') ||
+          normalized.contains('gold');
+    });
+  }
+
+  Future<String?> _sendChatMessage(String message) async {
+    final trimmed = message.trim();
+    if (trimmed.isEmpty) {
+      return 'Message cannot be empty.';
+    }
+    if (trimmed.length > 250) {
+      return 'Message must be 250 characters or less.';
+    }
+    if (widget.devMode) {
+      final currentUser = Get.find<AuthService>().currentUser;
+      _appendChatMessage(
+        LiveRoomChatMessage(
+          id: 'dev-video-${DateTime.now().microsecondsSinceEpoch}',
+          roomId: widget.room.roomId,
+          roomType: widget.room.roomType,
+          senderId: currentUser?.id ?? 9999,
+          senderName: currentUser?.name ?? 'You',
+          senderLevel: currentUser?.level,
+          senderIsVip: _currentUserLooksVip(),
+          senderIsHost: _isHost,
+          senderActiveThemeKey:
+              Get.find<AppSettingsService>().activePremiumThemeVariant,
+          message: trimmed,
+          messageType: 'text',
+          createdAt: DateTime.now(),
+        ),
+      );
+      return null;
+    }
+    if (!Get.isRegistered<RoomsSocketService>()) {
+      return 'Room chat is unavailable.';
+    }
+    Get.find<RoomsSocketService>().sendRoomMessage(
+      roomId: widget.room.roomId,
+      roomType: widget.room.roomType,
+      message: trimmed,
+    );
+    return null;
+  }
+
+  Future<bool?> _showActionSheet({
+    required String title,
+    required String message,
+    required String primaryLabel,
+    bool destructive = false,
+  }) {
+    return showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: _tokens.cardGradient,
+                ),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: _tokens.borderColor),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: _tokens.borderColor.withOpacity(.85),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: _tokens.textPrimary,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    message,
+                    style: TextStyle(
+                      color: _tokens.textSecondary,
+                      height: 1.35,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: _tokens.textPrimary,
+                            side: BorderSide(
+                              color: _tokens.borderColor,
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          style: FilledButton.styleFrom(
+                            backgroundColor:
+                                destructive
+                                    ? _tokens.dangerColor
+                                    : _tokens.primaryButtonGradient.first,
+                            foregroundColor: _tokens.textPrimary,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          child: Text(primaryLabel),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _kickParticipant(int userId, String name) async {
+    final ok = await _showActionSheet(
+      title: 'Kick $name?',
+      message: 'This removes the user from the current video room only.',
+      primaryLabel: 'Kick user',
+      destructive: true,
+    );
+    if (ok != true) return;
+    try {
+      await widget.live.kickUser(
+        roomId: widget.room.roomId,
+        roomType: widget.room.roomType,
+        userId: userId,
+      );
+      if (!mounted) return;
+      _appendSystemChatMessage('$name was removed by host');
+      Get.snackbar(
+        'Moderation',
+        '$name was removed from the room.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Moderation',
+        e.toString().replaceFirst('Exception: ', ''),
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  Future<void> _blockParticipant(int userId, String name) async {
+    final reason = await _showReasonPromptSheet(
+      title: 'Block $name permanently',
+      description:
+          'This removes the user now and blocks them from joining any of your rooms.',
+      ctaLabel: 'Block user',
+    );
+    if (reason == null) return;
+    try {
+      await widget.live.blockUser(userId: userId, reason: reason);
+      if (!mounted) return;
+      _appendSystemChatMessage('$name was blocked by host');
+      Get.snackbar(
+        'Moderation',
+        '$name was blocked.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Moderation',
+        e.toString().replaceFirst('Exception: ', ''),
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  Future<void> _unblockParticipant(int userId, String name) async {
+    final ok = await _showActionSheet(
+      title: 'Unblock $name?',
+      message: 'This user will be able to join your rooms again.',
+      primaryLabel: 'Unblock user',
+    );
+    if (ok != true) return;
+    try {
+      await widget.live.unblockUser(userId: userId);
+      if (!mounted) return;
+      _appendSystemChatMessage('$name was unblocked by host');
+      Get.snackbar(
+        'Moderation',
+        '$name was unblocked.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Moderation',
+        e.toString().replaceFirst('Exception: ', ''),
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  Future<void> _showReportSheet({
+    required int reportedUserId,
+    required String reportedName,
+  }) async {
+    final reasons = const <String>[
+      'abuse',
+      'spam',
+      'harassment',
+      'scam',
+      'nudity',
+      'hate_speech',
+      'other',
+    ];
+    String selectedReason = reasons.first;
+    final descriptionController = TextEditingController();
+    final submitted = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: _tokens.cardGradient),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(color: _tokens.borderColor),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Report $reportedName',
+                        style: TextStyle(
+                          color: _tokens.textPrimary,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 20,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final reason in reasons)
+                            ChoiceChip(
+                              label: Text(reason.replaceAll('_', ' ')),
+                              selected: selectedReason == reason,
+                              onSelected:
+                                  (_) => setModalState(() {
+                                    selectedReason = reason;
+                                  }),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: descriptionController,
+                        minLines: 3,
+                        maxLines: 5,
+                        decoration: const InputDecoration(
+                          labelText: 'Description (optional)',
+                          hintText: 'Share more detail for the review queue',
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          child: const Text('Submit report'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    if (submitted != true) {
+      descriptionController.dispose();
+      return;
+    }
+    try {
+      await widget.live.submitReport(
+        reportedUserId: reportedUserId,
+        hostUserId:
+            _safeInt(widget.room.meta?['host_user_id']) ??
+            _safeInt(widget.room.meta?['host_id']),
+        roomId: widget.room.roomId,
+        roomType: widget.room.roomType,
+        reasonType: selectedReason,
+        description: descriptionController.text.trim(),
+      );
+      if (!mounted) return;
+      _appendSystemChatMessage('Report submitted');
+      Get.snackbar(
+        'Moderation',
+        'Report submitted.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Moderation',
+        e.toString().replaceFirst('Exception: ', ''),
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } finally {
+      descriptionController.dispose();
+    }
+  }
+
+  Future<String?> _showReasonPromptSheet({
+    required String title,
+    required String description,
+    required String ctaLabel,
+  }) async {
+    final controller = TextEditingController();
+    final result = await showModalBottomSheet<String?>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: _tokens.cardGradient),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: _tokens.borderColor),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: _tokens.textPrimary,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    description,
+                    style: TextStyle(
+                      color: _tokens.textSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: controller,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: 'Reason (optional)',
+                      hintText: 'Add context for this moderation action',
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed:
+                          () => Navigator.of(context).pop(controller.text.trim()),
+                      child: Text(ctaLabel),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    controller.dispose();
+    return result;
+  }
+
+  Future<void> _showHostModerationSheet() async {
+    Haptics.selection();
+    final participants = _hostModerationParticipants();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: _HostModerationSheet(
+              pendingRequests: _pendingRequests,
+              speakers: _speakers,
+              participants: participants,
+              speakerCount: _speakerCount,
+              maxSpeakers: _maxSpeakers,
+              busy: _seatActionBusy,
+              onAccept: _acceptSeatRequest,
+              onReject: _rejectSeatRequest,
+              onRemoveSpeaker: _removeSpeaker,
+              onOpenParticipant: (participant) {
+                return _showParticipantActionsSheet(
+                  userId: participant.userId,
+                  name: participant.name,
+                  subtitle: participant.subtitle,
+                  themeKey: participant.themeKey,
+                  isVip: participant.isVip,
+                  isHost: participant.isHost,
+                  speaking: participant.speaking,
+                  level: participant.level,
+                  avatarUrl: participant.avatarUrl,
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  List<_HostModerationParticipant> _hostModerationParticipants() {
+    final room = _room;
+    if (room == null) return const <_HostModerationParticipant>[];
+
+    final seen = <int>{};
+    final participants = <_HostModerationParticipant>[];
+
+    for (final participant in room.remoteParticipants.values) {
+      final metadata = _participantMetadata(participant);
+      final userId = _safeInt(metadata['user_id']);
+      if (userId == null || userId <= 0 || userId == _myUserId) continue;
+      if (!seen.add(userId)) continue;
+
+      final isHost =
+          participant.identity.startsWith('host-') || metadata['is_host'] == true;
+      final isSpeaking = room.activeSpeakers.any(
+        (speaker) => speaker.identity == participant.identity,
+      );
+      participants.add(
+        _HostModerationParticipant(
+          userId: userId,
+          name:
+              participant.name.isNotEmpty ? participant.name : participant.identity,
+          subtitle: isHost ? 'Host' : 'Participant',
+          themeKey: _participantThemeKey(participant),
+          isVip: _participantIsVip(participant),
+          isHost: isHost,
+          speaking: isSpeaking,
+          level: _safeInt(metadata['level']),
+          avatarUrl:
+              metadata['avatar_url']?.toString() ?? metadata['avatar']?.toString(),
+        ),
+      );
+    }
+
+    participants.sort((a, b) {
+      if (a.isHost != b.isHost) return a.isHost ? -1 : 1;
+      if (a.speaking != b.speaking) return a.speaking ? -1 : 1;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return participants;
+  }
+
+  void _bindSeatEvents() {
+    if (!Get.isRegistered<RoomsSocketService>()) return;
+    _seatEventsSub?.cancel();
+    _seatEventsSub = Get.find<RoomsSocketService>().seatEvents.listen((
+      event,
+    ) async {
+      if (!mounted) return;
+      if ((event['room_id'] ?? '').toString() != widget.room.roomId) return;
+      final eventName = (event['event'] ?? '').toString();
+      final userId = _safeInt(event['user_id']);
+      final rawUpdatedAt = event['updated_at']?.toString();
+      final eventUpdatedAt =
+          rawUpdatedAt == null ? null : DateTime.tryParse(rawUpdatedAt);
+      if (eventUpdatedAt != null &&
+          _lastSeatEventAt != null &&
+          eventUpdatedAt.isBefore(_lastSeatEventAt!)) {
+        return;
+      }
+      if (eventUpdatedAt != null) {
+        _lastSeatEventAt = eventUpdatedAt;
+      }
+
+      if (userId != null && userId == _myUserId) {
+        if (eventName == 'seat:request_created') {
+          Haptics.selection();
+          setState(() {
+            _pendingRequestId = _safeInt(event['request_id']);
+            _requestStatus = 'pending';
+            _seatError = null;
+          });
+        } else if (eventName == 'seat:request_rejected' ||
+            eventName == 'seat:request_cancelled') {
+          if (eventName == 'seat:request_rejected') {
+            Haptics.warning();
+          }
+          setState(() {
+            _pendingRequestId = null;
+            _requestStatus =
+                eventName == 'seat:request_rejected' ? 'rejected' : 'cancelled';
+          });
+        } else if (eventName == 'seat:request_accepted' ||
+            eventName == 'speaker:added') {
+          await _activateSpeakerMode();
+        } else if (eventName == 'speaker:removed') {
+          await _downgradeToViewerMode();
+        }
+      }
+
+      await _refreshSeatSnapshot();
+    });
+  }
+
+  void _bindGiftEvents() {
+    if (!Get.isRegistered<RoomsSocketService>()) return;
+    _giftEventsSub?.cancel();
+    _giftEventsSub = Get.find<RoomsSocketService>().giftEvents.listen((event) {
+      if (!mounted) return;
+      final eventRoomId = (event['room_id'] ?? '').toString();
+      final eventRoomType = _normalizeGiftRoomType(event['room_type']);
+      final expectedRoomType = _normalizeGiftRoomType(widget.room.roomType);
+      if (eventRoomId != widget.room.roomId) return;
+      if (eventRoomType.isNotEmpty && eventRoomType != expectedRoomType) return;
+      final senderId = _safeInt(event['sender_user_id']);
+      final senderName = (event['sender_name'] ?? 'Someone').toString();
+      final giftName = (event['gift_name'] ?? 'a gift').toString();
+      final quantity = _safeInt(event['quantity']) ?? 1;
+      _giftAnimationOverlay.handleSocketGiftEvent(
+        event,
+        currentThemeKey:
+            Get.find<AppSettingsService>().activePremiumThemeVariant,
+        receiverFallbackId:
+            _safeInt(widget.room.meta?['host_user_id']) ??
+            _safeInt(widget.room.meta?['host_id']),
+        currentUserId: _myUserId,
+        inferredPkSide: _pkActive ? GiftAnchorRegistry.pkLeft : null,
+      );
+      _recentGiftTimer?.cancel();
+      setState(() {
+        _recentGiftMessage = '$senderName sent $giftName x$quantity';
+      });
+      _recentGiftTimer = Timer(const Duration(seconds: 4), () {
+        if (mounted) {
+          setState(() => _recentGiftMessage = null);
+        }
+      });
+      if (senderId == _myUserId) {
+        Haptics.success();
+      }
+    });
+  }
+
+  String _normalizeGiftRoomType(dynamic value) {
+    final normalized = value?.toString().trim().toLowerCase() ?? '';
+    if (normalized == 'audio' || normalized == 'audio_room') return 'audio';
+    if (normalized == 'video' || normalized == 'video_room') return 'video';
+    return normalized;
+  }
+
+  void _bindChatEvents() {
+    if (!Get.isRegistered<RoomsSocketService>()) return;
+    _chatEventsSub?.cancel();
+    _chatErrorsSub?.cancel();
+    _profileEventsSub?.cancel();
+    _joinEventsSub?.cancel();
+    final rooms = Get.find<RoomsSocketService>();
+    _chatEventsSub = rooms.messageEvents.listen((event) {
+      if (!mounted) return;
+      if ((event['room_id'] ?? '').toString() != widget.room.roomId) return;
+      _appendChatMessage(LiveRoomChatMessage.fromSocketJson(event));
+    });
+    _chatErrorsSub = rooms.messageErrors.listen((event) {
+      if (!mounted) return;
+      if ((event['room_id'] ?? '').toString() != widget.room.roomId) return;
+      final message =
+          (event['message'] ?? 'Unable to send message.').toString();
+      Get.snackbar(
+        'Chat',
+        message,
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 2),
+      );
+    });
+    _profileEventsSub = rooms.profileEvents.listen((event) {
+      if (!mounted) return;
+      if ((event['room_id'] ?? '').toString() != widget.room.roomId) return;
+      final userId = _safeInt(event['user_id']);
+      if (userId == null) return;
+      _applyUserProfileToChatMessages(
+        userId: userId,
+        activeThemeKey:
+            event['active_theme_key']?.toString().trim().isNotEmpty == true
+                ? normalizePremiumThemeVariant(
+                  event['active_theme_key'].toString(),
+                )
+                : null,
+        isVip: event['is_vip'] == true,
+        level: _safeInt(event['level']),
+      );
+    });
+    _joinEventsSub = rooms.joinEvents.listen((event) {
+      if (!mounted) return;
+      if ((event['room_id'] ?? '').toString() != widget.room.roomId) return;
+      _showJoinAnimationFromSocketEvent(event);
+    });
+  }
+
+  void _bindModerationEvents() {
+    if (!Get.isRegistered<RoomsSocketService>()) return;
+    final rooms = Get.find<RoomsSocketService>();
+    _moderationEventsSub?.cancel();
+    _moderationErrorsSub?.cancel();
+    _moderationSystemMessagesSub?.cancel();
+
+    _moderationSystemMessagesSub = rooms.moderationSystemMessages.listen((
+      event,
+    ) {
+      if (!mounted) return;
+      if ((event['room_id'] ?? '').toString() != widget.room.roomId) return;
+      final message = (event['message'] ?? '').toString().trim();
+      if (message.isNotEmpty) {
+        _appendSystemChatMessage(message);
+      }
+    });
+
+    _moderationErrorsSub = rooms.moderationErrors.listen((event) {
+      if (!mounted) return;
+      final eventRoomId = (event['room_id'] ?? '').toString();
+      if (eventRoomId.isNotEmpty && eventRoomId != widget.room.roomId) return;
+      final message =
+          (event['message'] ?? 'Unable to complete moderation action.')
+              .toString();
+      Get.snackbar(
+        'Moderation',
+        message,
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 3),
+      );
+    });
+
+    _moderationEventsSub = rooms.moderationEvents.listen((event) async {
+      if (!mounted) return;
+      final eventRoomId = (event['room_id'] ?? '').toString();
+      if (eventRoomId.isNotEmpty && eventRoomId != widget.room.roomId) return;
+      final eventRoomType = _normalizeGiftRoomType(event['room_type']);
+      final expectedRoomType = _normalizeGiftRoomType(widget.room.roomType);
+      if (eventRoomType.isNotEmpty && eventRoomType != expectedRoomType) return;
+
+      final targetUserId =
+          _safeInt(event['target_user_id']) ?? _safeInt(event['user_id']);
+      final message = (event['message'] ?? '').toString().trim();
+      final eventName = (event['event'] ?? '').toString();
+
+      if (targetUserId != null &&
+          _myUserId != null &&
+          targetUserId == _myUserId &&
+          (eventName == 'room:user:kicked' ||
+              eventName == 'room:user:blocked')) {
+        await _handleModerationTargetExit(
+          blocked: eventName == 'room:user:blocked',
+          message:
+              eventName == 'room:user:blocked'
+                  ? 'You were blocked by this host.'
+                  : 'You were removed from this room.',
+        );
+      }
+    });
+  }
+
+  void _bindRoomLifecycleEvents() {
+    if (!Get.isRegistered<RoomsSocketService>()) return;
+    _roomLifecycleSub?.cancel();
+    _roomLifecycleSub = Get.find<RoomsSocketService>().roomLifecycleEvents
+        .listen((event) async {
+          if (!mounted || _exiting) return;
+          if ((event['room_id'] ?? '').toString() != widget.room.roomId) return;
+
+          final room = event['room'];
+          final reason =
+              room is Map
+                  ? (room['end_reason']?.toString() ??
+                      event['event']?.toString() ??
+                      'ended')
+                  : (event['event']?.toString() ?? 'ended');
+
+          await _exitBecauseRoomEnded(reason);
+        });
+  }
+
+  void _bindPkEvents() {
+    if (!_pkCapable || !Get.isRegistered<RoomsSocketService>()) return;
+    _pkEventsSub?.cancel();
+    _pkEventsSub = Get.find<RoomsSocketService>().pkEvents.listen((
+      event,
+    ) async {
+      if (!mounted) return;
+      final roomA =
+          (event['room_a'] is Map)
+              ? Map<String, dynamic>.from(event['room_a'] as Map)
+              : const <String, dynamic>{};
+      final roomB =
+          (event['room_b'] is Map)
+              ? Map<String, dynamic>.from(event['room_b'] as Map)
+              : const <String, dynamic>{};
+      final touchesRoom =
+          roomA['id']?.toString() == widget.room.roomId ||
+          roomB['id']?.toString() == widget.room.roomId;
+      if (!touchesRoom) return;
+
+      final eventName = (event['event'] ?? '').toString();
+      final model = LivePkBattleModel.fromJson(
+        Map<String, dynamic>.from(event),
+      );
+
+      if (eventName == 'pk:invite_received' && _isHost) {
+        setState(() => _incomingPkInvite = model.isPending ? model : null);
+      }
+
+      if (const {
+        'pk:accepted',
+        'pk:started',
+        'pk:score_updated',
+        'pk:ended',
+        'pk:expired',
+        'pk:cancelled',
+        'pk:rejected',
+      }.contains(eventName)) {
+        await _syncPkState(prefill: Map<String, dynamic>.from(event));
+      }
+    });
+  }
+
+  void _bindSocketConnectionEvents() {
+    if (!_pkCapable || !Get.isRegistered<RoomsSocketService>()) return;
+    _socketConnectionSub?.cancel();
+    _socketConnectionSub = Get.find<RoomsSocketService>().connectionEvents
+        .listen((event) async {
+          final name = (event['event'] ?? '').toString();
+          if (name == 'connect' || name == 'reconnect') {
+            await _syncPkState();
+          }
+        });
+  }
+
+  Future<void> _exitBecauseRoomEnded(String reason) async {
+    if (_exiting) return;
+    _exiting = true;
+    _giftAnimationOverlay.clear();
+    await _leaveSessionOnce();
+    _leaveSocketRoom();
+    _hudTimer?.cancel();
+    _heartbeatTimer?.cancel();
+    _noFrameWatchdog?.cancel();
+    _seatEventsSub?.cancel();
+    _giftEventsSub?.cancel();
+    _roomLifecycleSub?.cancel();
+    _pkEventsSub?.cancel();
+    _socketConnectionSub?.cancel();
+    await _disconnectOpponentRoom();
+    try {
+      await _room?.disconnect();
+    } catch (_) {}
+    if (mounted) {
+      Get.closeAllSnackbars();
+      _closeTransientOverlays();
+      Get.snackbar(
+        'Live Room',
+        _roomEndedMessage(reason),
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 3),
+      );
+      _popLivePage();
+    }
+  }
+
+  Future<void> _handleModerationTargetExit({
+    required bool blocked,
+    required String message,
+  }) async {
+    if (_exiting) return;
+    _exiting = true;
+    _giftAnimationOverlay.clear();
+    await _leaveSessionOnce();
+    _leaveSocketRoom();
+    _hudTimer?.cancel();
+    _heartbeatTimer?.cancel();
+    _noFrameWatchdog?.cancel();
+    await _disconnectOpponentRoom();
+    try {
+      await _room?.disconnect();
+    } catch (_) {}
+    if (mounted) {
+      Get.closeAllSnackbars();
+      _closeTransientOverlays();
+      Get.snackbar(
+        'Moderation',
+        message,
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 3),
+      );
+      _popLivePage();
+    }
+  }
+
+  void _closeTransientOverlays() {
+    while ((Get.isBottomSheetOpen ?? false) || (Get.isDialogOpen ?? false)) {
+      Get.back();
+    }
+  }
+
+  void _popLivePage() {
+    if (!mounted) return;
+    Get.offAllNamed(Routes.home);
+  }
+
+  String _roomEndedMessage(String reason) {
+    switch (reason) {
+      case 'host_joined_private_call':
+        return 'Live room ended because the host joined a private call.';
+      case 'host_ended':
+        return 'The host ended the live room.';
+      case 'host_disconnected':
+        return 'The host disconnected. Live room ended.';
+      case 'admin_force_end':
+        return 'This live room was ended by admin.';
+      default:
+        return 'This live room has ended.';
+    }
+  }
+
+  Future<void> _loadGiftCatalog() async {
+    if (!Get.find<AppSettingsService>().giftsEnabled) {
+      if (mounted) {
+        setState(() {
+          _availableGifts = const <LiveGiftItem>[];
+          _giftError = 'Gifts are currently unavailable.';
+        });
+      }
+      return;
+    }
+    try {
+      final gifts = await widget.live.listGifts();
+      if (!mounted) return;
+      setState(() {
+        _availableGifts = gifts;
+        _giftError = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _giftError = e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _refreshSeatSnapshot() async {
+    try {
+      final snapshot = await widget.live.seatSnapshot(widget.room.roomId);
+      final data = Map<String, dynamic>.from(
+        snapshot['data'] ?? snapshot['snapshot'] ?? snapshot,
+      );
+      if (!mounted) return;
+
+      final requests =
+          (data['requests'] as List? ?? const [])
+              .map((row) => Map<String, dynamic>.from(row as Map))
+              .toList();
+      final speakers =
+          (data['speakers'] as List? ?? const [])
+              .map((row) => Map<String, dynamic>.from(row as Map))
+              .toList();
+
+      final myRequest =
+          _myUserId == null
+              ? null
+              : requests
+                  .where((row) => _safeInt(row['user_id']) == _myUserId)
+                  .cast<Map<String, dynamic>>()
+                  .fold<Map<String, dynamic>?>(null, (latest, row) {
+                    final latestId =
+                        _safeInt(latest?['request_id'] ?? latest?['id']) ?? -1;
+                    final rowId =
+                        _safeInt(row['request_id'] ?? row['id']) ?? -1;
+                    return rowId > latestId ? row : latest;
+                  });
+      final myRequestStatus = myRequest?['status']?.toString();
+      final myPendingRequestId =
+          myRequestStatus == 'pending'
+              ? _safeInt(myRequest?['request_id'] ?? myRequest?['id'])
+              : null;
+      final amSpeaker =
+          _myUserId != null &&
+          speakers.any((row) => _safeInt(row['user_id']) == _myUserId);
+      final shouldPromoteToSpeaker =
+          !_isHost &&
+          !_speakerTransitionBusy &&
+          amSpeaker &&
+          _currentRole != 'speaker';
+      final shouldDowngradeToViewer =
+          !_isHost &&
+          !_speakerTransitionBusy &&
+          !amSpeaker &&
+          _currentRole == 'speaker';
+
+      setState(() {
+        _pendingRequests =
+            requests
+                .where((row) => (row['status'] ?? '') == 'pending')
+                .toList();
+        _speakers = speakers;
+        _speakerCount =
+            _safeInt(data['speaker_count']) ??
+            speakers.length + (_isHost ? 1 : 0);
+        _maxSpeakers =
+            _safeInt(data['max_speakers']) ?? widget.room.maxSpeakers;
+        _pendingRequestId = myPendingRequestId;
+        _requestStatus = myRequestStatus;
+        _seatError = null;
+      });
+      if (shouldPromoteToSpeaker) {
+        await _activateSpeakerMode();
+      } else if (shouldDowngradeToViewer) {
+        await _downgradeToViewerMode();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _seatError = e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _activateSpeakerMode() async {
+    if (_speakerTransitionBusy || _currentRole == 'speaker') return;
+    _speakerTransitionBusy = true;
+    final room = _room;
+    if (room == null) {
+      if (!mounted) return;
+      setState(() {
+        _currentRole = 'speaker';
+        _requestStatus = 'accepted';
+        _pendingRequestId = null;
+        _seatError = null;
+      });
+      _speakerTransitionBusy = false;
+      return;
+    }
+    try {
+      await room.localParticipant?.setCameraEnabled(
+        true,
+        cameraCaptureOptions: const CameraCaptureOptions(
+          cameraPosition: CameraPosition.front,
+        ),
+      );
+      await room.localParticipant?.setMicrophoneEnabled(true);
+      await _waitForLocalTrack(room, timeoutMs: 1000);
+      await _attachLocalPreview(room);
+      if (!mounted) return;
+      setState(() {
+        _currentRole = 'speaker';
+        _camOn = true;
+        _micOn = true;
+        _pendingRequestId = null;
+        _requestStatus = 'accepted';
+        _seatError = null;
+      });
+      Haptics.success();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _seatError = 'Unable to enable speaker media: $e');
+    } finally {
+      _speakerTransitionBusy = false;
+    }
+  }
+
+  Future<void> _downgradeToViewerMode() async {
+    if (_speakerTransitionBusy || _currentRole == 'viewer') return;
+    _speakerTransitionBusy = true;
+    final room = _room;
+    if (room == null) {
+      if (!mounted) return;
+      setState(() {
+        _currentRole = 'viewer';
+        _camOn = false;
+        _micOn = false;
+        _pendingRequestId = null;
+        _requestStatus = 'removed';
+      });
+      _speakerTransitionBusy = false;
+      return;
+    }
+    try {
+      await room.localParticipant?.setCameraEnabled(false);
+      await room.localParticipant?.setMicrophoneEnabled(false);
+      await _detachPreview();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _currentRole = 'viewer';
+      _camOn = false;
+      _micOn = false;
+      _pendingRequestId = null;
+      _requestStatus = 'removed';
+    });
+    _speakerTransitionBusy = false;
+  }
+
+  Future<void> _requestToJoinAsSpeaker() async {
+    if (_seatActionBusy || _pendingRequestId != null || !_isViewerOnly) return;
+    setState(() {
+      _seatActionBusy = true;
+      _seatError = null;
+    });
+    try {
+      final res = await widget.live.requestSpeaker(widget.room.roomId);
+      final snapshot = Map<String, dynamic>.from(res['snapshot'] ?? const {});
+      final requests =
+          (snapshot['requests'] as List? ?? const [])
+              .map((row) => Map<String, dynamic>.from(row as Map))
+              .toList();
+      final myRequest = requests
+          .where((row) => _safeInt(row['user_id']) == _myUserId)
+          .cast<Map<String, dynamic>?>()
+          .fold<Map<String, dynamic>?>(null, (latest, row) {
+            final latestId =
+                _safeInt(latest?['request_id'] ?? latest?['id']) ?? -1;
+            final rowId = _safeInt(row?['request_id'] ?? row?['id']) ?? -1;
+            return rowId > latestId ? row : latest;
+          });
+      setState(() {
+        _pendingRequestId = _safeInt(
+          res['request_id'] ?? myRequest?['request_id'] ?? myRequest?['id'],
+        );
+        _requestStatus = 'pending';
+      });
+      Haptics.medium();
+      await _refreshSeatSnapshot();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _seatError = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => _seatActionBusy = false);
+      }
+    }
+  }
+
+  Future<void> _cancelJoinRequest() async {
+    final requestId = _pendingRequestId;
+    if (_seatActionBusy || requestId == null) return;
+    setState(() {
+      _seatActionBusy = true;
+      _seatError = null;
+    });
+    try {
+      await widget.live.cancelSpeakerRequest(widget.room.roomId, requestId);
+      setState(() {
+        _pendingRequestId = null;
+        _requestStatus = 'cancelled';
+      });
+      Haptics.light();
+      await _refreshSeatSnapshot();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _seatError = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => _seatActionBusy = false);
+      }
+    }
+  }
+
+  Future<void> _acceptSeatRequest(int requestId) async {
+    if (_seatActionBusy) return;
+    setState(() {
+      _seatActionBusy = true;
+      _seatError = null;
+    });
+    try {
+      await widget.live.acceptSpeakerRequest(widget.room.roomId, requestId);
+      Haptics.success();
+      await _refreshSeatSnapshot();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _seatError = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => _seatActionBusy = false);
+      }
+    }
+  }
+
+  Future<void> _rejectSeatRequest(int requestId) async {
+    if (_seatActionBusy) return;
+    setState(() {
+      _seatActionBusy = true;
+      _seatError = null;
+    });
+    try {
+      await widget.live.rejectSpeakerRequest(widget.room.roomId, requestId);
+      Haptics.warning();
+      await _refreshSeatSnapshot();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _seatError = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => _seatActionBusy = false);
+      }
+    }
+  }
+
+  Future<void> _removeSpeaker(int userId) async {
+    if (_seatActionBusy) return;
+    setState(() {
+      _seatActionBusy = true;
+      _seatError = null;
+    });
+    try {
+      await widget.live.removeSpeaker(widget.room.roomId, userId);
+      Haptics.medium();
+      await _refreshSeatSnapshot();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _seatError = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => _seatActionBusy = false);
+      }
+    }
+  }
+
+  Future<void> _openGiftSheet() async {
+    if (!Get.find<AppSettingsService>().giftsEnabled) {
+      if (!mounted) return;
+      setState(() => _giftError = 'Gifts are currently unavailable.');
+      return;
+    }
+    if (_giftBusy || _isHost) return;
+    setState(() {
+      _giftError = null;
+    });
+
+    try {
+      if (_availableGifts.isEmpty) {
+        await _loadGiftCatalog();
+      }
+      if (!mounted) return;
+      if (_availableGifts.isEmpty) {
+        setState(() => _giftError = 'No gifts available right now.');
+        return;
+      }
+
+      final selection = await LiveRoomGiftSheet.show(
+        context,
+        gifts: _availableGifts,
+      );
+      if (selection == null) return;
+
+      setState(() => _giftBusy = true);
+      _giftAnimationOverlay.showLocalSenderFeedback(
+        giftName: selection.gift.name,
+        currentThemeKey: Get.find<AppSettingsService>().activePremiumThemeVariant,
+      );
+      if (widget.devMode) {
+        _simulateMockGift(selection);
+        Haptics.success();
+        if (!mounted) return;
+        setState(() => _giftError = null);
+        return;
+      }
+      await widget.live.sendRoomGift(
+        widget.room.roomId,
+        giftId: selection.gift.id,
+        quantity: selection.quantity,
+      );
+      Haptics.success();
+      if (!mounted) return;
+      setState(() => _giftError = null);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _giftError = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => _giftBusy = false);
+      }
+    }
+  }
+
+  void _simulateMockGift(LiveRoomGiftSelection selection) {
+    final hostTile = ((widget.room.meta?['dev_video_tiles'] as List?) ?? const [])
+        .whereType<Map>()
+        .cast<Map>()
+        .firstWhere(
+          (tile) => tile['is_host'] == true,
+          orElse: () => const <String, dynamic>{},
+        );
+    final payload = LiveRoomDevFixtures.mockGiftPayload(
+      roomId: widget.room.roomId,
+      roomType: 'video',
+      receiverId: (hostTile['user_id'] as int?) ?? 501,
+      receiverName:
+          hostTile['label']?.toString() ??
+          widget.room.meta?['host_name']?.toString() ??
+          'Host Aman',
+      receiverAvatar: hostTile['avatar_url']?.toString(),
+      gift: selection.gift,
+      quantity: selection.quantity,
+      pkSide: _pkActive ? 'left' : null,
+    );
+    final settings = Get.find<AppSettingsService>();
+    _giftAnimationOverlay.handleSocketGiftEvent(
+      payload,
+      currentThemeKey: settings.activePremiumThemeVariant,
+      receiverFallbackId: (hostTile['user_id'] as int?) ?? 501,
+      currentUserId: _myUserId ?? 90061,
+      inferredPkSide: _pkActive ? 'left' : null,
+    );
+    if (mounted) {
+      setState(() {
+        _recentGiftMessage =
+            'Gift Tester sent ${selection.gift.name} x${selection.quantity}';
+      });
+      _recentGiftTimer?.cancel();
+      _recentGiftTimer = Timer(const Duration(seconds: 4), () {
+        if (!mounted) return;
+        setState(() => _recentGiftMessage = null);
+      });
+    }
+  }
+
+  Future<void> _syncPkState({Map<String, dynamic>? prefill}) async {
+    if (!_pkCapable) return;
+
+    LivePkBattleModel? battle;
+    if (prefill != null && prefill.isNotEmpty && prefill['battle_id'] != null) {
+      battle = LivePkBattleModel.fromJson(prefill);
+    } else {
+      try {
+        battle = await widget.live.activePk(widget.room.roomId);
+      } catch (_) {
+        battle = null;
+      }
+    }
+
+    if (!mounted) return;
+    if (battle == null || !battle.isActive) {
+      final endedBattle = _pkBattle;
+      setState(() {
+        _pkBattle = null;
+        _incomingPkInvite = battle != null && battle.isPending ? battle : null;
+      });
+      await _disconnectOpponentRoom();
+      if (endedBattle != null && battle != null && battle.isTerminal) {
+        _showPkResult(battle);
+      }
+      return;
+    }
+
+    setState(() {
+      _pkBattle = battle;
+      _incomingPkInvite = null;
+    });
+    await _ensureOpponentRoomConnected(forceRefresh: false);
+  }
+
+  void _showPkResult(LivePkBattleModel battle) {
+    final myRoomId = widget.room.roomId;
+    String title;
+    if (battle.winnerRoomId == null) {
+      title = 'PK Draw';
+    } else if (battle.winnerRoomId == myRoomId) {
+      title = 'Your Side Won';
+    } else {
+      title = 'Opponent Won';
+    }
+    final subtitle =
+        battle.endReason == 'timer_expired'
+            ? 'Battle finished when the PK timer ended.'
+            : 'PK battle ended.';
+    _pkOverlayTimer?.cancel();
+    setState(() {
+      _pkOverlayTitle = title;
+      _pkOverlaySubtitle = subtitle;
+    });
+    _pkOverlayTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted) {
+        setState(() {
+          _pkOverlayTitle = null;
+          _pkOverlaySubtitle = null;
+        });
+      }
+    });
+  }
+
+  Future<void> _ensureOpponentRoomConnected({
+    required bool forceRefresh,
+  }) async {
+    final battle = _pkBattle;
+    if (battle == null || !battle.isActive || _opponentConnecting) return;
+    if (!forceRefresh && _opponentRoom != null) return;
+
+    _opponentConnecting = true;
+    try {
+      await _disconnectOpponentRoom();
+      final payload = await widget.live.pkMediaToken(
+        widget.room.roomId,
+        battle.battleId,
+      );
+      final token = payload['opponent_token']?.toString();
+      final roomId = payload['opponent_room_id']?.toString();
+      if (token == null || token.isEmpty || roomId == null || roomId.isEmpty) {
+        if (mounted) setState(() => _opponentMediaUnavailable = true);
+        return;
+      }
+
+      final wsUrl = widget.room.wsUrl?.trim();
+      if (wsUrl == null || wsUrl.isEmpty) {
+        if (mounted) setState(() => _opponentMediaUnavailable = true);
+        return;
+      }
+
+      final room = Room(
+        roomOptions: const RoomOptions(adaptiveStream: true, dynacast: true),
+        connectOptions: const ConnectOptions(autoSubscribe: true),
+      );
+      final listener = room.createListener();
+      listener.on<ParticipantConnectedEvent>((_) {
+        if (mounted) setState(() {});
+      });
+      listener.on<ParticipantDisconnectedEvent>((_) {
+        if (mounted) setState(() {});
+      });
+      listener.on<TrackSubscribedEvent>((_) {
+        if (mounted) {
+          setState(() => _opponentMediaUnavailable = false);
+        }
+      });
+      listener.on<TrackUnsubscribedEvent>((_) {
+        if (mounted) setState(() {});
+      });
+      listener.on<RoomDisconnectedEvent>((_) {
+        if (mounted && _pkActive) {
+          setState(() => _opponentMediaUnavailable = true);
+        }
+      });
+
+      await room.connect(wsUrl, token);
+      if (!mounted) {
+        await room.disconnect();
+        room.dispose();
+        listener.dispose();
+        return;
+      }
+      setState(() {
+        _opponentRoom = room;
+        _opponentListener = listener;
+        _opponentMediaUnavailable = room.remoteParticipants.isEmpty;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() => _opponentMediaUnavailable = true);
+      }
+    } finally {
+      _opponentConnecting = false;
+    }
+  }
+
+  Future<void> _disconnectOpponentRoom() async {
+    _opponentListener?.dispose();
+    _opponentListener = null;
+    try {
+      await _opponentRoom?.disconnect();
+    } catch (_) {}
+    _opponentRoom?.dispose();
+    _opponentRoom = null;
+    if (mounted) {
+      setState(() => _opponentMediaUnavailable = false);
+    }
+  }
+
+  Participant? _primaryHostParticipant() {
+    if (_isHost) return _room?.localParticipant;
+    for (final participant
+        in _room?.remoteParticipants.values ?? const <RemoteParticipant>[]) {
+      if (participant.identity.startsWith('host-')) return participant;
+    }
+    return null;
+  }
+
+  Participant? _opponentHostParticipant() {
+    final battle = _pkBattle;
+    final opponentUserId =
+        battle?.opponentHostFor(widget.room.roomId)?['user_id'];
+    final normalized = _safeInt(opponentUserId);
+    for (final participant
+        in _opponentRoom?.remoteParticipants.values ??
+            const <RemoteParticipant>[]) {
+      int? userId;
+      if (participant.identity.startsWith('host-')) {
+        final parts = participant.identity.split('-');
+        if (parts.length >= 2) {
+          userId = int.tryParse(parts[1]);
+        }
+      }
+      if (normalized != null && userId == normalized) return participant;
+      if (participant.identity.startsWith('host-')) return participant;
+    }
+    return null;
+  }
+
+  bool _isOpponentSpeaking() {
+    final participant = _opponentHostParticipant();
+    if (participant == null) return false;
+    final active = _opponentRoom?.activeSpeakers ?? const <Participant>[];
+    return active.any((speaker) => speaker.identity == participant.identity);
+  }
+
+  Widget _buildPkVideoStage() {
+    final battle = _pkBattle!;
+    final ownHost = battle.ownHostFor(widget.room.roomId);
+    final opponentHost = battle.opponentHostFor(widget.room.roomId);
+    final ownParticipant = _primaryHostParticipant();
+    final opponentParticipant = _opponentHostParticipant();
+    final opponentTrack =
+        opponentParticipant == null
+            ? null
+            : _firstRemoteVideo(opponentParticipant, excludeScreenshare: true);
+    final ownTrack =
+        ownParticipant == null || ownParticipant is LocalParticipant
+            ? null
+            : _firstRemoteVideo(ownParticipant, excludeScreenshare: true);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stageTop = 74.0;
+        final stageHeight = constraints.maxHeight * 0.38;
+        final showPkGiftRow = !_isHost;
+        final giftRowTop = stageTop + stageHeight + 4;
+        final chatStart = giftRowTop + (showPkGiftRow ? 24 : 6);
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      const Color(0xFF111522),
+                      const Color(0xFF0C1019),
+                      const Color(0xFF070A11),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              top: chatStart,
+              bottom: 0,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        const Color(0xFF0C1018).withOpacity(.84),
+                        const Color(0xFF090C14).withOpacity(.94),
+                        const Color(0xFF06080E),
+                      ],
+                    ),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              top: stageTop,
+              height: stageHeight,
+              child: PkBattleOverlay(
+                battle: battle,
+                ownLabel:
+                    (ownHost?['name']?.toString().isNotEmpty == true
+                        ? ownHost!['name'].toString()
+                        : _hostDisplayName),
+                opponentLabel: opponentHost?['name']?.toString() ?? 'Opponent',
+                ownScore: battle.ownScoreFor(widget.room.roomId),
+                opponentScore: battle.opponentScoreFor(widget.room.roomId),
+                opponentUnavailable:
+                    _opponentConnecting || _opponentMediaUnavailable,
+                canEnd: _isHost,
+                onEnd: _isHost ? _endPkBattle : null,
+                ownChild: KeyedSubtree(
+                  key: _giftAnchors.keyFor(GiftAnchorRegistry.pkLeft),
+                  child: ThemedRoomFrame(
+                    themeKey: _pkHostThemeKey(ownHost),
+                    isHost: false,
+                    isVip: _pkHostIsVip(ownHost),
+                    isSpeaking:
+                        ownParticipant != null &&
+                        (_isHost
+                            ? _localSpeaking
+                            : _room?.activeSpeakers.any(
+                                  (speaker) =>
+                                      speaker.identity == ownParticipant.identity,
+                                ) ??
+                                false),
+                    isPkWinner: battle.winnerRoomId == widget.room.roomId,
+                    borderRadius: 22,
+                    child:
+                        _isHost
+                            ? (_renderer.srcObject != null
+                                ? RTCVideoView(
+                                  _renderer,
+                                  mirror: _frontFacing,
+                                  objectFit:
+                                      RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                                )
+                                : _PkVideoFallback(
+                                  name:
+                                      ownHost?['name']?.toString() ??
+                                      _hostDisplayName,
+                                  subtitle: 'Your camera',
+                                  showSubtitle: true,
+                                ))
+                            : (ownTrack != null
+                                ? VideoTrackRenderer(
+                                  ownTrack,
+                                  fit: VideoViewFit.cover,
+                                )
+                                : _PkVideoFallback(
+                                  name:
+                                      ownHost?['name']?.toString() ??
+                                      _hostDisplayName,
+                                  subtitle: 'Host video unavailable',
+                                )),
+                  ),
+                ),
+                opponentChild: KeyedSubtree(
+                  key: _giftAnchors.keyFor(GiftAnchorRegistry.pkRight),
+                  child: ThemedRoomFrame(
+                    themeKey: _pkHostThemeKey(opponentHost),
+                    isHost: false,
+                    isVip: _pkHostIsVip(opponentHost),
+                    isSpeaking: _isOpponentSpeaking(),
+                    isPkWinner:
+                        battle.winnerRoomId != null &&
+                        battle.winnerRoomId != widget.room.roomId,
+                    borderRadius: 22,
+                    child:
+                        opponentTrack != null
+                            ? VideoTrackRenderer(
+                              opponentTrack,
+                              fit: VideoViewFit.cover,
+                            )
+                            : _PkVideoFallback(
+                              name:
+                                  opponentHost?['name']?.toString() ?? 'Opponent',
+                              subtitle:
+                                  _opponentConnecting
+                                      ? 'Connecting…'
+                                      : 'Opponent video unavailable',
+                            ),
+                  ),
+                ),
+              ),
+            ),
+            if (showPkGiftRow)
+              Positioned(
+                left: 0,
+                right: 0,
+                top: giftRowTop,
+                child: IgnorePointer(
+                  ignoring: false,
+                  child: Center(
+                    child: KeyedSubtree(
+                      key: _giftAnchors.keyFor(GiftAnchorRegistry.giftButton),
+                      child: _PkGiftActionRow(
+                        busy: _giftBusy,
+                        onTap: _giftBusy ? null : _openGiftSheet,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _showPkInviteSheet() async {
+    if (!_pkCapable || !_isHost || _pkBusy) return;
+    setState(() => _pkBusy = true);
+    try {
+      final rooms = await widget.live.listLiveRooms();
+      if (!mounted) return;
+      final candidates =
+          rooms
+              .where(
+                (room) =>
+                    room.id != widget.room.roomId &&
+                    room.status == 'live' &&
+                    room.roomType == 'video',
+              )
+              .toList();
+      await showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: Colors.transparent,
+        isScrollControlled: true,
+        builder: (context) {
+          return SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF121118),
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: Colors.white.withOpacity(.10)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Start PK Battle',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 20,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      candidates.isEmpty
+                          ? 'No active host rooms available right now.'
+                          : 'Invite another live host into a PK battle.',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(.70),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    if (candidates.isEmpty)
+                      const SizedBox.shrink()
+                    else
+                      Flexible(
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: candidates.length,
+                          separatorBuilder:
+                              (_, __) => const SizedBox(height: 10),
+                          itemBuilder: (_, i) {
+                            final room = candidates[i];
+                            return InkWell(
+                              onTap: () async {
+                                Navigator.of(context).pop();
+                                await _invitePk(room.id);
+                              },
+                              borderRadius: BorderRadius.circular(18),
+                              child: Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(.06),
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(.08),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    CircleAvatar(
+                                      backgroundColor: const Color(0xFF7B50C5),
+                                      child: Text(
+                                        room.title.isNotEmpty
+                                            ? room.title.characters.first
+                                                .toUpperCase()
+                                            : 'H',
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            room.title.isNotEmpty
+                                                ? room.title
+                                                : room.id,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '${room.roomType.toUpperCase()} • ${room.participantCount} in room',
+                                            style: TextStyle(
+                                              color: Colors.white.withOpacity(
+                                                .64,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const Icon(
+                                      Icons.sports_martial_arts_rounded,
+                                      color: Colors.white70,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(
+          () => _seatError = e.toString().replaceFirst('Exception: ', ''),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _pkBusy = false);
+      }
+    }
+  }
+
+  Future<void> _invitePk(String targetRoomId) async {
+    try {
+      final battle = await widget.live.invitePk(
+        widget.room.roomId,
+        targetRoomId: targetRoomId,
+      );
+      if (!mounted) return;
+      setState(() => _incomingPkInvite = battle.isPending ? battle : null);
+      Get.snackbar(
+        'PK Invite',
+        'PK invite sent successfully.',
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 2),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(
+          () => _seatError = e.toString().replaceFirst('Exception: ', ''),
+        );
+      }
+    }
+  }
+
+  Future<void> _respondToIncomingPk(bool accept) async {
+    final battle = _incomingPkInvite;
+    if (battle == null || _pkBusy) return;
+    setState(() => _pkBusy = true);
+    try {
+      if (accept) {
+        await widget.live.acceptPk(widget.room.roomId, battle.battleId);
+      } else {
+        await widget.live.rejectPk(widget.room.roomId, battle.battleId);
+      }
+      await _syncPkState();
+    } catch (e) {
+      if (mounted) {
+        setState(
+          () => _seatError = e.toString().replaceFirst('Exception: ', ''),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _pkBusy = false);
+      }
+    }
+  }
+
+  Future<void> _endPkBattle() async {
+    final battle = _pkBattle;
+    if (battle == null || _pkBusy) return;
+    setState(() => _pkBusy = true);
+    try {
+      await widget.live.endPk(widget.room.roomId, battle.battleId);
+      await _syncPkState();
+    } catch (e) {
+      if (mounted) {
+        setState(
+          () => _seatError = e.toString().replaceFirst('Exception: ', ''),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _pkBusy = false);
+      }
+    }
+  }
+
+  /* ===================== Remote helpers ===================== */
+
+  VideoTrack? _firstRemoteVideo(
+    Participant p, {
+    bool excludeScreenshare = true,
+  }) {
+    for (final pub in p.trackPublications.values) {
+      if (pub.muted) continue;
+      final t = pub.track;
+      if (t is VideoTrack) {
+        if (excludeScreenshare && pub.source == TrackSource.screenShareVideo) {
+          continue;
+        }
+        return t;
+      }
+    }
+    return null;
+  }
+
+  List<_StageTileData> _stageTiles() {
+    final tiles = <_StageTileData>[];
+    final room = _room;
+    if (room == null) return tiles;
+
+    if (_canPublishMedia) {
+      final localParticipant = room.localParticipant;
+      final currentUser = Get.find<AuthService>().currentUser;
+      final trimmedCurrentUserName = currentUser?.name.trim() ?? '';
+      final localDisplayName =
+          trimmedCurrentUserName.isNotEmpty
+              ? trimmedCurrentUserName
+              : (_isHost ? _hostDisplayName : 'You');
+      final localThemeKey =
+          localParticipant != null
+              ? _participantThemeKey(localParticipant)
+              : Get.find<AppSettingsService>().activePremiumThemeVariant;
+      tiles.add(
+        _StageTileData(
+          tileKey:
+              _isHost
+                  ? _giftAnchors.keyFor(GiftAnchorRegistry.videoHostTile)
+                  : null,
+          label: _isHost ? 'Host' : 'You',
+          subtitle: _isHost ? 'Host' : 'Participant',
+          isLocal: true,
+          themeKey: localThemeKey,
+          isHost: _isHost,
+          isVip:
+              localParticipant != null ? _participantIsVip(localParticipant) : false,
+          isSpeaking: _localSpeaking,
+          userId: _myUserId ?? currentUser?.id,
+          avatarUrl: currentUser?.avatarUrl,
+          level: currentUser?.level,
+          onProfileTap:
+              (_myUserId ?? currentUser?.id) == null
+                  ? null
+                  : () => _showParticipantProfileCard(
+                    userId:
+                        _myUserId ?? currentUser!.id,
+                    name: localDisplayName,
+                    subtitle: _isHost ? 'Host' : 'Participant',
+                    themeKey: localThemeKey,
+                    isVip:
+                        localParticipant != null
+                            ? _participantIsVip(localParticipant)
+                            : false,
+                    isHost: _isHost,
+                    speaking: _localSpeaking,
+                    level: currentUser?.level,
+                    avatarUrl: currentUser?.avatarUrl,
+                  ),
+          child:
+              _renderer.srcObject != null
+                  ? RTCVideoView(
+                    _renderer,
+                    mirror: _frontFacing,
+                    objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                  )
+                  : _PkVideoFallback(
+                    name: localDisplayName,
+                    subtitle: _camOn ? 'Camera starting…' : 'Camera off',
+                    showSubtitle: true,
+                  ),
+        ),
+      );
+    }
+
+    for (final participant in room.remoteParticipants.values) {
+      final track = _firstRemoteVideo(participant, excludeScreenshare: true);
+      if (track == null) continue;
+      final name =
+          participant.name.isNotEmpty ? participant.name : participant.identity;
+      final metadata = _participantMetadata(participant);
+      final userId = _safeInt(metadata['user_id']);
+      final isHost =
+          participant.identity.startsWith('host-') || metadata['is_host'] == true;
+      final isVip = _participantIsVip(participant);
+      final isSpeaking = room.activeSpeakers.any(
+        (speaker) => speaker.identity == participant.identity,
+      );
+      final themeKey = _participantThemeKey(participant);
+      final avatarUrl =
+          metadata['avatar_url']?.toString() ?? metadata['avatar']?.toString();
+      final level = _safeInt(metadata['level']);
+      tiles.add(
+        _StageTileData(
+          tileKey:
+              isHost
+                  ? _giftAnchors.keyFor(GiftAnchorRegistry.videoHostTile)
+                  : null,
+          label: name,
+          subtitle: isHost ? 'Host' : 'Guest',
+          isLocal: false,
+          themeKey: themeKey,
+          isHost: isHost,
+          isVip: isVip,
+          isSpeaking: isSpeaking,
+          userId: userId,
+          avatarUrl: avatarUrl,
+          level: level,
+          onProfileTap:
+              userId == null
+                  ? null
+                  : () => _showParticipantProfileCard(
+                    userId: userId,
+                    name: name,
+                    subtitle: isHost ? 'Host' : 'Guest',
+                    themeKey: themeKey,
+                    isVip: isVip,
+                    isHost: isHost,
+                    speaking: isSpeaking,
+                    level: level,
+                    avatarUrl: avatarUrl,
+                  ),
+          child: VideoTrackRenderer(track, fit: VideoViewFit.cover),
+        ),
+      );
+    }
+
+    return tiles;
+  }
+
+  List<_StageTileData> _devStageTiles() {
+    final rawTiles =
+        widget.room.meta?['dev_video_tiles'] as List<dynamic>? ??
+        const <dynamic>[];
+    if (rawTiles.isEmpty) return const <_StageTileData>[];
+
+    return rawTiles.whereType<Map>().map((entry) {
+      final data = Map<String, dynamic>.from(entry);
+      final themeKey = normalizePremiumThemeVariant(
+        data['theme_key']?.toString() ?? 'midnight',
+      );
+      final label = data['label']?.toString() ?? 'Guest';
+      return _StageTileData(
+        label: label,
+        subtitle:
+            data['is_host'] == true
+                ? 'Host'
+                : (data['subtitle']?.toString() ?? 'Guest'),
+        isLocal: data['is_local'] == true,
+        themeKey: themeKey,
+        isHost: data['is_host'] == true,
+        isVip: data['is_vip'] == true,
+        isSpeaking: data['is_speaking'] == true,
+        userId: _safeInt(data['user_id']),
+        avatarUrl: data['avatar_url']?.toString() ?? data['avatar']?.toString(),
+        level: _safeInt(data['level']),
+        onProfileTap:
+            _safeInt(data['user_id']) == null
+                ? null
+                : () => _showParticipantProfileCard(
+                  userId: _safeInt(data['user_id'])!,
+                  name: label,
+                  subtitle:
+                      data['is_host'] == true
+                          ? 'Host'
+                          : (data['subtitle']?.toString() ?? 'Guest'),
+                  themeKey: themeKey,
+                  isVip: data['is_vip'] == true,
+                  isHost: data['is_host'] == true,
+                  speaking: data['is_speaking'] == true,
+                  level: _safeInt(data['level']),
+                  avatarUrl:
+                      data['avatar_url']?.toString() ??
+                      data['avatar']?.toString(),
+                ),
+        child: _DevVideoTilePlaceholder(
+          label: label,
+          themeKey: themeKey,
+        ),
+      );
+    }).toList(growable: false);
+  }
+
+  /* ===================== UI ===================== */
+
+  @override
+  Widget build(BuildContext context) {
+    final title = widget.room.title ?? 'Live on Talkee';
+    final media = MediaQuery.of(context);
+    final pad = media.padding;
+    final isCompactDevice =
+        media.size.width < 360 || media.size.height < 760;
+    final stageTiles =
+        widget.devMode && _room == null ? _devStageTiles() : _stageTiles();
+    final inlineError =
+        _seatError ?? _giftError ?? _pkOverlaySubtitle ?? _error;
+
+    return Obx(
+      () => PopScope(
+        canPop: false,
+        onPopInvoked: (didPop) {
+          if (didPop || _handlingBackNavigation) return;
+          unawaited(_handleBackNavigation());
+        },
+        child: Scaffold(
+          backgroundColor: _tokens.backgroundGradient.first,
+          body: Stack(
+            children: [
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      _tokens.backgroundGradient.first,
+                      _tokens.cardGradient.first,
+                      _tokens.backgroundGradient.last,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: -40,
+              right: -30,
+              child: Container(
+                width: 180,
+                height: 180,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _tokens.primaryButtonGradient.first.withOpacity(.12),
+                ),
+              ),
+            ),
+            Positioned(
+              left: -34,
+              bottom: 84,
+              child: Container(
+                width: 150,
+                height: 150,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _tokens.glowColor.withOpacity(.10),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child:
+                  (_error != null && !_connecting)
+                      ? Center(
+                        child: Text(
+                          _error!,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      )
+                      : (_connecting)
+                      ? const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                      : KeyedSubtree(
+                        key: _giftAnchors.keyFor(GiftAnchorRegistry.stageCenter),
+                        child:
+                            _pkCapable && _pkActive
+                                ? _buildPkVideoStage()
+                                : _DynamicStageGrid(tiles: stageTiles),
+                      ),
+            ),
+            Positioned.fill(
+              child: _AnimatedVeil(
+                glow: _glow,
+                speaking: _canPublishMedia ? _localSpeaking : false,
+              ),
+            ),
+            SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  isCompactDevice ? 10 : 14,
+                  isCompactDevice ? 2 : 4,
+                  isCompactDevice ? 10 : 14,
+                  0,
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth:
+                                  _pkCapable && _pkActive
+                                      ? (isCompactDevice ? 240 : 300)
+                                      : double.infinity,
+                            ),
+                            child: _LiveRoomInfoPill(
+                              hostName: _hostDisplayName,
+                              liveLabel: _timerText,
+                              participantCount: _viewerCount,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _TopRightExitPill(
+                          label: _isHost ? 'End Live' : 'Leave',
+                          accent: _isHost ? Colors.redAccent : null,
+                          onTap: () async {
+                            if (_isHost) {
+                              await _endSession();
+                              return;
+                            }
+                            await _exitViewerSession();
+                          },
+                        ),
+                      ],
+                    ),
+                    if (_recentGiftMessage != null) ...[
+                      SizedBox(height: isCompactDevice ? 8 : 10),
+                      _FloatingTickerBanner(
+                        icon: Icons.redeem_rounded,
+                        message: _recentGiftMessage!,
+                      ),
+                    ] else if (_viewerStatusText != null && !_canModerate) ...[
+                      SizedBox(height: isCompactDevice ? 8 : 10),
+                      _FloatingTickerBanner(
+                        icon:
+                            _requestStatus == 'pending'
+                                ? Icons.hourglass_top_rounded
+                                : (_requestStatus == 'accepted'
+                                    ? Icons.videocam_rounded
+                                    : Icons.info_outline_rounded),
+                        message: _viewerStatusText!,
+                        accent:
+                            _requestStatus == 'rejected' ||
+                                    _requestStatus == 'removed'
+                                ? Colors.orangeAccent
+                                : const Color(0xFF7B50C5),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            if (inlineError != null && inlineError.isNotEmpty)
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 82 + pad.bottom,
+                child: _InlineErrorBanner(message: inlineError),
+              ),
+            Positioned.fill(
+              child: Obx(() {
+                final viewerThemeKey =
+                    Get.find<AppSettingsService>().activePremiumThemeVariant;
+                return LiveRoomChatOverlay(
+                  key: ValueKey('video-room-chat-$viewerThemeKey'),
+                  messagesListenable: _chatMessages,
+                  viewerThemeKey: viewerThemeKey,
+                  roomId: widget.room.roomId,
+                  roomType: widget.room.roomType,
+                  bottomOffset:
+                      (_pkCapable && _pkActive
+                                  ? (isCompactDevice ? 8 : 14)
+                                  : (isCompactDevice ? 10 : 18)) +
+                              pad.bottom,
+                  maxHeightFactor:
+                      _pkCapable && _pkActive
+                          ? (isCompactDevice ? 0.38 : 0.54)
+                          : (isCompactDevice ? 0.28 : 0.4),
+                  showEmptyPrompt: false,
+                  stickMessagesToBottom: false,
+                  compactBubbles: _pkCapable && _pkActive,
+                  trailingActions: _buildChatTrailingActions(),
+                  showSendButton: false,
+                  onSend: _sendChatMessage,
+                  onMessageSenderTap: (message) {
+                    if (message.isSystem || message.senderId <= 0) return;
+                    _showParticipantProfileCard(
+                      userId: message.senderId,
+                      name: message.senderName,
+                      subtitle: message.senderIsHost
+                          ? 'Host'
+                          : (message.senderIsVip ? 'VIP Participant' : 'Participant'),
+                      themeKey: message.senderActiveThemeKey,
+                      isVip: message.senderIsVip,
+                      isHost: message.senderIsHost,
+                      speaking: false,
+                      level: message.senderLevel,
+                      avatarUrl: message.senderAvatar,
+                    );
+                  },
+                );
+              }),
+            ),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: RepaintBoundary(child: _EmojiBurst(key: _emojiKey)),
+              ),
+            ),
+            Positioned.fill(
+              child: EntryEffectOverlay(
+                roomId: widget.room.roomId,
+                initialEffect: widget.room.entryEffect,
+                events:
+                    Get.isRegistered<RoomsSocketService>()
+                        ? Get.find<RoomsSocketService>().entryEffectEvents
+                        : null,
+              ),
+            ),
+            Positioned.fill(
+              child: GiftAnimationLayer(
+                manager: _giftAnimationOverlay,
+                anchors: _giftAnchors,
+                currentThemeKey:
+                    Get.find<AppSettingsService>().activePremiumThemeVariant,
+                receiverAnchorName: GiftAnchorRegistry.videoHostTile,
+                stageCenterAnchorName: GiftAnchorRegistry.stageCenter,
+                pkLeftAnchorName:
+                    _pkCapable && _pkActive ? GiftAnchorRegistry.pkLeft : null,
+                pkRightAnchorName:
+                    _pkCapable && _pkActive
+                        ? GiftAnchorRegistry.pkRight
+                        : null,
+              ),
+            ),
+            if (_pkCapable && _incomingPkInvite != null)
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 116 + pad.bottom,
+                child: _PkInvitePrompt(
+                  battle: _incomingPkInvite!,
+                  busy: _pkBusy,
+                  onAccept: () => _respondToIncomingPk(true),
+                  onReject: () => _respondToIncomingPk(false),
+                ),
+              ),
+            if (_pkCapable &&
+                _pkOverlayTitle != null &&
+                _pkOverlaySubtitle != null)
+              PkWinnerOverlay(
+                title: _pkOverlayTitle!,
+                subtitle: _pkOverlaySubtitle!,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StageTileData {
+  final Key? tileKey;
+  final String label;
+  final String subtitle;
+  final bool isLocal;
+  final String themeKey;
+  final bool isHost;
+  final bool isVip;
+  final bool isSpeaking;
+  final int? userId;
+  final String? avatarUrl;
+  final int? level;
+  final VoidCallback? onProfileTap;
+  final Widget child;
+
+  const _StageTileData({
+    this.tileKey,
+    required this.label,
+    required this.subtitle,
+    required this.isLocal,
+    required this.themeKey,
+    required this.isHost,
+    required this.isVip,
+    required this.isSpeaking,
+    this.userId,
+    this.avatarUrl,
+    this.level,
+    this.onProfileTap,
+    required this.child,
+  });
+}
+
+class _HostModerationParticipant {
+  final int userId;
+  final String name;
+  final String subtitle;
+  final String themeKey;
+  final bool isVip;
+  final bool isHost;
+  final bool speaking;
+  final int? level;
+  final String? avatarUrl;
+
+  const _HostModerationParticipant({
+    required this.userId,
+    required this.name,
+    required this.subtitle,
+    required this.themeKey,
+    required this.isVip,
+    required this.isHost,
+    required this.speaking,
+    this.level,
+    this.avatarUrl,
+  });
+}
+
+class _DevVideoTilePlaceholder extends StatelessWidget {
+  const _DevVideoTilePlaceholder({
+    required this.label,
+    required this.themeKey,
+  });
+
+  final String label;
+  final String themeKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(themeKey);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            tokens.backgroundGradient.first,
+            tokens.cardGradient.first,
+            tokens.backgroundGradient.last,
+          ],
+        ),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned(
+            top: 18,
+            right: 18,
+            child: Container(
+              width: 92,
+              height: 92,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: tokens.glowColor.withOpacity(.16),
+              ),
+            ),
+          ),
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircleAvatar(
+                  radius: 34,
+                  backgroundColor: tokens.primaryButtonGradient.first,
+                  child: Text(
+                    label.isNotEmpty ? label.characters.first.toUpperCase() : '?',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 24,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: tokens.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Dev preview tile',
+                  style: TextStyle(
+                    color: tokens.textSecondary.withOpacity(.92),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PkVideoFallback extends StatelessWidget {
+  const _PkVideoFallback({
+    required this.name,
+    required this.subtitle,
+    this.showSubtitle = false,
+  });
+
+  final String name;
+  final String subtitle;
+  final bool showSubtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF121722), Color(0xFF0D121B)],
+        ),
+      ),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: tokens.primaryButtonGradient.first,
+                child: Text(
+                  name.isNotEmpty ? name.characters.first.toUpperCase() : '?',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 20,
+                  ),
+                ),
+              ),
+              if (showSubtitle) ...[
+                const SizedBox(height: 8),
+                Text(
+                  subtitle,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(.72),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VideoParticipantProfileFallbackSheet extends StatelessWidget {
+  const _VideoParticipantProfileFallbackSheet({
+    required this.name,
+    required this.subtitle,
+    required this.themeKey,
+    required this.isVip,
+    required this.isHost,
+    required this.speaking,
+    this.userId,
+    this.level,
+    this.avatarUrl,
+  });
+
+  final String name;
+  final String subtitle;
+  final String themeKey;
+  final bool isVip;
+  final bool isHost;
+  final bool speaking;
+  final int? userId;
+  final int? level;
+  final String? avatarUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    final frameTokens = getPremiumThemeTokens(themeKey);
+    return SafeArea(
+      top: false,
+      child: Container(
+        margin: const EdgeInsets.only(top: 28),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              tokens.cardGradient.first.withOpacity(.98),
+              tokens.cardGradient.last.withOpacity(.96),
+              tokens.backgroundGradient.last.withOpacity(.95),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(34)),
+          border: Border.all(color: tokens.borderColor.withOpacity(.22)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 48,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: tokens.borderColor.withOpacity(.42),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: tokens.glassColor.withOpacity(.16),
+                  borderRadius: BorderRadius.circular(26),
+                  border: Border.all(color: tokens.borderColor.withOpacity(.22)),
+                ),
+                child: Row(
+                  children: [
+                    ThemedRoomFrame(
+                      themeKey: themeKey,
+                      isHost: isHost,
+                      isVip: isVip,
+                      isSpeaking: speaking,
+                      borderRadius: 26,
+                      size: 80,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(26),
+                          gradient: LinearGradient(
+                            colors: frameTokens.primaryButtonGradient,
+                          ),
+                        ),
+                        child: avatarUrl?.trim().isNotEmpty == true
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(26),
+                                child: Image.network(
+                                  avatarUrl!.trim(),
+                                  fit: BoxFit.cover,
+                                ),
+                              )
+                            : Center(
+                                child: Text(
+                                  name.isNotEmpty
+                                      ? name.characters.first.toUpperCase()
+                                      : '?',
+                                  style: TextStyle(
+                                    color: frameTokens.textPrimary,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 28,
+                                  ),
+                                ),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: tokens.textPrimary,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            subtitle,
+                            style: TextStyle(
+                              color: tokens.textSecondary.withOpacity(.9),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              if (isHost) _VideoProfileChip(label: 'Host'),
+                              if (isVip) _VideoProfileChip(label: 'VIP'),
+                              if (speaking) _VideoProfileChip(label: 'Speaking'),
+                              if (level != null)
+                                _VideoProfileChip(label: 'LV $level'),
+                              if (userId != null)
+                                _VideoProfileChip(label: 'ID $userId'),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Dev profile preview. This route uses mock room users, so it stays local instead of fetching from the API.',
+                style: TextStyle(
+                  color: tokens.textSecondary.withOpacity(.86),
+                  fontWeight: FontWeight.w600,
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VideoProfileChip extends StatelessWidget {
+  const _VideoProfileChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: tokens.chipColor.withOpacity(.88),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: tokens.textPrimary,
+          fontSize: 10.8,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _PkInvitePrompt extends StatelessWidget {
+  const _PkInvitePrompt({
+    required this.battle,
+    required this.busy,
+    required this.onAccept,
+    required this.onReject,
+  });
+
+  final LivePkBattleModel battle;
+  final bool busy;
+  final VoidCallback onAccept;
+  final VoidCallback onReject;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    final host = battle.hostA;
+    final room = battle.roomA;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: tokens.cardGradient,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: tokens.borderColor),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Incoming PK Invite',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+              fontSize: 18,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${host?['name'] ?? 'A host'} invited your room${room?['title'] != null ? ' from ${room!['title']}' : ''}.',
+            style: TextStyle(
+              color: Colors.white.withOpacity(.74),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: busy ? null : onReject,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: tokens.textPrimary,
+                    side: BorderSide(color: tokens.borderColor),
+                  ),
+                  child: const Text('Reject'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton(
+                  onPressed: busy ? null : onAccept,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: tokens.primaryButtonGradient.first,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text(busy ? 'Working...' : 'Accept'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CircleGlassButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final int badgeCount;
+
+  const _CircleGlassButton({
+    required this.icon,
+    required this.onTap,
+    this.badgeCount = 0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(20),
+            child: Ink(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: tokens.glassColor.withOpacity(.16),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: tokens.borderColor.withOpacity(.32)),
+              ),
+              child: Icon(icon, color: Colors.white),
+            ),
+          ),
+        ),
+        if (badgeCount > 0)
+          Positioned(
+            right: -2,
+            top: -2,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.redAccent,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '$badgeCount',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _FooterCircleAction extends StatelessWidget {
+  const _FooterCircleAction({
+    required this.icon,
+    required this.onTap,
+    this.badgeCount = 0,
+    this.active = false,
+    this.busy = false,
+    this.disabled = false,
+    this.accent,
+  });
+
+  final IconData icon;
+  final VoidCallback? onTap;
+  final int badgeCount;
+  final bool active;
+  final bool busy;
+  final bool disabled;
+  final Color? accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    final tint =
+        accent ??
+        (active
+            ? tokens.primaryButtonGradient.first
+            : tokens.chipColor.withOpacity(.92));
+    final canTap = onTap != null && !disabled && !busy;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: canTap ? onTap : null,
+            borderRadius: BorderRadius.circular(18),
+            child: Ink(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: tint.withOpacity(active || accent != null ? .18 : .12),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: tint.withOpacity(.34)),
+              ),
+              child: Center(
+                child:
+                    busy
+                        ? SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              tokens.textPrimary,
+                            ),
+                          ),
+                        )
+                        : Opacity(
+                          opacity: disabled ? .42 : 1,
+                          child: Icon(
+                            icon,
+                            size: 20,
+                            color: tokens.textPrimary,
+                          ),
+                        ),
+              ),
+            ),
+          ),
+        ),
+        if (badgeCount > 0)
+          Positioned(
+            right: -3,
+            top: -3,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.redAccent,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '$badgeCount',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _FooterActionItem {
+  const _FooterActionItem({
+    required this.icon,
+    required this.onTap,
+    this.badgeCount = 0,
+    this.active = false,
+    this.busy = false,
+    this.accent,
+  });
+
+  final IconData icon;
+  final VoidCallback? onTap;
+  final int badgeCount;
+  final bool active;
+  final bool busy;
+  final Color? accent;
+}
+
+class _ExpandableFooterCluster extends StatefulWidget {
+  const _ExpandableFooterCluster({
+    required this.primaryIcon,
+    required this.actions,
+    this.primaryAccent,
+    this.primaryBusy = false,
+    this.primaryBadgeCount = 0,
+  });
+
+  final IconData primaryIcon;
+  final List<_FooterActionItem> actions;
+  final Color? primaryAccent;
+  final bool primaryBusy;
+  final int primaryBadgeCount;
+
+  @override
+  State<_ExpandableFooterCluster> createState() =>
+      _ExpandableFooterClusterState();
+}
+
+class _ExpandableFooterClusterState extends State<_ExpandableFooterCluster> {
+  final LayerLink _layerLink = LayerLink();
+  OverlayEntry? _entry;
+  bool _expanded = false;
+
+  void _toggle() {
+    if (_expanded) {
+      _close();
+      return;
+    }
+    _open();
+  }
+
+  void _open() {
+    if (!mounted || _entry != null) return;
+    final overlay = Overlay.of(context, rootOverlay: true);
+    _entry = OverlayEntry(
+      builder: (context) {
+        final tokens = getPremiumThemeTokens(
+          Get.find<AppSettingsService>().activePremiumThemeVariant,
+        );
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: _close,
+              ),
+            ),
+            CompositedTransformFollower(
+              link: _layerLink,
+              showWhenUnlinked: false,
+              targetAnchor: Alignment.topRight,
+              followerAnchor: Alignment.bottomRight,
+              offset: const Offset(0, -6),
+              child: Material(
+                color: Colors.transparent,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween<double>(begin: 0.92, end: 1),
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, value, child) {
+                    return Opacity(
+                      opacity: value.clamp(0, 1),
+                      child: Transform.scale(
+                        scale: value,
+                        alignment: Alignment.bottomRight,
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: tokens.glassColor.withOpacity(.14),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: tokens.borderColor.withOpacity(.22),
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (var i = 0; i < widget.actions.length; i++) ...[
+                          _FooterCircleAction(
+                            icon: widget.actions[i].icon,
+                            onTap: () {
+                              _close();
+                              widget.actions[i].onTap?.call();
+                            },
+                            badgeCount: widget.actions[i].badgeCount,
+                            active: widget.actions[i].active,
+                            busy: widget.actions[i].busy,
+                            accent: widget.actions[i].accent,
+                          ),
+                          if (i != widget.actions.length - 1)
+                            const SizedBox(height: 6),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    overlay.insert(_entry!);
+    if (!mounted) return;
+    setState(() => _expanded = true);
+  }
+
+  void _close() {
+    _entry?.remove();
+    _entry = null;
+    if (!mounted) return;
+    setState(() => _expanded = false);
+  }
+
+  @override
+  void dispose() {
+    _entry?.remove();
+    _entry = null;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CompositedTransformTarget(
+      link: _layerLink,
+      child: _FooterCircleAction(
+        icon: _expanded ? Icons.close_rounded : widget.primaryIcon,
+        onTap: _toggle,
+        accent: widget.primaryAccent,
+        busy: widget.primaryBusy,
+        active: _expanded,
+        badgeCount: _expanded ? 0 : widget.primaryBadgeCount,
+      ),
+    );
+  }
+}
+
+class _PkGiftActionRow extends StatelessWidget {
+  const _PkGiftActionRow({
+    required this.busy,
+    required this.onTap,
+  });
+
+  final bool busy;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        gradient: LinearGradient(
+          colors: [
+            Colors.black.withOpacity(.72),
+            const Color(0xCC111827),
+          ],
+        ),
+        border: Border.all(color: Colors.white.withOpacity(.10)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(.22),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _FooterCircleAction(
+              icon: busy ? Icons.hourglass_top_rounded : Icons.redeem_rounded,
+              onTap: onTap,
+              accent: const Color(0xFFFF8BC2),
+              busy: busy,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Gift',
+              style: TextStyle(
+                color: Colors.white.withOpacity(.90),
+                fontWeight: FontWeight.w800,
+                fontSize: 11.8,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TopRightExitPill extends StatelessWidget {
+  const _TopRightExitPill({
+    required this.label,
+    required this.onTap,
+    this.accent,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final Color? accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    final tint = accent ?? tokens.chipColor.withOpacity(.92);
+    final width = MediaQuery.sizeOf(context).width;
+    final compact = width < 390;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Ink(
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 11 : 12,
+            vertical: compact ? 8 : 9,
+          ),
+          decoration: BoxDecoration(
+            color: tint.withOpacity(accent != null ? .18 : .14),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: tint.withOpacity(.34)),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: tokens.textPrimary,
+              fontSize: compact ? 11.5 : 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LiveRoomInfoPill extends StatelessWidget {
+  final String hostName;
+  final String liveLabel;
+  final int participantCount;
+
+  const _LiveRoomInfoPill({
+    required this.hostName,
+    required this.liveLabel,
+    required this.participantCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    final width = MediaQuery.sizeOf(context).width;
+    final compact = width < 390;
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 9 : 10,
+        vertical: compact ? 6.5 : 7,
+      ),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        gradient: LinearGradient(
+          colors: [
+            tokens.glassColor.withOpacity(.22),
+            tokens.cardGradient.last.withOpacity(.16),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(color: tokens.borderColor.withOpacity(.26)),
+        boxShadow: [
+          BoxShadow(
+            color: tokens.glowColor.withOpacity(.12),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          _LiveDot(),
+          SizedBox(width: compact ? 5 : 6),
+          Flexible(
+            child: Text(
+              hostName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: tokens.textPrimary,
+                fontWeight: FontWeight.w900,
+                fontSize: compact ? 11.8 : 12.2,
+              ),
+            ),
+          ),
+          SizedBox(width: compact ? 5 : 6),
+          _MiniInfoDivider(color: tokens.borderColor.withOpacity(.26)),
+          SizedBox(width: compact ? 5 : 6),
+          _InlineMetaText(label: liveLabel),
+          SizedBox(width: compact ? 5 : 6),
+          _MiniInfoDivider(color: tokens.borderColor.withOpacity(.26)),
+          SizedBox(width: compact ? 5 : 6),
+          _InlineMetaText(label: '$participantCount'),
+          SizedBox(width: compact ? 3 : 4),
+          Icon(
+            Icons.people_alt_rounded,
+            size: compact ? 12.5 : 13,
+            color: tokens.textSecondary.withOpacity(.82),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniInfoDivider extends StatelessWidget {
+  const _MiniInfoDivider({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 12,
+      color: color,
+    );
+  }
+}
+
+class _InlineMetaText extends StatelessWidget {
+  const _InlineMetaText({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    final compact = MediaQuery.sizeOf(context).width < 390;
+    return Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: tokens.textSecondary.withOpacity(.9),
+        fontSize: compact ? 10.3 : 10.8,
+        fontWeight: FontWeight.w800,
+      ),
+    );
+  }
+}
+
+class _MetaPill extends StatelessWidget {
+  final String label;
+  const _MetaPill({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: tokens.chipColor.withOpacity(.82),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white70,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _FloatingTickerBanner extends StatelessWidget {
+  final IconData icon;
+  final String message;
+  final Color accent;
+
+  const _FloatingTickerBanner({
+    super.key,
+    required this.icon,
+    required this.message,
+    this.accent = Colors.pinkAccent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            tokens.cardGradient.first.withOpacity(.95),
+            accent.withOpacity(.18),
+            tokens.cardGradient.last.withOpacity(.92),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: accent.withOpacity(.32)),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withOpacity(.14),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [
+                  accent.withOpacity(.92),
+                  tokens.primaryButtonGradient.last.withOpacity(.82),
+                ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: accent.withOpacity(.22),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Icon(icon, color: Colors.white, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  icon == Icons.redeem_rounded ? 'ROOM GIFT' : 'LIVE UPDATE',
+                  style: TextStyle(
+                    color: tokens.textSecondary,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 10.5,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  message,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: tokens.textPrimary,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                    height: 1.15,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Icon(
+            Icons.chevron_right_rounded,
+            color: tokens.textSecondary.withOpacity(.84),
+            size: 18,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DynamicStageGrid extends StatelessWidget {
+  final List<_StageTileData> tiles;
+
+  const _DynamicStageGrid({required this.tiles});
+
+  @override
+  Widget build(BuildContext context) {
+    if (tiles.isEmpty) {
+      return const Center(
+        child: Text(
+          'Waiting for live video…',
+          style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w700),
+        ),
+      );
+    }
+
+    if (tiles.length == 1) {
+      return _StageTile(tile: tiles.first);
+    }
+
+    if (tiles.length == 2) {
+      final ordered = List<_StageTileData>.from(tiles)
+        ..sort((a, b) {
+          if (a.isHost == b.isHost) return 0;
+          return a.isHost ? -1 : 1;
+        });
+      return Padding(
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(4, 4, 4, 2),
+                child: _StageTile(tile: ordered[0]),
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(4, 2, 4, 4),
+                child: _StageTile(tile: ordered[1]),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final rows = _buildRows(tiles);
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        children: [
+          for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) ...[
+            Expanded(
+              child: Row(
+                children: [
+                  for (var tileIndex = 0; tileIndex < rows[rowIndex].length; tileIndex++) ...[
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: _StageTile(tile: rows[rowIndex][tileIndex]),
+                      ),
+                    ),
+                    if (tileIndex != rows[rowIndex].length - 1)
+                      const SizedBox(width: 0),
+                  ],
+                ],
+              ),
+            ),
+            if (rowIndex != rows.length - 1) const SizedBox(height: 0),
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<List<_StageTileData>> _buildRows(List<_StageTileData> items) {
+    if (items.length == 3) {
+      return <List<_StageTileData>>[
+        items.take(2).toList(growable: false),
+        <_StageTileData>[items[2]],
+      ];
+    }
+
+    final rows = <List<_StageTileData>>[];
+    var index = 0;
+    while (index < items.length) {
+      final remaining = items.length - index;
+      if (remaining == 1) {
+        rows.add(<_StageTileData>[items[index]]);
+        index += 1;
+      } else {
+        rows.add(items.sublist(index, index + 2));
+        index += 2;
+      }
+    }
+    return rows;
+  }
+}
+
+class _StageTile extends StatelessWidget {
+  final _StageTileData tile;
+  final bool featured;
+
+  const _StageTile({required this.tile, this.featured = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(tile.themeKey);
+    return KeyedSubtree(
+      key: tile.tileKey,
+      child: ThemedRoomFrame(
+        themeKey: tile.themeKey,
+        isHost: tile.isHost,
+        isVip: tile.isVip,
+        isSpeaking: tile.isSpeaking,
+        borderRadius: featured ? 24 : 20,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            tile.child,
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(.08),
+                    Colors.transparent,
+                    Colors.black.withOpacity(.60),
+                  ],
+                ),
+              ),
+            ),
+            if (!tile.isHost)
+              Positioned(
+                left: 10,
+                top: 10,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: tokens.glassColor.withOpacity(.22),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: tokens.borderColor.withOpacity(.34),
+                    ),
+                  ),
+                  child: Text(
+                    tile.isLocal ? 'You' : 'Guest',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ),
+            if (!tile.isHost)
+              Positioned(
+                left: 10,
+                right: 10,
+                bottom: 10,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: tile.onProfileTap,
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: tokens.glassColor.withOpacity(.22),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: tokens.borderColor.withOpacity(.34),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  tile.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: featured ? 15 : 13,
+                                  ),
+                                ),
+                                if (tile.onProfileTap != null) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    tile.subtitle,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(.72),
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 10.5,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HostModerationPanel extends StatelessWidget {
+  final List<Map<String, dynamic>> pendingRequests;
+  final List<Map<String, dynamic>> speakers;
+  final List<_HostModerationParticipant> participants;
+  final int speakerCount;
+  final int maxSpeakers;
+  final bool busy;
+  final Future<void> Function(int requestId) onAccept;
+  final Future<void> Function(int requestId) onReject;
+  final Future<void> Function(int userId) onRemoveSpeaker;
+  final Future<void> Function(_HostModerationParticipant participant)
+  onOpenParticipant;
+
+  const _HostModerationPanel({
+    required this.pendingRequests,
+    required this.speakers,
+    required this.participants,
+    required this.speakerCount,
+    required this.maxSpeakers,
+    required this.busy,
+    required this.onAccept,
+    required this.onReject,
+    required this.onRemoveSpeaker,
+    required this.onOpenParticipant,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _GlassPad(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 360),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Room Controls',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'On camera: $speakerCount / $maxSpeakers',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (pendingRequests.isEmpty)
+                const Text(
+                  'No pending requests',
+                  style: TextStyle(color: Colors.white54),
+                )
+              else
+                ...pendingRequests.take(4).map((row) {
+                  final requestId =
+                      int.tryParse('${row['request_id'] ?? row['id'] ?? ''}') ??
+                      0;
+                  final name =
+                      ((row['user'] as Map?)?['name'] ?? 'Viewer').toString();
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(.06),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(.08),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: FilledButton(
+                                  onPressed:
+                                      busy || requestId == 0
+                                          ? null
+                                          : () => onAccept(requestId),
+                                  child: const Text('Accept'),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed:
+                                      busy || requestId == 0
+                                          ? null
+                                          : () => onReject(requestId),
+                                  child: const Text('Reject'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              const SizedBox(height: 12),
+              Text(
+                'Current speakers',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (speakers.isEmpty)
+                const Text(
+                  'Only the host is on camera.',
+                  style: TextStyle(color: Colors.white54),
+                )
+              else
+                ...speakers.map((row) {
+                  final userId = int.tryParse('${row['user_id'] ?? ''}') ?? 0;
+                  final name = (row['name'] ?? 'Speaker').toString();
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            name,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed:
+                              busy || userId == 0
+                                  ? null
+                                  : () => onRemoveSpeaker(userId),
+                          child: const Text('Remove'),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HostModerationSheet extends StatelessWidget {
+  final List<Map<String, dynamic>> pendingRequests;
+  final List<Map<String, dynamic>> speakers;
+  final List<_HostModerationParticipant> participants;
+  final int speakerCount;
+  final int maxSpeakers;
+  final bool busy;
+  final Future<void> Function(int requestId) onAccept;
+  final Future<void> Function(int requestId) onReject;
+  final Future<void> Function(int userId) onRemoveSpeaker;
+  final Future<void> Function(_HostModerationParticipant participant)
+  onOpenParticipant;
+
+  const _HostModerationSheet({
+    required this.pendingRequests,
+    required this.speakers,
+    required this.participants,
+    required this.speakerCount,
+    required this.maxSpeakers,
+    required this.busy,
+    required this.onAccept,
+    required this.onReject,
+    required this.onRemoveSpeaker,
+    required this.onOpenParticipant,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    final fillRatio =
+        maxSpeakers <= 0 ? 0.0 : (speakerCount / maxSpeakers).clamp(0, 1).toDouble();
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            tokens.cardGradient.first.withOpacity(.98),
+            tokens.cardGradient.last.withOpacity(.94),
+            tokens.backgroundGradient.last.withOpacity(.96),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: tokens.borderColor.withOpacity(.32)),
+        boxShadow: [
+          BoxShadow(
+            color: tokens.glowColor.withOpacity(.16),
+            blurRadius: 26,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 42,
+              height: 4,
+              decoration: BoxDecoration(
+                color: tokens.borderColor.withOpacity(.42),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: tokens.glassColor.withOpacity(.16),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: tokens.borderColor.withOpacity(.18)),
+                ),
+                child: Text(
+                  'MODERATION',
+                  style: TextStyle(
+                    color: tokens.textSecondary,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: .8,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              if (busy)
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(tokens.textPrimary),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Manage requests and current speakers',
+            style: TextStyle(
+              color: tokens.textSecondary.withOpacity(.92),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Participants',
+            style: TextStyle(
+              color: tokens.textPrimary,
+              fontWeight: FontWeight.w900,
+              fontSize: 15,
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (participants.isEmpty)
+            Text(
+              'No active participants detected yet.',
+              style: TextStyle(color: tokens.textSecondary.withOpacity(.74)),
+            )
+          else
+            ...participants.map((participant) {
+              final frameTokens = getPremiumThemeTokens(participant.themeKey);
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: tokens.glassColor.withOpacity(.08),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: tokens.borderColor.withOpacity(.20),
+                  ),
+                ),
+                child: InkWell(
+                  onTap: busy
+                      ? null
+                      : () {
+                          Navigator.of(context).pop();
+                          onOpenParticipant(participant);
+                        },
+                  borderRadius: BorderRadius.circular(16),
+                  child: Row(
+                    children: [
+                      ThemedRoomFrame(
+                        themeKey: participant.themeKey,
+                        isHost: participant.isHost,
+                        isVip: participant.isVip,
+                        isSpeaking: participant.speaking,
+                        borderRadius: 16,
+                        size: 44,
+                        enableAnimation: false,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            gradient: LinearGradient(
+                              colors: frameTokens.primaryButtonGradient,
+                            ),
+                          ),
+                          child: Center(
+                            child: Text(
+                              participant.name.isNotEmpty
+                                  ? participant.name.characters.first
+                                      .toUpperCase()
+                                  : '?',
+                              style: TextStyle(
+                                color: frameTokens.textPrimary,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    participant.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: tokens.textPrimary,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                if (participant.isHost)
+                                  const _MetaPill(label: 'HOST'),
+                                if (participant.isVip) ...[
+                                  const SizedBox(width: 6),
+                                  const _MetaPill(label: 'VIP'),
+                                ],
+                                if (participant.level != null) ...[
+                                  const SizedBox(width: 6),
+                                  _MetaPill(label: 'LV ${participant.level}'),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              participant.subtitle,
+                              style: TextStyle(
+                                color: tokens.textSecondary.withOpacity(.82),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        color: tokens.textSecondary.withOpacity(.76),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: tokens.glassColor.withOpacity(.12),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: tokens.borderColor.withOpacity(.18)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Current speakers',
+                        style: TextStyle(
+                          color: tokens.textPrimary,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '$speakerCount / $maxSpeakers',
+                      style: TextStyle(
+                        color: tokens.textSecondary.withOpacity(.86),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: fillRatio,
+                    minHeight: 6,
+                    backgroundColor: tokens.chipColor.withOpacity(.26),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      tokens.primaryButtonGradient.first,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (speakers.isEmpty)
+                  Text(
+                    'Only the host is on camera.',
+                    style: TextStyle(color: tokens.textSecondary.withOpacity(.74)),
+                  )
+                else
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: speakers.map((row) {
+                      final userId = int.tryParse('${row['user_id'] ?? ''}') ?? 0;
+                      final name = (row['name'] ?? 'Speaker').toString();
+                      final themeKey = normalizePremiumThemeVariant(
+                        row['active_theme_key']?.toString() ?? 'midnight',
+                      );
+                      final frameTokens = getPremiumThemeTokens(themeKey);
+                      final isVip = row['is_vip'] == true;
+                      return Container(
+                        width: 126,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: tokens.chipColor.withOpacity(.14),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: tokens.borderColor.withOpacity(.16),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                ThemedRoomFrame(
+                                  themeKey: themeKey,
+                                  isHost: false,
+                                  isVip: isVip,
+                                  isSpeaking: false,
+                                  borderRadius: 16,
+                                  size: 42,
+                                  enableAnimation: false,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(16),
+                                      gradient: LinearGradient(
+                                        colors: frameTokens.primaryButtonGradient,
+                                      ),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        name.isNotEmpty
+                                            ? name.characters.first.toUpperCase()
+                                            : '?',
+                                        style: TextStyle(
+                                          color: frameTokens.textPrimary,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const Spacer(),
+                                if (isVip)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: frameTokens.primaryButtonGradient.first
+                                          .withOpacity(.24),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: const Text(
+                                      'VIP',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: tokens.textPrimary,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton(
+                                onPressed:
+                                    busy || userId == 0
+                                        ? null
+                                        : () => onRemoveSpeaker(userId),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: tokens.textPrimary,
+                                  side: BorderSide(
+                                    color: tokens.dangerColor.withOpacity(.34),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                ),
+                                child: const Text('Remove'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Pending requests',
+            style: TextStyle(
+              color: tokens.textPrimary,
+              fontWeight: FontWeight.w900,
+              fontSize: 15,
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (pendingRequests.isEmpty)
+            Text(
+              'No pending requests',
+              style: TextStyle(color: tokens.textSecondary.withOpacity(.74)),
+            )
+          else
+            ...pendingRequests.map((row) {
+              final requestId =
+                  int.tryParse('${row['request_id'] ?? row['id'] ?? ''}') ?? 0;
+              final user = (row['user'] as Map?) ?? const {};
+              final name = (user['name'] ?? 'Viewer').toString();
+              final level =
+                  int.tryParse('${user['level'] ?? row['level'] ?? ''}');
+              final isVip = user['is_vip'] == true || row['is_vip'] == true;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: tokens.glassColor.withOpacity(.08),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: tokens.borderColor.withOpacity(.20),
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: tokens.primaryButtonGradient,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Center(
+                        child: Text(
+                          name.isNotEmpty ? name.characters.first.toUpperCase() : '?',
+                          style: TextStyle(
+                            color: tokens.textPrimary,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  name,
+                                  style: TextStyle(
+                                    color: tokens.textPrimary,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                              if (isVip)
+                                _MetaPill(label: 'VIP'),
+                              if (level != null) ...[
+                                const SizedBox(width: 6),
+                                _MetaPill(label: 'LV $level'),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: FilledButton(
+                                  onPressed:
+                                      busy || requestId == 0
+                                          ? null
+                                          : () => onAccept(requestId),
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor:
+                                        tokens.primaryButtonGradient.first,
+                                    foregroundColor: tokens.textPrimary,
+                                  ),
+                                  child: const Text('Accept'),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed:
+                                      busy || requestId == 0
+                                          ? null
+                                          : () => onReject(requestId),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: tokens.textPrimary,
+                                    side: BorderSide(
+                                      color: tokens.borderColor.withOpacity(.34),
+                                    ),
+                                  ),
+                                  child: const Text('Reject'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+}
+
+class _BottomActionBar extends StatelessWidget {
+  final List<Widget> children;
+
+  const _BottomActionBar({required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return _GlassPad(
+      child: Row(mainAxisSize: MainAxisSize.max, children: children),
+    );
+  }
+}
+
+class _RoleActionDock extends StatelessWidget {
+  final List<_DockAction> children;
+  final bool compact;
+
+  const _RoleActionDock({required this.children, required this.compact});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 10 : 12,
+        vertical: compact ? 10 : 12,
+      ),
+      decoration: BoxDecoration(
+        color: tokens.glassColor.withOpacity(.18),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: tokens.borderColor.withOpacity(.28)),
+      ),
+      child: Row(
+        children:
+            children
+                .map(
+                  (action) => Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: action,
+                    ),
+                  ),
+                )
+                .toList(),
+      ),
+    );
+  }
+}
+
+class _DockAction extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback? onTap;
+  final bool busy;
+  final bool active;
+  final Color? accent;
+  final int badgeCount;
+
+  const _DockAction({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.busy = false,
+    this.active = false,
+    this.accent,
+    this.badgeCount = 0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    final tint =
+        accent ??
+        (active
+            ? tokens.primaryButtonGradient.first
+            : tokens.chipColor.withOpacity(.82));
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: onTap,
+            child: Ink(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                color: tint.withOpacity(accent != null || active ? .22 : .10),
+                border: Border.all(color: tint.withOpacity(.34)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  busy
+                      ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                      : Icon(icon, color: Colors.white, size: 20),
+                  const SizedBox(height: 6),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (badgeCount > 0)
+          Positioned(
+            right: -2,
+            top: -2,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.redAccent,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '$badgeCount',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final bool busy;
+  final bool compact;
+  final VoidCallback? onPressed;
+
+  const _ActionButton({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onPressed,
+    this.busy = false,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton.icon(
+      onPressed: onPressed,
+      style: FilledButton.styleFrom(
+        backgroundColor: color,
+        foregroundColor: Colors.white,
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 10 : 14,
+          vertical: compact ? 12 : 14,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+      icon:
+          busy
+              ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+              : Icon(icon),
+      label: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontWeight: FontWeight.w800,
+          fontSize: compact ? 13 : 14,
+        ),
+      ),
+    );
+  }
+}
+
+class _ViewerSpeakerRequestPanel extends StatelessWidget {
+  final bool busy;
+  final bool pendingRequest;
+  final String? seatError;
+  final Future<void> Function() onRequest;
+  final Future<void> Function() onCancel;
+
+  const _ViewerSpeakerRequestPanel({
+    required this.busy,
+    required this.pendingRequest,
+    required this.seatError,
+    required this.onRequest,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _GlassPad(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FilledButton.icon(
+            onPressed: busy ? null : (pendingRequest ? onCancel : onRequest),
+            icon: Icon(
+              pendingRequest ? Icons.close_rounded : Icons.video_call_rounded,
+            ),
+            label: Text(pendingRequest ? 'Cancel Request' : 'Request to Join'),
+          ),
+          if (pendingRequest)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text(
+                'Waiting for host approval',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          if (seatError != null && seatError!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: SizedBox(
+                width: 220,
+                child: Text(
+                  seatError!,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    color: Colors.redAccent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InlineErrorBanner extends StatelessWidget {
+  final String message;
+
+  const _InlineErrorBanner({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: tokens.dangerColor.withOpacity(.18),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: tokens.dangerColor.withOpacity(.34)),
+      ),
+      child: Text(
+        message,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+/* ---------- Small chrome ---------- */
+
+class _FrostedCapsule extends StatelessWidget {
+  final Widget child;
+  const _FrostedCapsule({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      margin: const EdgeInsets.only(top: 10),
+      decoration: BoxDecoration(
+        color: tokens.glassColor.withOpacity(.18),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: tokens.borderColor.withOpacity(.34)),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _GlassPad extends StatelessWidget {
+  final Widget child;
+  const _GlassPad({required this.child});
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: tokens.glassColor.withOpacity(.18),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: tokens.borderColor.withOpacity(.34)),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _LiveDot extends StatefulWidget {
+  @override
+  State<_LiveDot> createState() => _LiveDotState();
+}
+
+class _LiveDotState extends State<_LiveDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat();
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = _c.value;
+    final s = 1 + 0.25 * (1 - (t - .5) * (t - .5) * 4);
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Transform.scale(
+          scale: s,
+          child: Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              color: Colors.redAccent.withOpacity(.6),
+              shape: BoxShape.circle,
+            ),
+          ),
+        ),
+        Container(
+          width: 8,
+          height: 8,
+          decoration: const BoxDecoration(
+            color: Colors.redAccent,
+            shape: BoxShape.circle,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/* ---------- Speaking glow ---------- */
+class _AnimatedVeil extends StatelessWidget {
+  final AnimationController glow;
+  final bool speaking;
+  const _AnimatedVeil({required this.glow, required this.speaking});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    return AnimatedBuilder(
+      animation: glow,
+      builder: (_, __) {
+        final pulse = speaking ? (0.25 + glow.value * 0.25) : 0.25;
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                tokens.backgroundGradient.first.withOpacity(.18 + pulse * .14),
+                Colors.transparent,
+                tokens.backgroundGradient.last.withOpacity(.34),
+              ],
+              stops: const [0.0, 0.55, 1.0],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/* ---------- In-room banner ---------- */
+class _LiveInRoomBanner extends StatefulWidget {
+  const _LiveInRoomBanner();
+
+  @override
+  State<_LiveInRoomBanner> createState() => _LiveInRoomBannerState();
+}
+
+class _LiveInRoomBannerState extends State<_LiveInRoomBanner> {
+  static const _placement = 'live';
+  late final PageController _pc = PageController();
+  Timer? _ticker;
+  int _index = 0;
+  bool _loading = true;
+  bool _dismissed = false;
+  List<BannerItem> _banners = const [];
+  final Set<int> _impressed = <int>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+    _ticker = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted || !_pc.hasClients || _banners.length < 2) return;
+      _index = (_index + 1) % _banners.length;
+      _pc.animateToPage(
+        _index,
+        duration: const Duration(milliseconds: 380),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    _pc.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetch() async {
+    final items = await Get.find<BannerService>().fetchBanners(
+      placement: _placement,
+      forceRefresh: true,
+    );
+    if (!mounted) return;
+    final fallback = <BannerItem>[
+      const BannerItem(
+        id: -501,
+        title: 'You are live',
+        imageUrl: '',
+        actionType: 'none',
+        buttonText: 'Your room is visible to viewers now',
+      ),
+      const BannerItem(
+        id: -502,
+        title: 'Boost engagement',
+        imageUrl: '',
+        actionType: 'none',
+        buttonText: 'Use reactions and shout-outs to retain audience',
+      ),
+    ];
+    setState(() {
+      _banners = items.isEmpty ? fallback : items;
+      _loading = false;
+      _dismissed = false;
+      _index = 0;
+      _impressed.clear();
+    });
+    await _trackImpression(0);
+  }
+
+  Future<void> _trackImpression(int index) async {
+    if (index < 0 || index >= _banners.length) return;
+    final b = _banners[index];
+    if (b.id <= 0 || _impressed.contains(b.id)) return;
+    _impressed.add(b.id);
+    await Get.find<BannerService>().trackImpression(
+      bannerId: b.id,
+      placement: _placement,
+      context: const {'screen': 'live_video', 'slot': 'in_room_bottom'},
+    );
+  }
+
+  Future<void> _tap(BannerItem b) async {
+    if (b.id > 0) {
+      await Get.find<BannerService>().trackClick(
+        bannerId: b.id,
+        placement: _placement,
+        context: const {'screen': 'live_video', 'slot': 'in_room_bottom'},
+      );
+    }
+    final type = b.actionType.toLowerCase().trim();
+    final value = b.actionValue?.trim();
+    if (value == null || value.isEmpty || type == 'none') return;
+
+    try {
+      if (type == 'route' || (type == 'deeplink' && value.startsWith('/'))) {
+        await Get.toNamed(value);
+        return;
+      }
+      final uri = Uri.tryParse(value);
+      if (uri == null) return;
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_dismissed) {
+      return const SizedBox.shrink();
+    }
+    if (_loading) {
+      return const SizedBox(height: 84);
+    }
+    return SizedBox(
+      height: 84,
+      child: Stack(
+        children: [
+          PageView.builder(
+            controller: _pc,
+            itemCount: _banners.length,
+            onPageChanged: (v) async {
+              setState(() => _index = v);
+              await _trackImpression(v);
+            },
+            itemBuilder: (_, i) {
+              final b = _banners[i];
+              return InkWell(
+                borderRadius: BorderRadius.circular(22),
+                onTap: () => _tap(b),
+                child: _card(
+                  b.title,
+                  b.buttonText,
+                  b.hasImage ? b.imageUrl : null,
+                  hasAction:
+                      (b.actionType.toLowerCase().trim() != 'none') &&
+                      (b.actionValue?.trim().isNotEmpty ?? false),
+                ),
+              );
+            },
+          ),
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => setState(() => _dismissed = true),
+                borderRadius: BorderRadius.circular(999),
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(.26),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: Colors.white.withOpacity(.22)),
+                  ),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 13,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (_banners.length > 1)
+            Positioned(
+              bottom: 5,
+              left: 0,
+              right: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  _banners.length,
+                  (i) => AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                    width: i == _index ? 12 : 5,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(i == _index ? .92 : .40),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _card(
+    String title,
+    String? sub,
+    String? imageUrl, {
+    required bool hasAction,
+  }) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (imageUrl != null)
+            Image.network(
+              imageUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors:
+                    imageUrl == null
+                        ? const [
+                          Color(0xE2191231),
+                          Color(0xE4362058),
+                          Color(0xE2502F85),
+                        ]
+                        : const [
+                          Color(0x6E12091F),
+                          Color(0xAF1F1336),
+                          Color(0xD2281850),
+                        ],
+              ),
+              border: Border.all(color: Colors.white.withOpacity(.20)),
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(.4), blurRadius: 18),
+              ],
+            ),
+          ),
+          Positioned(
+            right: -18,
+            top: -20,
+            child: Container(
+              width: 88,
+              height: 88,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withOpacity(.09),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(.14),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.campaign_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'LIVE UPDATE',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(.72),
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1,
+                          fontSize: 9.5,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 14,
+                        ),
+                      ),
+                      if (sub != null && sub.isNotEmpty)
+                        Text(
+                          sub,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 10.8,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (hasAction)
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(.12),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: Colors.white.withOpacity(.24)),
+                    ),
+                    child: const Icon(
+                      Icons.chevron_right_rounded,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/* ---------------- Reaction RAIL (left-center, vertical) ---------------- */
+
+class _ReactionRail extends StatefulWidget {
+  const _ReactionRail({
+    required this.onTapEmoji,
+    this.emojis = const [
+      '👏',
+      '❤️',
+      '🔥',
+      '💎',
+      '✨',
+      '😂',
+      '😮',
+      '🥳',
+      '🙌',
+      '💖',
+      '🌟',
+      '⚡️',
+      '🎉',
+    ],
+  });
+
+  final void Function(String emoji) onTapEmoji;
+  final List<String> emojis;
+
+  @override
+  State<_ReactionRail> createState() => _ReactionRailState();
+}
+
+class _ReactionRailState extends State<_ReactionRail>
+    with TickerProviderStateMixin {
+  bool _open =
+      true; // default open so it's obvious; set false if you want collapsed by default
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 280),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (_open) _c.value = 1; // start opened
+  }
+
+  void _toggle() {
+    setState(() => _open = !_open);
+    if (_open) {
+      _c.forward();
+    } else {
+      _c.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final quick = widget.emojis.take(2).toList();
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Toggle pill + quick emojis
+        _GlassPad(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              InkWell(
+                onTap: _toggle,
+                borderRadius: BorderRadius.circular(10),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  child: Icon(Icons.auto_awesome_rounded, color: Colors.white),
+                ),
+              ),
+              const SizedBox(width: 6),
+              for (final e in quick)
+                InkWell(
+                  onTap: () => widget.onTapEmoji(e),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 4,
+                    ),
+                    child: Text(e, style: const TextStyle(fontSize: 18)),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+
+        // Vertical expandable list
+        SizeTransition(
+          sizeFactor: CurvedAnimation(parent: _c, curve: Curves.easeOutCubic),
+          axisAlignment: -1.0,
+          child: ScaleTransition(
+            scale: CurvedAnimation(parent: _c, curve: Curves.easeOutBack),
+            child: _GlassPad(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 280, minWidth: 64),
+                child: ScrollConfiguration(
+                  behavior: const _NoGlowScrollBehavior(),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemBuilder: (_, i) {
+                      final e = widget.emojis[i];
+                      return _ReactionBtnV(
+                        emoji: e,
+                        onTap: () => widget.onTapEmoji(e),
+                      );
+                    },
+                    separatorBuilder: (_, __) => const SizedBox(height: 6),
+                    itemCount: widget.emojis.length,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ReactionBtnV extends StatefulWidget {
+  const _ReactionBtnV({required this.emoji, required this.onTap});
+  final String emoji;
+  final VoidCallback onTap;
+
+  @override
+  State<_ReactionBtnV> createState() => _ReactionBtnVState();
+}
+
+class _ReactionBtnVState extends State<_ReactionBtnV>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 120),
+  );
+  late final Animation<double> _scale = Tween(
+    begin: 1.0,
+    end: 1.18,
+  ).animate(CurvedAnimation(parent: _c, curve: Curves.easeOut));
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  Future<void> _tap() async {
+    await _c.forward();
+    await _c.reverse();
+    widget.onTap();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: _scale,
+      child: InkWell(
+        onTap: _tap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Center(
+            child: Text(widget.emoji, style: const TextStyle(fontSize: 20)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NoGlowScrollBehavior extends ScrollBehavior {
+  const _NoGlowScrollBehavior();
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) => child;
+}
+
+/* ---------------- Tool RAIL (right-center) ---------------- */
+
+class _ToolRail extends StatefulWidget {
+  const _ToolRail({
+    required this.micOn,
+    required this.camOn,
+    required this.onToggleMic,
+    required this.onToggleCam,
+    required this.onFlip,
+  });
+
+  final bool micOn;
+  final bool camOn;
+  final VoidCallback onToggleMic;
+  final VoidCallback onToggleCam;
+  final VoidCallback onFlip;
+
+  @override
+  State<_ToolRail> createState() => _ToolRailState();
+}
+
+class _ToolRailState extends State<_ToolRail>
+    with SingleTickerProviderStateMixin {
+  bool _open = true;
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 260),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (_open) _c.value = 1;
+  }
+
+  void _toggle() {
+    setState(() => _open = !_open);
+    if (_open)
+      _c.forward();
+    else
+      _c.reverse();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final micBg = widget.micOn ? Colors.greenAccent.shade400 : Colors.redAccent;
+    final camBg = widget.camOn ? Colors.greenAccent.shade400 : Colors.redAccent;
+
+    Widget entry(Widget child, int idx) {
+      final curve = Interval(0.05 * idx, 1.0, curve: Curves.easeOutCubic);
+      return SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0.4, 0),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(parent: _c, curve: curve)),
+        child: FadeTransition(
+          opacity: CurvedAnimation(parent: _c, curve: curve),
+          child: child,
+        ),
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        entry(
+          FloatingActionButton.small(
+            heroTag: 'mic',
+            backgroundColor: micBg,
+            onPressed: widget.onToggleMic,
+            child: const Icon(Icons.mic_rounded, color: Colors.black),
+          ),
+          1,
+        ),
+        const SizedBox(height: 10),
+        entry(
+          FloatingActionButton.small(
+            heroTag: 'cam',
+            backgroundColor: camBg,
+            onPressed: widget.onToggleCam,
+            child: const Icon(Icons.videocam_rounded, color: Colors.black),
+          ),
+          2,
+        ),
+        const SizedBox(height: 10),
+        entry(
+          FloatingActionButton.small(
+            heroTag: 'flip',
+            backgroundColor: Colors.white24,
+            onPressed: widget.onFlip,
+            child: const Icon(Icons.cameraswitch_rounded, color: Colors.white),
+          ),
+          3,
+        ),
+        const SizedBox(height: 10),
+        _GlassPad(
+          child: InkWell(
+            onTap: _toggle,
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: Icon(
+                _open ? Icons.close_fullscreen : Icons.open_in_full,
+                color: Colors.white70,
+                size: 18,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/* ---------------- Optimized emoji burst overlay ---------------- */
+
+class _EmojiBurst extends StatefulWidget {
+  const _EmojiBurst({super.key});
+  @override
+  State<_EmojiBurst> createState() => _EmojiBurstState();
+}
+
+class _EmojiBurstState extends State<_EmojiBurst>
+    with SingleTickerProviderStateMixin {
+  static final Paint _paint = Paint()..filterQuality = FilterQuality.low;
+  final Map<String, ui.Image> _imgCache = {};
+  static const int _maxBursts = 36;
+  final List<_Burst> _bursts = <_Burst>[];
+
+  AnimationController? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick =
+        AnimationController(vsync: this, duration: const Duration(hours: 1))
+          ..addListener(() {
+            final nowMs = DateTime.now().millisecondsSinceEpoch.toDouble();
+            _bursts.removeWhere((b) => nowMs - b.t0Ms > b.lifeMs);
+            if (mounted) setState(() {});
+          })
+          ..forward();
+  }
+
+  @override
+  void dispose() {
+    _tick?.dispose();
+    _tick = null;
+    super.dispose();
+  }
+
+  Future<ui.Image> _imageFor(String emoji) async {
+    final cached = _imgCache[emoji];
+    if (cached != null) return cached;
+
+    final tp = TextPainter(
+      text: TextSpan(text: emoji, style: const TextStyle(fontSize: 30)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final w = tp.width.ceil();
+    final h = tp.height.ceil();
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    tp.paint(canvas, Offset.zero);
+    final picture = recorder.endRecording();
+
+    final img = await picture.toImage(w, h);
+    _imgCache[emoji] = img;
+    return img;
+  }
+
+  Future<void> burst(String emoji) async {
+    final img = await _imageFor(emoji);
+    final now = DateTime.now().millisecondsSinceEpoch.toDouble();
+    final rnd = math.Random();
+
+    if (_bursts.length >= _maxBursts) {
+      _bursts.removeAt(0);
+    }
+
+    final startX = 0.2 + rnd.nextDouble() * 0.6;
+    _bursts.add(
+      _Burst(img: img, t0Ms: now, xN: startX, seed: rnd.nextDouble()),
+    );
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_bursts.isEmpty) return const SizedBox.shrink();
+    return CustomPaint(
+      painter: _BurstPainter(_bursts, _paint),
+      size: Size.infinite,
+      isComplex: true,
+      willChange: true,
+    );
+  }
+}
+
+class _Burst {
+  final ui.Image img;
+  final double t0Ms;
+  final double xN;
+  final double seed;
+  final double lifeMs = 1400;
+
+  _Burst({
+    required this.img,
+    required this.t0Ms,
+    required this.xN,
+    required this.seed,
+  });
+}
+
+class _BurstPainter extends CustomPainter {
+  final List<_Burst> bursts;
+  final Paint paintRef;
+  _BurstPainter(this.bursts, this.paintRef);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (bursts.isEmpty) return;
+    final nowMs = DateTime.now().millisecondsSinceEpoch.toDouble();
+    final h = size.height, w = size.width;
+    final p = paintRef;
+
+    for (final b in bursts) {
+      final t = ((nowMs - b.t0Ms) / b.lifeMs).clamp(0.0, 1.0);
+      final y = h - (h * 0.55 * Curves.easeOut.transform(t));
+      final dx = math.sin((t * 7 + b.seed) * math.pi) * 44.0;
+
+      final alpha = ((1.0 - t) * 255).toInt().clamp(0, 255);
+      p.color = Color.fromARGB(alpha, 255, 255, 255);
+
+      final imgW = b.img.width.toDouble();
+      final imgH = b.img.height.toDouble();
+      final x = (b.xN * w) + dx - imgW / 2;
+
+      canvas.drawImageRect(
+        b.img,
+        Rect.fromLTWH(0, 0, imgW, imgH),
+        Rect.fromLTWH(x, y, imgW, imgH),
+        p,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BurstPainter oldDelegate) => true;
+}
