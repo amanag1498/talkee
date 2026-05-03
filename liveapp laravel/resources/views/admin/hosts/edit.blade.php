@@ -65,6 +65,37 @@
                placeholder="{{ config('calls.video_coin_rate_per_minute') }}">
         <small class="text-muted">Leave blank to use global video rate: {{ config('calls.video_coin_rate_per_minute') }} coins/min.</small>
       </div>
+      <div class="col-12">
+        <div class="border rounded-3 p-3">
+          <div class="fw-semibold mb-1">Host Goal Overrides</div>
+          <div class="text-muted small mb-3">
+            Optional per-host milestones. Leave any field empty to keep using the global app setting for that goal type.
+          </div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Follower Goals</label>
+              <input class="form-control" name="goal_followers"
+                     value="{{ old('goal_followers', $host->goal_followers) }}"
+                     placeholder="25,50,100,250">
+              <small class="text-muted">Comma-separated follower milestones for this host only.</small>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Weekly Live Minute Goals</label>
+              <input class="form-control" name="goal_weekly_live_minutes"
+                     value="{{ old('goal_weekly_live_minutes', $host->goal_weekly_live_minutes) }}"
+                     placeholder="60,180,300,600">
+              <small class="text-muted">Comma-separated live-minute milestones for this host only.</small>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Weekly Gifted Coin Goals</label>
+              <input class="form-control" name="goal_weekly_gifted_coins"
+                     value="{{ old('goal_weekly_gifted_coins', $host->goal_weekly_gifted_coins) }}"
+                     placeholder="500,1000,2500,5000">
+              <small class="text-muted">Comma-separated gifted-coin milestones for this host only.</small>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div class="col-12">
         <label class="form-label d-flex align-items-center justify-content-between">

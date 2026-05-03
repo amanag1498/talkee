@@ -11,6 +11,7 @@ class Host extends Model
     protected $fillable = [
         'user_id','agency_id','stage_name','contact_phone','country','city','bio','kyc','is_blocked',
         'payout_percentage','weekly_bonus','audio_call_rate_per_minute','video_call_rate_per_minute',
+        'goal_followers','goal_weekly_live_minutes','goal_weekly_gifted_coins',
     ];
 
     protected $casts = [

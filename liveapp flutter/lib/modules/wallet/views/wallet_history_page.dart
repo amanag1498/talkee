@@ -43,7 +43,7 @@ class _WalletHistoryPageState extends State<WalletHistoryPage> {
     try {
       final api = Get.find<WalletApi>();
       final results = await Future.wait([
-        api.fetchTransactions(filter: 'recharge'),
+        api.fetchTransactions(filter: 'all'),
         api.fetchRechargeOrders(),
       ]);
       if (!mounted) return;
@@ -109,7 +109,7 @@ class _WalletHistoryPageState extends State<WalletHistoryPage> {
                           child: Column(
                             children: [
                               Text(
-                                'Recharge History',
+                                'Wallet Ledger',
                                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                                       color: tokens.textPrimary,
                                       fontWeight: FontWeight.w800,
@@ -118,7 +118,7 @@ class _WalletHistoryPageState extends State<WalletHistoryPage> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                'Orders and wallet top-ups',
+                                'Orders, subscriptions, spends, and credits',
                                 style: TextStyle(
                                   color: tokens.textSecondary.withOpacity(.78),
                                   fontSize: 12,
@@ -181,9 +181,9 @@ class _WalletHistoryPageState extends State<WalletHistoryPage> {
                 else if (_error != null)
                   SliverFillRemaining(
                     hasScrollBody: false,
-                    child: _HistoryStateCard(
-                      icon: Icons.sync_problem_rounded,
-                      title: 'Unable to load recharge history',
+                      child: _HistoryStateCard(
+                        icon: Icons.sync_problem_rounded,
+                      title: 'Unable to load wallet ledger',
                       subtitle: _error!,
                       actionLabel: 'Retry',
                       onAction: _load,
@@ -194,11 +194,44 @@ class _WalletHistoryPageState extends State<WalletHistoryPage> {
                     hasScrollBody: false,
                     child: _HistoryStateCard(
                       icon: Icons.receipt_long_rounded,
-                      title: 'No recharge history yet',
-                      subtitle: 'Completed recharges and wallet top-ups will appear here.',
+                      title: 'No wallet activity yet',
+                      subtitle: 'Recharges, subscriptions, spends, and credits will appear here.',
                     ),
                   )
                 else ...[
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                      child: _SectionHeader(
+                        title: 'Wallet Transactions',
+                        subtitle: '${_transactions.length} records',
+                      ),
+                    ),
+                  ),
+                  if (_transactions.isEmpty)
+                    const SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(20, 0, 20, 16),
+                        child: _InlineEmptyCard(
+                          title: 'No wallet transactions yet',
+                          subtitle: 'Subscription debits, gifts, calls, and top-ups will appear here.',
+                        ),
+                      ),
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+                      sliver: SliverList.builder(
+                        itemCount: _transactions.length,
+                        itemBuilder: (context, index) => Padding(
+                          padding: EdgeInsets.only(
+                            bottom: index == _transactions.length - 1 ? 0 : 12,
+                          ),
+                          child: _WalletHistoryTile(tx: _transactions[index]),
+                        ),
+                      ),
+                    ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
@@ -291,7 +324,7 @@ class _RechargeHero extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Recharge Overview',
+            'Wallet Overview',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   color: tokens.textPrimary,
                   fontWeight: FontWeight.w800,
@@ -299,7 +332,7 @@ class _RechargeHero extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'View completed top-ups, payment attempts, and wallet credits in one place.',
+            'View top-ups, subscription debits, spending, and wallet credits in one place.',
             style: TextStyle(
               color: tokens.textSecondary.withValues(alpha: .82),
               fontWeight: FontWeight.w500,
@@ -310,14 +343,14 @@ class _RechargeHero extends StatelessWidget {
             children: [
               Expanded(
                 child: _HeadlineMetric(
-                  label: 'Total spent',
+                  label: 'Recharge spent',
                   value: '₹${_formatAmount(totalSpent)}',
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: _HeadlineMetric(
-                  label: 'Coins credited',
+                  label: 'Recharge coins',
                   value: NumberFormat.compact().format(totalCoins),
                 ),
               ),
@@ -623,6 +656,37 @@ class _WalletHistoryTile extends StatelessWidget {
 
   final WalletTransactionDto tx;
 
+  String _titleForTransaction() {
+    if (tx.description?.trim().isNotEmpty == true) {
+      return tx.description!.trim();
+    }
+
+    final reference = tx.reference?.trim() ?? '';
+    if (reference.startsWith('ENTRY_PACK_PURCHASE:')) {
+      return 'Entry pack purchase';
+    }
+
+    switch (tx.category.trim().toLowerCase()) {
+      case 'subscription':
+        return 'Subscription purchase';
+      case 'recharge':
+      case 'purchase':
+        return 'Wallet recharge';
+      case 'audio_call':
+        return 'Audio call spend';
+      case 'video_call':
+        return 'Video call spend';
+      case 'gift':
+        return 'Gift sent';
+      case 'adjustment':
+        return tx.type == 'credit' ? 'Wallet credit' : 'Wallet debit';
+      case 'other':
+        return tx.type == 'credit' ? 'Wallet credit' : 'Wallet spend';
+      default:
+        return tx.category.replaceAll('_', ' ').capitalizeFirst ?? tx.category;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final tokens = getPremiumThemeTokens(
@@ -630,9 +694,7 @@ class _WalletHistoryTile extends StatelessWidget {
     );
     final positive = tx.type == 'credit';
     final accent = positive ? const Color(0xFF55D38A) : const Color(0xFFFF6B7A);
-    final title = tx.description?.isNotEmpty == true
-        ? tx.description!
-        : tx.category.replaceAll('_', ' ').capitalizeFirst ?? tx.category;
+    final title = _titleForTransaction();
 
     return Container(
       padding: const EdgeInsets.all(18),

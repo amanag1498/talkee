@@ -126,6 +126,7 @@ class ProfileHostDto {
   final String? bio;
   final int? agencyId;
   final bool isBlocked;
+  final ProfileHostGoalOverrides? goalOverrides;
   final ProfileAgencyDto? agency;
 
   const ProfileHostDto({
@@ -136,6 +137,7 @@ class ProfileHostDto {
     this.bio,
     this.agencyId,
     required this.isBlocked,
+    this.goalOverrides,
     this.agency,
   });
 
@@ -148,12 +150,53 @@ class ProfileHostDto {
       bio: json['bio']?.toString(),
       agencyId: (json['agency_id'] as num?)?.toInt(),
       isBlocked: json['is_blocked'] == true,
+      goalOverrides: json['goal_overrides'] is Map<String, dynamic>
+          ? ProfileHostGoalOverrides.fromJson(json['goal_overrides'] as Map<String, dynamic>)
+          : (json['goal_overrides'] is Map
+              ? ProfileHostGoalOverrides.fromJson(Map<String, dynamic>.from(json['goal_overrides'] as Map))
+              : null),
       agency: json['agency'] is Map<String, dynamic>
           ? ProfileAgencyDto.fromJson(json['agency'] as Map<String, dynamic>)
           : (json['agency'] is Map
               ? ProfileAgencyDto.fromJson(Map<String, dynamic>.from(json['agency'] as Map))
               : null),
     );
+  }
+}
+
+class ProfileHostGoalOverrides {
+  final List<int> followers;
+  final List<int> weeklyLiveMinutes;
+  final List<int> weeklyGiftedCoins;
+
+  const ProfileHostGoalOverrides({
+    required this.followers,
+    required this.weeklyLiveMinutes,
+    required this.weeklyGiftedCoins,
+  });
+
+  bool get hasAnyOverride =>
+      followers.isNotEmpty ||
+      weeklyLiveMinutes.isNotEmpty ||
+      weeklyGiftedCoins.isNotEmpty;
+
+  factory ProfileHostGoalOverrides.fromJson(Map<String, dynamic> json) {
+    return ProfileHostGoalOverrides(
+      followers: _intListFromJson(json['followers']),
+      weeklyLiveMinutes: _intListFromJson(json['weekly_live_minutes']),
+      weeklyGiftedCoins: _intListFromJson(json['weekly_gifted_coins']),
+    );
+  }
+
+  static List<int> _intListFromJson(dynamic raw) {
+    final values =
+        (raw is List ? raw : const <dynamic>[])
+            .map((value) => int.tryParse(value.toString()) ?? 0)
+            .where((value) => value > 0)
+            .toSet()
+            .toList()
+          ..sort();
+    return List<int>.unmodifiable(values);
   }
 }
 

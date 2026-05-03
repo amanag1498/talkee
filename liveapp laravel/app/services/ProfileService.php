@@ -35,6 +35,11 @@ class ProfileService
         }
         $isVip = $this->isVip($user);
         $displayName = $host?->stage_name ?: $user->name;
+        $hostGoalOverrides = $host ? [
+            'followers' => $this->parseIntegerList($host->goal_followers),
+            'weekly_live_minutes' => $this->parseIntegerList($host->goal_weekly_live_minutes),
+            'weekly_gifted_coins' => $this->parseIntegerList($host->goal_weekly_gifted_coins),
+        ] : null;
 
         return [
             'id' => $user->id,
@@ -81,6 +86,7 @@ class ProfileService
                 'bio' => $host->bio,
                 'agency_id' => $host->agency_id,
                 'is_blocked' => (bool) $host->is_blocked,
+                'goal_overrides' => $hostGoalOverrides,
                 'agency' => $agency ? [
                     'id' => $agency->id,
                     'name' => $agency->name,
@@ -129,6 +135,22 @@ class ProfileService
             || str_contains($planName, 'elite')
             || str_contains($planName, 'platinum')
             || str_contains($planName, 'gold');
+    }
+
+    private function parseIntegerList(?string $value): array
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return [];
+        }
+
+        return collect(preg_split('/\s*,\s*/', $value) ?: [])
+            ->map(fn ($part) => (int) $part)
+            ->filter(fn (int $number) => $number > 0)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
     }
 
     public function update(User $user, array $data): User

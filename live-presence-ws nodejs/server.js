@@ -27,6 +27,7 @@ const APP_CONFIG_CACHE_TTL_MS = Number(process.env.APP_CONFIG_CACHE_TTL_MS || 60
 const APP_CONFIG_POLL_MS      = Number(process.env.APP_CONFIG_POLL_MS || 60000);
 const MODERATION_CACHE_TTL_MS = Number(process.env.MODERATION_CACHE_TTL_MS || 60000);
 const MODERATION_CACHE_POLL_MS = Number(process.env.MODERATION_CACHE_POLL_MS || 60000);
+const WS_VERIFY_CACHE_TTL_MS = Number(process.env.WS_VERIFY_CACHE_TTL_MS || 30000);
 const ROOM_CHAT_MAX_LENGTH = Number(process.env.ROOM_CHAT_MAX_LENGTH || 250);
 const ROOM_CHAT_WINDOW_MS = Number(process.env.ROOM_CHAT_WINDOW_MS || 8000);
 const ROOM_CHAT_MAX_PER_WINDOW = Number(process.env.ROOM_CHAT_MAX_PER_WINDOW || 5);
@@ -94,6 +95,7 @@ function emptyModerationCache() {
 }
 
 let moderationCache = emptyModerationCache();
+const verifiedUserCache = new Map();
 
 async function getAppConfig(force = false) {
   const now = Date.now();
@@ -254,12 +256,21 @@ console.log('[common]  ', nowISO(), `Moderation cache poll interval: ${MODERATIO
 // ------------ Auth helpers ------------
 async function verifyUserFromLaravel(token) {
   if (!token) return null;
+  const cacheKey = String(token);
+  const cached = verifiedUserCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && cached.expiresAt > now) {
+    return cached.user;
+  }
+  if (cached) {
+    verifiedUserCache.delete(cacheKey);
+  }
   try {
     const { data } = await api.get('/ws/verify', {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!data || !data.id) return null;
-    return {
+    const user = {
       id: Number(data.id),
       name: data.name || `User#${data.id}`,
       blocked: !!data.blocked,
@@ -269,8 +280,14 @@ async function verifyUserFromLaravel(token) {
       active_theme_key: data.active_theme_key || 'midnight',
       roles: Array.isArray(data.roles) ? data.roles : [],
     };
+    verifiedUserCache.set(cacheKey, {
+      user,
+      expiresAt: now + WS_VERIFY_CACHE_TTL_MS,
+    });
+    return user;
   } catch (e) {
     console.error('[auth][ERR]', nowISO(), `ws/verify failed: ${e.message}`);
+    verifiedUserCache.delete(cacheKey);
     return null;
   }
 }
@@ -1475,7 +1492,14 @@ sub.on('message', async (channel, message) => {
       const roomBId = String(payload.room_b?.id || payload.room_b_id || '');
       if (!eventName || (!roomAId && !roomBId)) return;
 
-      for (const roomId of [roomAId, roomBId]) {
+      let targetRoomIds = [roomAId, roomBId];
+      if (eventName === 'pk:invite_sent') {
+        targetRoomIds = [roomAId];
+      } else if (eventName === 'pk:invite_received') {
+        targetRoomIds = [roomBId];
+      }
+
+      for (const roomId of targetRoomIds) {
         if (!roomId) continue;
         const roomName = `room:${roomId}`;
         console.log('[rooms][PK]', nowISO(), JSON.stringify({

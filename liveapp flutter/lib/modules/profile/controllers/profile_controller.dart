@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../../data/models/user_model.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/storage_service.dart';
+import '../../profile/models/host_earnings_report_dto.dart';
 import '../../profile/models/profile_dto.dart';
 import '../services/profile_api.dart';
 
@@ -21,8 +22,10 @@ class ProfileController extends GetxController {
   final isLoading = false.obs;
   final isSaving = false.obs;
   final isUploadingAvatar = false.obs;
+  final isLoadingHostReport = false.obs;
   final error = RxnString();
   final profile = Rxn<ProfileDto>();
+  final hostReport = Rxn<HostEarningsReportDto>();
 
   @override
   void onInit() {
@@ -40,11 +43,32 @@ class ProfileController extends GetxController {
       if (isClosed) return;
       profile.value = data;
       await _syncUserCache(data);
+      if (data.isHost) {
+        await loadHostReport();
+      } else {
+        hostReport.value = null;
+      }
     } catch (e) {
       if (isClosed) return;
       error.value = _message(e);
     } finally {
       if (!isClosed) isLoading.value = false;
+    }
+  }
+
+  Future<void> loadHostReport() async {
+    if (isLoadingHostReport.value) return;
+    isLoadingHostReport.value = true;
+    try {
+      final data = await api.fetchHostEarningsReport();
+      if (isClosed) return;
+      hostReport.value = data;
+    } catch (e) {
+      if (!isClosed) {
+        error.value ??= _message(e);
+      }
+    } finally {
+      if (!isClosed) isLoadingHostReport.value = false;
     }
   }
 

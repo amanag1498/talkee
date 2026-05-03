@@ -4,12 +4,17 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\Host;
+use App\Services\HostEarningsReportService;
 use App\Services\ProfileService;
 use Illuminate\Http\Request;
 
 class ProfileController extends Controller
 {
-    public function __construct(private ProfileService $profiles)
+    public function __construct(
+        private ProfileService $profiles,
+        private HostEarningsReportService $hostReports,
+    )
     {
     }
 
@@ -64,6 +69,18 @@ class ProfileController extends Controller
         return response()->json([
             'ok' => true,
             'data' => $this->profiles->payload($user),
+        ]);
+    }
+
+    public function hostEarningsReport(Request $request)
+    {
+        abort_unless($request->user()->hasRole('host'), 403);
+
+        $host = Host::query()->where('user_id', $request->user()->id)->firstOrFail();
+
+        return response()->json([
+            'ok' => true,
+            'data' => $this->hostReports->payloadForHost($host),
         ]);
     }
 }

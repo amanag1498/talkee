@@ -16,11 +16,18 @@ class LiveUsersController extends GetxController {
 
   final RxList<Map<String, dynamic>> users = <Map<String, dynamic>>[].obs;
   final RxBool loading = false.obs;
+  final RxBool loadingMore = false.obs;
   final RxnString errorMessage = RxnString();
   final RxInt viewerBalance = 0.obs;
   final RxInt minimumBalance = 0.obs;
   final RxString hostManualStatus = 'offline'.obs;
   final RxBool togglingHostStatus = false.obs;
+  final RxBool hasMore = true.obs;
+  final RxInt currentPage = 1.obs;
+  final RxInt totalUsers = 0.obs;
+  final RxInt perPage = 50.obs;
+  bool _directoryActivated = false;
+  bool _fetchInFlight = false;
 
   bool get isHost => _auth.currentUser?.roles.contains('host') ?? false;
 
@@ -28,12 +35,15 @@ class LiveUsersController extends GetxController {
   void onInit() {
     super.onInit();
     _follows = Get.find<HostFollowController>();
-    fetch();
     _callController.restartSocket();
+    if (isHost) {
+      refreshHostStatus();
+    }
     ever<Map<String, dynamic>?>(_callController.availabilityEvent, (event) async {
       if (event == null) return;
       final userId = (event['user_id'] as num?)?.toInt();
       if (userId == null) return;
+      if (!_directoryActivated) return;
       final isOnline =
           event['manual_status'] == 'online' &&
           event['socket_status'] == 'online';
@@ -73,26 +83,91 @@ class LiveUsersController extends GetxController {
     });
   }
 
-  Future<void> fetch() async {
-    loading.value = true;
-    errorMessage.value = null;
+  Future<void> activateDirectory() async {
+    _directoryActivated = true;
+    if (users.isEmpty && !_fetchInFlight) {
+      await fetch(reset: true);
+    }
+  }
+
+  Future<void> fetch({bool reset = true}) async {
+    _directoryActivated = true;
+    if (_fetchInFlight) return;
+    _fetchInFlight = true;
+    final targetPage = reset ? 1 : currentPage.value + 1;
+    if (reset) {
+      loading.value = true;
+      errorMessage.value = null;
+    } else {
+      if (!hasMore.value) {
+        _fetchInFlight = false;
+        return;
+      }
+      loadingMore.value = true;
+    }
     try {
-      final data = await _callService.fetchLiveUsers();
-      final list = (data['users'] as List?)?.map((e) => Map<String, dynamic>.from(e as Map)).toList() ?? <Map<String, dynamic>>[];
-      users.assignAll(list);
+      final response = await _callService.fetchLiveUsers(
+        page: targetPage,
+        perPage: perPage.value,
+      );
+      final data = Map<String, dynamic>.from(
+        response['data'] as Map? ?? const <String, dynamic>{},
+      );
+      final meta = Map<String, dynamic>.from(
+        response['meta'] as Map? ?? const <String, dynamic>{},
+      );
+      final list =
+          (data['users'] as List?)
+              ?.map((e) => Map<String, dynamic>.from(e as Map))
+              .toList() ??
+          <Map<String, dynamic>>[];
+      if (reset) {
+        users.assignAll(list);
+      } else {
+        users.addAll(list);
+      }
       _follows.hydrateMany(list);
       _sortUsers();
       viewerBalance.value = _asInt(data['viewer_balance']);
       minimumBalance.value = _asInt(data['minimum_balance_to_start_call']);
+      currentPage.value = _asInt(meta['current_page']) > 0 ? _asInt(meta['current_page']) : targetPage;
+      hasMore.value = meta['has_more'] == true;
+      totalUsers.value = _asInt(meta['total']);
+      final appliedPerPage = _asInt(meta['per_page']);
+      if (appliedPerPage > 0) {
+        perPage.value = appliedPerPage;
+      }
       if (isHost) {
-        final status = await _callService.fetchHostStatus();
-        hostManualStatus.value = (status['manual_status'] ?? 'offline').toString();
+        await refreshHostStatus();
       }
     } catch (e) {
-      errorMessage.value = e.toString();
+      if (reset) {
+        errorMessage.value = e.toString();
+      } else {
+        Get.snackbar(
+          'Live users',
+          'Could not load more hosts right now.',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      }
     } finally {
       loading.value = false;
+      loadingMore.value = false;
+      _fetchInFlight = false;
     }
+  }
+
+  Future<void> loadMore() async {
+    if (!_directoryActivated || loading.value || loadingMore.value || !hasMore.value) {
+      return;
+    }
+    await fetch(reset: false);
+  }
+
+  Future<void> refreshHostStatus() async {
+    if (!isHost) return;
+    final status = await _callService.fetchHostStatus();
+    hostManualStatus.value = (status['manual_status'] ?? 'offline').toString();
   }
 
   Future<void> toggleHostStatus() async {
@@ -105,7 +180,7 @@ class LiveUsersController extends GetxController {
     try {
       final status = await _callService.toggleHostStatus(next);
       hostManualStatus.value = (status['manual_status'] ?? next).toString();
-      await fetch();
+      await fetch(reset: true);
     } on DioException catch (e) {
       final statusCode = e.response?.statusCode;
       final data = e.response?.data;

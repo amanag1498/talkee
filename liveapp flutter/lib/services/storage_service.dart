@@ -6,6 +6,7 @@ class StorageService {
   static const _kToken = 'auth_token';
   static const _kUser  = 'auth_user';
   static const _kSessionId = 'session_id';
+  static const _kWelcomeTipAckPrefix = 'welcome_tip_ack_user_';
 
   final GetStorage _box = GetStorage();
 
@@ -64,6 +65,15 @@ class StorageService {
     final sid = 'sid_$now$rnd';
     await _box.write(_kSessionId, sid);
     return sid;
+  }
+
+  bool hasWelcomeTipAck(int userId) {
+    final raw = _box.read('$_kWelcomeTipAckPrefix$userId');
+    return raw == true || raw == 1 || raw == '1';
+  }
+
+  Future<void> markWelcomeTipAck(int userId) async {
+    await _box.write('$_kWelcomeTipAckPrefix$userId', true);
   }
 
   Future<void> clear() async {

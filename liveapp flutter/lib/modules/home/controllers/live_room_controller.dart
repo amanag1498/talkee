@@ -1,6 +1,6 @@
 // live_room_controller.dart
-import 'package:get/get.dart';
 import 'package:flutter/foundation.dart';
+import 'package:get/get.dart';
 import 'package:liveapp/app/routes/app_urls.dart';
 
 import '../../../services/auth_service.dart';
@@ -17,6 +17,7 @@ class LiveRoomsController extends GetxController {
   LiveRoomsController(this.auth, this.socket, this.live);
 
   final RxList<LiveRoomModel> liveRooms = <LiveRoomModel>[].obs;
+  final RxList<LiveRoomModel> scheduledRooms = <LiveRoomModel>[].obs;
   final RxBool loading = false.obs;
   final RxnString error = RxnString();
   final Map<String, DateTime> _lastRoomUpdateAt = <String, DateTime>{};
@@ -33,6 +34,7 @@ class LiveRoomsController extends GetxController {
     if (token == null || token.isEmpty) {
       debugPrint('[rooms][CTRL] no token, skipping rooms bootstrap');
       liveRooms.clear();
+      scheduledRooms.clear();
       loading.value = false;
       error.value = null;
       _lastRoomUpdateAt.clear();
@@ -48,18 +50,19 @@ class LiveRoomsController extends GetxController {
     loading.value = true;
     error.value = null;
     try {
-      final rooms = await live.listLiveRooms();
+      final rooms = await live.listLiveRooms(includeScheduled: true);
       final filtered = rooms.where((room) => room.status == 'live').toList();
+      _sortLiveRooms(filtered);
+      final scheduled = rooms.where((room) => room.status == 'scheduled').toList();
+      _applyDevScheduledCoverage(scheduled);
+      _sortScheduledRooms(scheduled);
+      _applyDevMockCoverage(filtered);
       for (final room in filtered) {
         final updatedAt = room.updatedAt ?? room.startedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
         _lastRoomUpdateAt[room.id] = updatedAt;
       }
-      final merged = _withPreviewRooms(filtered);
-      for (final room in merged) {
-        final updatedAt = room.updatedAt ?? room.startedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        _lastRoomUpdateAt[room.id] = updatedAt;
-      }
-      liveRooms.assignAll(merged);
+      liveRooms.assignAll(filtered);
+      scheduledRooms.assignAll(scheduled);
     } catch (e) {
       debugPrint('[rooms][CTRL] initial load failed: $e');
       error.value = e.toString().replaceFirst('Exception: ', '');
@@ -90,13 +93,15 @@ class LiveRoomsController extends GetxController {
             .toList();
         _lastRoomUpdateAt
           ..clear()
-          ..addEntries(_withPreviewRooms(mapped).map((room) => MapEntry(
+          ..addEntries(mapped.map((room) => MapEntry(
                 room.id,
                 room.updatedAt ?? room.startedAt ?? DateTime.fromMillisecondsSinceEpoch(0),
               )));
-        final merged = _withPreviewRooms(mapped);
-        debugPrint('[rooms][CTRL] snapshot -> ${merged.length} rooms');
-        liveRooms.assignAll(merged);
+        _applyDevMockCoverage(mapped);
+        debugPrint('[rooms][CTRL] snapshot -> ${mapped.length} rooms');
+        _sortLiveRooms(mapped);
+        liveRooms.assignAll(mapped);
+        scheduledRooms.removeWhere((room) => mapped.any((liveRoom) => liveRoom.id == room.id));
       },
       onUpsert: (row) {
         final r = LiveRoomModel.fromJson(row);
@@ -109,24 +114,106 @@ class LiveRoomsController extends GetxController {
         _lastRoomUpdateAt[r.id] = incomingUpdatedAt;
         debugPrint('[rooms][CTRL] upsert ${r.id} status=${r.status}');
         if (r.status == 'live') {
+          scheduledRooms.removeWhere((e) => e.id == r.id);
           final i = liveRooms.indexWhere((e) => e.id == r.id);
           if (i >= 0) {
             liveRooms[i] = r;
-            liveRooms.refresh();
           } else {
             liveRooms.add(r);
           }
+          _applyDevMockCoverage(liveRooms);
+          _sortLiveRooms(liveRooms);
+          liveRooms.refresh();
         } else {
           // remove non-live
           liveRooms.removeWhere((e) => e.id == r.id);
+          _applyDevMockCoverage(liveRooms);
         }
       },
       onRemove: (roomId) {
         debugPrint('[rooms][CTRL] remove $roomId');
         _lastRoomUpdateAt.remove(roomId);
         liveRooms.removeWhere((e) => e.id == roomId);
+        scheduledRooms.removeWhere((e) => e.id == roomId);
+        _applyDevMockCoverage(liveRooms);
       },
     );
+  }
+
+  Future<void> toggleReminder(LiveRoomModel room) async {
+    final target = scheduledRooms.indexWhere((item) => item.id == room.id);
+    if (target < 0) return;
+    final current = scheduledRooms[target];
+    final optimistic = LiveRoomModel(
+      id: current.id,
+      title: current.title,
+      roomType: current.roomType,
+      status: current.status,
+      hostId: current.hostId,
+      hostProfileId: current.hostProfileId,
+      hostName: current.hostName,
+      capacity: current.capacity,
+      maxSpeakers: current.maxSpeakers,
+      maxParticipants: current.maxParticipants,
+      thumbnail: current.thumbnail,
+      participantCount: current.participantCount,
+      viewerCount: current.viewerCount,
+      listenerCount: current.listenerCount,
+      audienceCount: current.audienceCount,
+      speakerCount: current.speakerCount,
+      pendingSeatRequestCount: current.pendingSeatRequestCount,
+      peakViewers: current.peakViewers,
+      followerCount: current.followerCount,
+      topic: current.topic,
+      language: current.language,
+      isLocked: current.isLocked,
+      isFollowingHost: current.isFollowingHost,
+      hasReminder: !current.hasReminder,
+      scheduledAt: current.scheduledAt,
+      startedAt: current.startedAt,
+      updatedAt: current.updatedAt,
+    );
+    scheduledRooms[target] = optimistic;
+    scheduledRooms.refresh();
+    try {
+      final hasReminder = current.hasReminder
+          ? await live.clearRoomReminder(current.id)
+          : await live.setRoomReminder(current.id);
+      scheduledRooms[target] = LiveRoomModel(
+        id: current.id,
+        title: current.title,
+        roomType: current.roomType,
+        status: current.status,
+        hostId: current.hostId,
+        hostProfileId: current.hostProfileId,
+        hostName: current.hostName,
+        capacity: current.capacity,
+        maxSpeakers: current.maxSpeakers,
+        maxParticipants: current.maxParticipants,
+        thumbnail: current.thumbnail,
+        participantCount: current.participantCount,
+        viewerCount: current.viewerCount,
+        listenerCount: current.listenerCount,
+        audienceCount: current.audienceCount,
+        speakerCount: current.speakerCount,
+        pendingSeatRequestCount: current.pendingSeatRequestCount,
+        peakViewers: current.peakViewers,
+        followerCount: current.followerCount,
+        topic: current.topic,
+        language: current.language,
+        isLocked: current.isLocked,
+        isFollowingHost: current.isFollowingHost,
+        hasReminder: hasReminder,
+        scheduledAt: current.scheduledAt,
+        startedAt: current.startedAt,
+        updatedAt: current.updatedAt,
+      );
+      scheduledRooms.refresh();
+    } catch (_) {
+      scheduledRooms[target] = current;
+      scheduledRooms.refresh();
+      rethrow;
+    }
   }
 
   @override
@@ -135,18 +222,84 @@ class LiveRoomsController extends GetxController {
     super.onClose();
   }
 
-  List<LiveRoomModel> _withPreviewRooms(List<LiveRoomModel> source) {
-    if (!kDebugMode) {
-      return source;
-    }
+  void _sortLiveRooms(List<LiveRoomModel> rooms) {
+    rooms.sort((a, b) {
+      final followedCompare = _boolSort(a.isFollowingHost, b.isFollowingHost);
+      if (followedCompare != 0) return followedCompare;
 
-    final merged = <LiveRoomModel>[...source];
-    final existingIds = merged.map((room) => room.id).toSet();
-    for (final room in LiveRoomDevFixtures.mockFeedRooms()) {
-      if (existingIds.add(room.id)) {
-        merged.add(room);
-      }
+      final audienceCompare = b.liveAudience.compareTo(a.liveAudience);
+      if (audienceCompare != 0) return audienceCompare;
+
+      final peakCompare = b.peakViewers.compareTo(a.peakViewers);
+      if (peakCompare != 0) return peakCompare;
+
+      final startedA = a.startedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final startedB = b.startedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final startedCompare = startedB.compareTo(startedA);
+      if (startedCompare != 0) return startedCompare;
+
+      return (a.hostName ?? a.title).toLowerCase().compareTo(
+        (b.hostName ?? b.title).toLowerCase(),
+      );
+    });
+  }
+
+  void _sortScheduledRooms(List<LiveRoomModel> rooms) {
+    rooms.sort((a, b) {
+      final followedCompare = _boolSort(a.isFollowingHost, b.isFollowingHost);
+      if (followedCompare != 0) return followedCompare;
+
+      final aAt = a.scheduledAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bAt = b.scheduledAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final scheduledCompare = aAt.compareTo(bAt);
+      if (scheduledCompare != 0) return scheduledCompare;
+
+      return (a.hostName ?? a.title).toLowerCase().compareTo(
+        (b.hostName ?? b.title).toLowerCase(),
+      );
+    });
+  }
+
+  int _boolSort(bool a, bool b) {
+    if (a == b) return 0;
+    return a ? -1 : 1;
+  }
+
+  void _applyDevMockCoverage(List<LiveRoomModel> rooms) {
+    if (!kDebugMode) return;
+
+    final hasAudioLive = rooms.any((room) => room.status == 'live' && room.isAudioRoom);
+    final hasVideoLive = rooms.any((room) => room.status == 'live' && room.isVideoRoom);
+
+    if (hasAudioLive && hasVideoLive) return;
+
+    final mockRooms = LiveRoomDevFixtures.mockFeedRooms();
+    for (final mockRoom in mockRooms) {
+      final shouldAdd =
+          (mockRoom.isAudioRoom && !hasAudioLive) ||
+          (mockRoom.isVideoRoom && !hasVideoLive);
+      if (!shouldAdd) continue;
+      if (rooms.any((room) => room.id == mockRoom.id)) continue;
+      rooms.add(mockRoom);
     }
-    return merged;
+  }
+
+  void _applyDevScheduledCoverage(List<LiveRoomModel> rooms) {
+    if (!kDebugMode) return;
+
+    final hasAudioScheduled = rooms.any((room) => room.status == 'scheduled' && room.isAudioRoom);
+    final hasVideoScheduled = rooms.any((room) => room.status == 'scheduled' && room.isVideoRoom);
+
+    if (hasAudioScheduled && hasVideoScheduled) return;
+
+    final mockRooms = LiveRoomDevFixtures.mockScheduledRooms();
+    for (final mockRoom in mockRooms) {
+      final shouldAdd =
+          (mockRoom.isAudioRoom && !hasAudioScheduled) ||
+          (mockRoom.isVideoRoom && !hasVideoScheduled);
+      if (!shouldAdd) continue;
+      if (rooms.any((room) => room.id == mockRoom.id)) continue;
+      rooms.add(mockRoom);
+    }
   }
 }

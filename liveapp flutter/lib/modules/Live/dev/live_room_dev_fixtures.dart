@@ -6,11 +6,20 @@ import '../models/live_room_model.dart';
 class LiveRoomDevFixtures {
   static const String mockFeedAudioId = 'mock-feed-audio-host-room';
   static const String mockFeedVideoId = 'mock-feed-video-host-room';
+  static const String mockScheduledAudioId = 'mock-scheduled-audio-host-room';
+  static const String mockScheduledVideoId = 'mock-scheduled-video-host-room';
 
   static List<home_dto.LiveRoomModel> mockFeedRooms() {
     final rooms = <home_dto.LiveRoomModel>[];
     rooms.addAll(_mockAudioFeedRooms());
     rooms.addAll(_mockVideoFeedRooms());
+    return rooms;
+  }
+
+  static List<home_dto.LiveRoomModel> mockScheduledRooms() {
+    final rooms = <home_dto.LiveRoomModel>[];
+    rooms.addAll(_mockScheduledAudioRooms());
+    rooms.addAll(_mockScheduledVideoRooms());
     return rooms;
   }
 
@@ -55,6 +64,44 @@ class LiveRoomDevFixtures {
       topic: 'Gift animation test',
       language: 'English',
       startedAt: now.subtract(const Duration(minutes: 18)),
+      updatedAt: now,
+    );
+  }
+
+  static home_dto.LiveRoomModel mockScheduledAudioRoom() {
+    final now = DateTime.now();
+    return home_dto.LiveRoomModel(
+      id: mockScheduledAudioId,
+      title: 'Mock Scheduled Audio Room',
+      roomType: 'audio',
+      status: 'scheduled',
+      hostId: 901,
+      hostName: 'Aashi',
+      maxSpeakers: 8,
+      maxParticipants: 120,
+      thumbnail: 'https://picsum.photos/seed/scheduledaudiohostmain/420/620',
+      topic: 'Night talk preview',
+      language: 'English',
+      scheduledAt: now.add(const Duration(minutes: 25)),
+      updatedAt: now,
+    );
+  }
+
+  static home_dto.LiveRoomModel mockScheduledVideoRoom() {
+    final now = DateTime.now();
+    return home_dto.LiveRoomModel(
+      id: mockScheduledVideoId,
+      title: 'Mock Scheduled Video Room',
+      roomType: 'video',
+      status: 'scheduled',
+      hostId: 902,
+      hostName: 'Misha',
+      maxSpeakers: 4,
+      maxParticipants: 200,
+      thumbnail: 'https://picsum.photos/seed/scheduledvideohostmain/420/620',
+      topic: 'Fashion drop soon',
+      language: 'Hindi',
+      scheduledAt: now.add(const Duration(minutes: 40)),
       updatedAt: now,
     );
   }
@@ -190,6 +237,68 @@ class LiveRoomDevFixtures {
         language: languages[index],
         thumbnail: 'https://picsum.photos/seed/livehost${index + 1}/420/620',
         startedAt: now.subtract(Duration(minutes: 8 + (index * 5))),
+        updatedAt: now,
+      );
+    });
+  }
+
+  static List<home_dto.LiveRoomModel> _mockScheduledAudioRooms() {
+    const hosts = <String>['Aashi', 'Lina', 'Ruhani', 'Pihu'];
+    const topics = <String>[
+      'Night talk',
+      'Slow songs',
+      'Coffee chat',
+      'Open advice',
+    ];
+    const languages = <String>['English', 'Hindi', 'Punjabi', 'Urdu'];
+
+    return List<home_dto.LiveRoomModel>.generate(hosts.length, (index) {
+      final now = DateTime.now();
+      return home_dto.LiveRoomModel(
+        id: 'mock-scheduled-audio-${index + 1}',
+        title: '${topics[index]} Room',
+        roomType: 'audio',
+        status: 'scheduled',
+        hostId: 950 + index,
+        hostName: hosts[index],
+        maxSpeakers: 8,
+        maxParticipants: 120,
+        thumbnail: 'https://picsum.photos/seed/scheduledaudio${index + 1}/420/620',
+        topic: topics[index],
+        language: languages[index],
+        followerCount: 20 + (index * 7),
+        scheduledAt: now.add(Duration(minutes: 20 + (index * 18))),
+        updatedAt: now,
+      );
+    });
+  }
+
+  static List<home_dto.LiveRoomModel> _mockScheduledVideoRooms() {
+    const hosts = <String>['Misha', 'Avni', 'Rhea', 'Tina'];
+    const topics = <String>[
+      'Style check',
+      'Dance warmup',
+      'Late night glam',
+      'Fan catchup',
+    ];
+    const languages = <String>['Hindi', 'English', 'Hindi', 'English'];
+
+    return List<home_dto.LiveRoomModel>.generate(hosts.length, (index) {
+      final now = DateTime.now();
+      return home_dto.LiveRoomModel(
+        id: 'mock-scheduled-video-${index + 1}',
+        title: topics[index],
+        roomType: 'video',
+        status: 'scheduled',
+        hostId: 980 + index,
+        hostName: hosts[index],
+        maxSpeakers: 4,
+        maxParticipants: 200,
+        thumbnail: 'https://picsum.photos/seed/scheduledvideo${index + 1}/420/620',
+        topic: topics[index],
+        language: languages[index],
+        followerCount: 35 + (index * 12),
+        scheduledAt: now.add(Duration(minutes: 35 + (index * 22))),
         updatedAt: now,
       );
     });

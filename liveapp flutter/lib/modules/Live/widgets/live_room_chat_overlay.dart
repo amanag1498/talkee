@@ -17,6 +17,7 @@ class LiveRoomChatOverlay extends StatefulWidget {
     required this.roomType,
     required this.onSend,
     required this.bottomOffset,
+    this.topOffset = 0,
     this.maxWidth = 360,
     this.maxHeightFactor = 0.4,
     this.enabled = true,
@@ -36,6 +37,7 @@ class LiveRoomChatOverlay extends StatefulWidget {
   final String roomType;
   final Future<String?> Function(String message) onSend;
   final double bottomOffset;
+  final double topOffset;
   final double maxWidth;
   final double maxHeightFactor;
   final bool enabled;
@@ -146,7 +148,13 @@ class _LiveRoomChatOverlayState extends State<LiveRoomChatOverlay> {
         (isCompactDevice
             ? math.min(widget.maxHeightFactor, 0.34)
             : widget.maxHeightFactor);
+    final topOffset = math.max(0.0, widget.topOffset);
     final bottomInset = media.viewInsets.bottom;
+    final maxAvailableHeight = math.max(
+      0.0,
+      media.size.height - topOffset - widget.bottomOffset - bottomInset,
+    );
+    final constrainedMaxHeight = math.min(maxHeight, maxAvailableHeight);
     final horizontalLeft = isCompactDevice ? 8.0 : screenWidth < 360 ? 10.0 : 12.0;
     final horizontalRight =
         isCompactDevice ? 2.0 : screenWidth < 360 ? 2.0 : screenWidth < 430 ? 4.0 : 8.0;
@@ -172,7 +180,7 @@ class _LiveRoomChatOverlayState extends State<LiveRoomChatOverlay> {
       child: AnimatedPadding(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOut,
-        padding: EdgeInsets.only(bottom: bottomInset),
+        padding: EdgeInsets.only(top: topOffset, bottom: bottomInset),
         child: Align(
           alignment: Alignment.bottomLeft,
           child: Padding(
@@ -185,7 +193,7 @@ class _LiveRoomChatOverlayState extends State<LiveRoomChatOverlay> {
             child: ConstrainedBox(
               constraints: BoxConstraints(
                 maxWidth: overlayMaxWidth,
-                maxHeight: maxHeight,
+                maxHeight: constrainedMaxHeight,
               ),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(0, 0, 0, 0),

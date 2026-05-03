@@ -14,9 +14,21 @@ class LiveUsersController extends Controller
 
     public function index(Request $request)
     {
+        $perPage = max(1, min((int) $request->integer('per_page', 50), 100));
+        $page = max(1, (int) $request->integer('page', 1));
+        $result = $this->availabilityService->visibleLiveUsersFor($request->user(), $page, $perPage);
+        $payload = $result->getCollection();
+
         return response()->json([
             'ok' => true,
-            'data' => $this->availabilityService->visibleLiveUsersFor($request->user()),
+            'data' => $payload,
+            'meta' => [
+                'current_page' => $result->currentPage(),
+                'per_page' => $result->perPage(),
+                'has_more' => $result->hasMorePages(),
+                'total' => $result->total(),
+                'last_page' => $result->lastPage(),
+            ],
         ]);
     }
 

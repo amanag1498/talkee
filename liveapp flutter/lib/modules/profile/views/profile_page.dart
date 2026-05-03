@@ -34,6 +34,7 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final AnimationController _bgMotion;
+  _HostReportRange _hostReportRange = _HostReportRange.today;
 
   ProfileController get controller => Get.find<ProfileController>();
 
@@ -362,8 +363,20 @@ class _ProfilePageState extends State<ProfilePage>
                     ),
                   ),
                   const SizedBox(height: 16),
+                  if (profile.isHost) ...[
+                    _AnimatedEntrance(
+                      index: 6,
+                      child: _buildHostGoalsSection(profile),
+                    ),
+                    const SizedBox(height: 16),
+                    _AnimatedEntrance(
+                      index: 7,
+                      child: _buildHostEarningsSection(),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   _AnimatedEntrance(
-                    index: 6,
+                    index: 8,
                     child: _GlassSection(
                       title: 'Quick Actions',
                       subtitle: 'Wallet, applications, and account upgrades',
@@ -417,6 +430,15 @@ class _ProfilePageState extends State<ProfilePage>
                               onTap: () => Get.toNamed(Routes.enrollAgency),
                             ),
                           ],
+                          if (profile.isHost) ...[
+                            _DividerLine(),
+                            _ProfileActionTile(
+                              icon: Icons.event_available_rounded,
+                              title: 'Scheduled Lives',
+                              subtitle: 'Start or cancel upcoming rooms you created',
+                              onTap: () => Get.toNamed(Routes.profileScheduledLives),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -424,7 +446,7 @@ class _ProfilePageState extends State<ProfilePage>
                   if (profile.isHost) ...[
                     const SizedBox(height: 16),
                     _AnimatedEntrance(
-                      index: 7,
+                      index: 8,
                       child: _GlassSection(
                         title: 'Moderation',
                         subtitle:
@@ -475,6 +497,219 @@ class _ProfilePageState extends State<ProfilePage>
     final uri = Uri.parse(raw);
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
+
+  Widget _buildHostGoalsSection(ProfileDto profile) {
+    final report = controller.hostReport.value;
+    final globalGoals = Get.find<AppSettingsService>().hostGoals;
+    final overrides = profile.hostProfile?.goalOverrides;
+    final currentWeek = report?.currentWeek.summary;
+    final followerCount = profile.followersCount ?? 0;
+    final liveMinutes =
+        (currentWeek?.totalAudioRoomMinutes ?? 0) +
+        (currentWeek?.totalVideoRoomMinutes ?? 0);
+    final giftCoins = currentWeek?.totalGiftedCoins ?? 0;
+
+    final followerMilestones =
+        overrides?.followers.isNotEmpty == true
+            ? overrides!.followers
+            : globalGoals.followers;
+    final minuteMilestones =
+        overrides?.weeklyLiveMinutes.isNotEmpty == true
+            ? overrides!.weeklyLiveMinutes
+            : globalGoals.weeklyLiveMinutes;
+    final giftMilestones =
+        overrides?.weeklyGiftedCoins.isNotEmpty == true
+            ? overrides!.weeklyGiftedCoins
+            : globalGoals.weeklyGiftedCoins;
+
+    final followerGoal = _nextGoal(followerCount, followerMilestones);
+    final minutesGoal = _nextGoal(liveMinutes, minuteMilestones);
+    final giftGoal = _nextGoal(giftCoins, giftMilestones);
+
+    return _GlassSection(
+      title: 'Host Goals',
+      subtitle: 'Retention targets for followers, weekly live time, and gifting momentum',
+      child: Column(
+        children: [
+          _GoalProgressTile(
+            icon: Icons.people_alt_rounded,
+            title: 'Follower milestone',
+            current: followerCount,
+            target: followerGoal,
+            suffix: 'followers',
+          ),
+          const SizedBox(height: 10),
+          _GoalProgressTile(
+            icon: Icons.schedule_rounded,
+            title: 'Weekly live minutes',
+            current: liveMinutes,
+            target: minutesGoal,
+            suffix: 'minutes',
+          ),
+          const SizedBox(height: 10),
+          _GoalProgressTile(
+            icon: Icons.redeem_rounded,
+            title: 'Weekly gifted coins',
+            current: giftCoins,
+            target: giftGoal,
+            suffix: 'coins',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHostEarningsSection() {
+    final report = controller.hostReport.value;
+    final loading = controller.isLoadingHostReport.value && report == null;
+    final period = switch (_hostReportRange) {
+      _HostReportRange.today => report?.today,
+      _HostReportRange.currentWeek => report?.currentWeek,
+      _HostReportRange.lastWeek => report?.lastWeek,
+    };
+    final summary = period?.summary;
+
+    return _GlassSection(
+      title: 'Earnings Report',
+      subtitle: 'Today, this week, and last week for host calls, rooms, gifts, and PK',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              for (final range in _HostReportRange.values) ...[
+                Expanded(
+                  child: _HostReportRangeChip(
+                    label: range.label,
+                    selected: _hostReportRange == range,
+                    onTap: () => setState(() => _hostReportRange = range),
+                  ),
+                ),
+                if (range != _HostReportRange.values.last) const SizedBox(width: 8),
+              ],
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (loading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(child: CircularProgressIndicator(color: Colors.white)),
+            )
+          else if (summary == null)
+            _GlassMessageCard(
+              icon: Icons.query_stats_rounded,
+              title: 'Report unavailable',
+              subtitle: controller.error.value ?? 'No host earnings data is available yet.',
+              actionLabel: 'Retry',
+              onAction: controller.loadHostReport,
+            )
+          else ...[
+            if ((period?.label ?? '').isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  period!.label,
+                  style: TextStyle(
+                    color: _profileTokens().textSecondary.withOpacity(.84),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            Row(
+              children: [
+                Expanded(
+                  child: _MetricCard(
+                    icon: Icons.videocam_rounded,
+                    title: 'Video Room Minutes',
+                    value: '${summary.totalVideoRoomMinutes}',
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _MetricCard(
+                    icon: Icons.graphic_eq_rounded,
+                    title: 'Audio Room Minutes',
+                    value: '${summary.totalAudioRoomMinutes}',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _MetricCard(
+                    icon: Icons.redeem_rounded,
+                    title: 'Total Gifted Coins',
+                    value: '${NumberFormat.compact().format(summary.totalGiftedCoins)} coins',
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _MetricCard(
+                    icon: Icons.mic_rounded,
+                    title: 'Audio Calls',
+                    value:
+                        '${summary.audioCallMinutes} min • ${NumberFormat.compact().format(summary.audioCallEarnings)}',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _MetricCard(
+                    icon: Icons.video_camera_front_rounded,
+                    title: 'Video Calls',
+                    value:
+                        '${summary.videoCallMinutes} min • ${NumberFormat.compact().format(summary.videoCallEarnings)}',
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _MetricCard(
+                    icon: Icons.local_fire_department_rounded,
+                    title: 'PK Rooms',
+                    value:
+                        '${summary.pkRoomCount} • ${NumberFormat.compact().format(summary.pkEarnings)}',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            _HostReportDetailLine(
+              label: 'Room gift coins',
+              value: NumberFormat.compact().format(summary.totalRoomGiftsCoins),
+            ),
+            _HostReportDetailLine(
+              label: 'Audio room gifts',
+              value:
+                  '${NumberFormat.compact().format(summary.audioRoomGiftsCoins)} coins • earn ${NumberFormat.compact().format(summary.audioRoomGiftEarnings)}',
+            ),
+            _HostReportDetailLine(
+              label: 'Video room gifts',
+              value:
+                  '${NumberFormat.compact().format(summary.videoRoomGiftsCoins)} coins • earn ${NumberFormat.compact().format(summary.videoRoomGiftEarnings)}',
+            ),
+            _HostReportDetailLine(
+              label: 'PK gift coins',
+              value: NumberFormat.compact().format(summary.pkGiftCoins),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+enum _HostReportRange {
+  today('Today'),
+  currentWeek('This Week'),
+  lastWeek('Last Week');
+
+  const _HostReportRange(this.label);
+  final String label;
 }
 
 class _ProfileHeaderCard extends StatelessWidget {
@@ -857,6 +1092,187 @@ class _MetricCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _HostReportRangeChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _HostReportRangeChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = _profileTokens();
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            color:
+                selected
+                    ? tokens.primaryButtonGradient.first.withOpacity(.22)
+                    : tokens.chipColor.withOpacity(.52),
+            border: Border.all(
+              color:
+                  selected
+                      ? tokens.primaryButtonGradient.first.withOpacity(.45)
+                      : tokens.borderColor,
+            ),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: tokens.textPrimary,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HostReportDetailLine extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _HostReportDetailLine({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = _profileTokens();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: tokens.textSecondary.withOpacity(.76),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: tokens.textPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+int _nextGoal(int current, List<int> goals) {
+  for (final goal in goals) {
+    if (current < goal) return goal;
+  }
+  return goals.isEmpty ? current : goals.last + (goals.last ~/ 2);
+}
+
+class _GoalProgressTile extends StatelessWidget {
+  const _GoalProgressTile({
+    required this.icon,
+    required this.title,
+    required this.current,
+    required this.target,
+    required this.suffix,
+  });
+
+  final IconData icon;
+  final String title;
+  final int current;
+  final int target;
+  final String suffix;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = _profileTokens();
+    final progress = target <= 0 ? 0.0 : (current / target).clamp(0.0, 1.0);
+    final remaining = target > current ? target - current : 0;
+    return _GlassShell(
+      padding: const EdgeInsets.all(16),
+      borderRadius: 22,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: tokens.primaryButtonGradient.first.withOpacity(.18),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: tokens.primaryButtonGradient.first),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    color: tokens.textPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Text(
+                '${NumberFormat.compact().format(current)} / ${NumberFormat.compact().format(target)}',
+                style: TextStyle(
+                  color: tokens.textSecondary.withOpacity(.82),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress == 0 ? .04 : progress,
+              minHeight: 8,
+              backgroundColor: tokens.borderColor.withOpacity(.5),
+              valueColor: AlwaysStoppedAnimation(tokens.primaryButtonGradient.first),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            remaining > 0
+                ? '${NumberFormat.compact().format(remaining)} $suffix to the next milestone'
+                : 'Goal reached. Keep pushing for the next milestone.',
+            style: TextStyle(
+              color: tokens.textSecondary.withOpacity(.76),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

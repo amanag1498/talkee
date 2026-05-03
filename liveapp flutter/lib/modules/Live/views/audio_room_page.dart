@@ -185,8 +185,8 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     _hostUserId ??=
         widget.room.meta?['host_user_id'] as int? ??
         widget.room.meta?['host_id'] as int?;
-    _availableGifts = LiveRoomDevFixtures.mockGiftCatalog();
-    _chatMessages.value = LiveRoomDevFixtures.audioMessages();
+    _availableGifts = const <LiveGiftItem>[];
+    _chatMessages.value = const <LiveRoomChatMessage>[];
   }
 
   Future<void> _bootstrap() async {

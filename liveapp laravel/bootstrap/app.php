@@ -29,6 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('calls:cleanup-stale-availability 120')->everyTwoMinutes()->withoutOverlapping();
         $schedule->command('calls:reconcile-billing')->hourly()->withoutOverlapping();
         $schedule->command('live-rooms:cleanup --stale-minutes=2')->everyMinute()->withoutOverlapping();
+        $schedule->command('live-rooms:remind-hosts --lead-minutes=2')->everyMinute()->withoutOverlapping();
         $schedule->command('live-rooms:sync-redis')->everyTenMinutes()->withoutOverlapping();
         $schedule->command('live-rooms:reconcile')->hourly()->withoutOverlapping();
         $schedule->command('agency:payout-reports:generate')

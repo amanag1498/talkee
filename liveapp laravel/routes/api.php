@@ -33,7 +33,7 @@ Route::get('/recharge/plans', [RechargePlanController::class, 'index'])->middlew
 Route::get('/levels', [LevelController::class, 'index']);
 
 // host/admin only
-Route::middleware(['auth:sanctum','throttle:60,1'])->group(function () {
+Route::middleware(['auth:sanctum','throttle:240,1'])->group(function () {
     Route::get('/live/rooms',                           [LiveRoomController::class, 'index'])->middleware('live_room_feature_enabled');
     Route::get('/live/audio-rooms',                     [LiveRoomController::class, 'audioIndex'])->middleware('feature_enabled:audio_rooms_enabled');
     Route::post('/live/rooms',                          [LiveRoomController::class, 'createOrStart'])->middleware('live_room_feature_enabled');
@@ -67,6 +67,7 @@ Route::middleware(['auth:sanctum','throttle:60,1'])->group(function () {
     Route::post('/subscriptions/welcome-tip/ack', [\App\Http\Controllers\Api\SubscriptionController::class,'ackWelcomeTip'])->middleware('feature_enabled:subscriptions_enabled');
     Route::get('/profile', [ProfileController::class, 'show']);
     Route::get('/profile/users/{user}', [ProfileController::class, 'publicShow']);
+    Route::get('/profile/host-earnings-report', [ProfileController::class, 'hostEarningsReport']);
     Route::get('/dashboard/leaderboards', [DashboardLeaderboardController::class, 'index'])->withoutMiddleware('throttle:60,1')->middleware('throttle:240,1');
     Route::put('/profile', [ProfileController::class, 'update']);
     Route::post('/profile/avatar', [ProfileController::class, 'avatar']);
@@ -107,6 +108,8 @@ Route::middleware(['auth:sanctum','throttle:60,1'])->group(function () {
     Route::get('/live/rooms/{room_id}/pk/active', [LiveRoomPkController::class, 'active'])->middleware(['feature_enabled:pk_battles_enabled', 'live_room_feature_enabled']);
     Route::get('/live/rooms/{room_id}/pk/history', [LiveRoomPkController::class, 'history'])->middleware(['feature_enabled:pk_battles_enabled', 'live_room_feature_enabled']);
     Route::get('/live/rooms/{room_id}/pk/{battle_id}/media-token', [LiveRoomPkController::class, 'mediaToken'])->middleware(['feature_enabled:pk_battles_enabled', 'live_room_feature_enabled']);
+    Route::post('/live/rooms/{live_room:room_id}/reminder', [LiveRoomController::class, 'setReminder'])->middleware('live_room_feature_enabled');
+    Route::delete('/live/rooms/{live_room:room_id}/reminder', [LiveRoomController::class, 'clearReminder'])->middleware('live_room_feature_enabled');
     Route::get('/host/blocked-users', [HostModerationController::class, 'blockedUsers']);
     Route::post('/host/block-user', [HostModerationController::class, 'blockUser']);
     Route::post('/host/unblock-user', [HostModerationController::class, 'unblockUser']);

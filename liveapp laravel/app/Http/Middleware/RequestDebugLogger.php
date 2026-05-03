@@ -9,6 +9,11 @@ use Symfony\Component\HttpFoundation\Response;
 
 class RequestDebugLogger
 {
+    protected function enabled(): bool
+    {
+        return (bool) config('ops.request_debug_logger_enabled', false);
+    }
+
     protected function shouldSkipPath(string $path): bool
     {
         if (str_starts_with($path, 'berry/')) {
@@ -24,6 +29,11 @@ class RequestDebugLogger
 
     public function handle(Request $request, Closure $next): Response
     {
+        if (!$this->enabled()) {
+            /** @var Response $response */
+            return $next($request);
+        }
+
         if ($this->shouldSkipPath($request->path())) {
             /** @var Response $response */
             return $next($request);

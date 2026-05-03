@@ -24,6 +24,14 @@ class NotificationsController extends GetxController {
     super.onInit();
     refreshAll();
   }
+
+  Future<void> refreshBadge() async {
+    try {
+      unreadCount.value = await api.unreadCount();
+    } catch (e, st) {
+      debugPrint('notifications refreshBadge error: $e\n$st');
+    }
+  }
   void _recomputeCanGoLiveFromItems() {
     try {
       if (!Get.isRegistered<LiveEligibilityService>()) return;

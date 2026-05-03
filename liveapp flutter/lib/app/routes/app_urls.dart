@@ -1,6 +1,6 @@
 class AppUrls {
   static const String host =
-     //String.fromEnvironment('APP_HOST', defaultValue: '172.20.10.4');
+    // String.fromEnvironment('APP_HOST', defaultValue: '192.168.1.10');
      String.fromEnvironment('APP_HOST', defaultValue: '192.168.29.41');
   static const int apiPort =
       int.fromEnvironment('APP_API_PORT', defaultValue: 8000);

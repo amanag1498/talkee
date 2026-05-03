@@ -42,6 +42,27 @@ class AppSettingsService
             'default' => false,
             'hint' => 'Signals clients that a mandatory upgrade flow should be enforced.',
         ],
+        'app_features.host_goals.followers' => [
+            'label' => 'Follower Goal Milestones',
+            'type' => 'csv_integer_list',
+            'group' => 'host_goals',
+            'default' => '25,50,100,250,500,1000,2500',
+            'hint' => 'Comma-separated follower milestones shown on the host profile goals card.',
+        ],
+        'app_features.host_goals.weekly_live_minutes' => [
+            'label' => 'Weekly Live Minute Milestones',
+            'type' => 'csv_integer_list',
+            'group' => 'host_goals',
+            'default' => '60,180,300,600,900,1200',
+            'hint' => 'Comma-separated weekly live-minute milestones for host progress.',
+        ],
+        'app_features.host_goals.weekly_gifted_coins' => [
+            'label' => 'Weekly Gifted Coin Milestones',
+            'type' => 'csv_integer_list',
+            'group' => 'host_goals',
+            'default' => '500,1000,2500,5000,10000,25000',
+            'hint' => 'Comma-separated weekly gifted-coin milestones for host progress.',
+        ],
         'app_features.platform.android.audio_rooms_enabled' => [
             'label' => 'Audio Rooms',
             'type' => 'boolean',
@@ -251,6 +272,7 @@ class AppSettingsService
                 'android_min_version_code' => $this->minimumAndroidVersionCode(),
                 'android_min_version_name' => $this->minimumAndroidVersionName(),
                 'android_update_message' => $this->androidUpdateMessage(),
+                'host_goals' => $this->publicHostGoalSettings(),
                 'features' => $this->androidFeatureFlags(),
             ];
         });
@@ -328,11 +350,30 @@ class AppSettingsService
         return (string) env('ANDROID_UPDATE_MESSAGE', 'Please update Talkee to continue using the app.');
     }
 
+    public function publicHostGoalSettings(): array
+    {
+        return [
+            'followers' => $this->parseIntegerListConfig(
+                config('app_features.host_goals.followers', '25,50,100,250,500,1000,2500'),
+                [25, 50, 100, 250, 500, 1000, 2500],
+            ),
+            'weekly_live_minutes' => $this->parseIntegerListConfig(
+                config('app_features.host_goals.weekly_live_minutes', '60,180,300,600,900,1200'),
+                [60, 180, 300, 600, 900, 1200],
+            ),
+            'weekly_gifted_coins' => $this->parseIntegerListConfig(
+                config('app_features.host_goals.weekly_gifted_coins', '500,1000,2500,5000,10000,25000'),
+                [500, 1000, 2500, 5000, 10000, 25000],
+            ),
+        ];
+    }
+
     private function castValue(mixed $value, string $type): mixed
     {
         return match ($type) {
             'boolean' => filter_var($value, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false,
             'float' => (float) $value,
+            'csv_integer_list' => $this->normalizeIntegerListString($value),
             'string' => trim((string) $value),
             default => (int) $value,
         };
@@ -401,5 +442,24 @@ class AppSettingsService
 
         Cache::forget(self::SETTINGS_CACHE_KEY);
         Cache::forget(self::PUBLIC_APP_CONFIG_CACHE_KEY);
+    }
+
+    private function normalizeIntegerListString(mixed $value): string
+    {
+        return implode(',', $this->parseIntegerListConfig($value, []));
+    }
+
+    private function parseIntegerListConfig(mixed $value, array $fallback): array
+    {
+        $parts = preg_split('/\s*,\s*/', trim((string) $value)) ?: [];
+        $numbers = collect($parts)
+            ->map(fn ($part) => (int) $part)
+            ->filter(fn (int $number) => $number > 0)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        return empty($numbers) ? $fallback : $numbers;
     }
 }

@@ -141,8 +141,15 @@ class _VideoCallPageState extends State<VideoCallPage>
   bool _opponentMediaUnavailable = false;
   String? _pkOverlayTitle;
   String? _pkOverlaySubtitle;
+  int _pkOverlayWinnerSide = 0;
   Timer? _pkOverlayTimer;
   Timer? _devPkTransitionTimer;
+  String? _pkGiftLeadersBattleId;
+  Map<String, Map<int, _PkSupporterStanding>> _pkGiftLeadersBySide =
+      const <String, Map<int, _PkSupporterStanding>>{
+        'left': <int, _PkSupporterStanding>{},
+        'right': <int, _PkSupporterStanding>{},
+      };
   final RoomJoinAnimationOverlayManager _joinAnimationOverlay =
       RoomJoinAnimationOverlayManager();
   final GiftAnchorRegistry _giftAnchors = GiftAnchorRegistry();
@@ -181,80 +188,36 @@ class _VideoCallPageState extends State<VideoCallPage>
   }
 
   void _seedDevPreview() {
+    LivePkBattleModel? initialBattle;
+    final prefill = widget.room.pkActive;
+    if (prefill != null && prefill.isNotEmpty && prefill['battle_id'] != null) {
+      initialBattle = LivePkBattleModel.fromJson(prefill);
+    }
+
     _connecting = false;
     _error = null;
-    _timerText = 'LIVE • 18:42';
-    _localSpeaking = true;
-    _availableGifts = LiveRoomDevFixtures.mockGiftCatalog();
-    _chatMessages.value = LiveRoomDevFixtures.videoMessages();
-    _speakers = const <Map<String, dynamic>>[
-      {
-        'user_id': 401,
-        'name': 'Maya',
-        'is_host': false,
-        'is_vip': true,
-        'active_theme_key': 'aurora',
-      },
-      {
-        'user_id': 402,
-        'name': 'Karan',
-        'is_host': false,
-        'is_vip': false,
-        'active_theme_key': 'inferno',
-      },
-      {
-        'user_id': 403,
-        'name': 'Zoya',
-        'is_host': false,
-        'is_vip': true,
-        'active_theme_key': 'ice',
-      },
-    ];
-    _speakerCount = 4;
-    _maxSpeakers = 6;
-    _pendingRequests = const <Map<String, dynamic>>[
-      {
-        'id': 9001,
-        'request_id': 9001,
-        'user_id': 421,
-        'user': {
-          'id': 421,
-          'name': 'Riya',
-          'avatar_url': '',
-          'level': 9,
-          'is_vip': true,
-        },
-      },
-      {
-        'id': 9002,
-        'request_id': 9002,
-        'user_id': 422,
-        'user': {
-          'id': 422,
-          'name': 'Kabir',
-          'avatar_url': '',
-          'level': 6,
-          'is_vip': false,
-        },
-      },
-    ];
-    final prefillPk = widget.room.pkActive;
-    if (prefillPk != null &&
-        prefillPk.isNotEmpty &&
-        prefillPk['battle_id'] != null) {
-      _pkBattle = LivePkBattleModel.fromJson(
-        _buildDevPkBattlePayload(durationSeconds: 30),
-      );
-      _incomingPkInvite = null;
-      _opponentConnecting = false;
-      _opponentMediaUnavailable = true;
-    }
-    if (!_isHost) {
-      _pendingRequestId = 9901;
-      _requestStatus = 'pending';
-    }
-    if (_isHost && widget.room.roomType == 'video') {
-      _startDevPkCycle(initiallyActive: _pkBattle?.isActive == true);
+    _timerText = '';
+    _localSpeaking = false;
+    _availableGifts = const <LiveGiftItem>[];
+    _chatMessages.value = const <LiveRoomChatMessage>[];
+    _speakers = const <Map<String, dynamic>>[];
+    _speakerCount = widget.room.speakerCount;
+    _maxSpeakers = widget.room.maxSpeakers;
+    _pendingRequests = const <Map<String, dynamic>>[];
+    _pkBattle = initialBattle?.isActive == true ? initialBattle : null;
+    _incomingPkInvite = null;
+    _opponentConnecting = false;
+    _opponentMediaUnavailable = _pkBattle != null;
+    _pendingRequestId = null;
+    _requestStatus = null;
+    _pkOverlayTitle = _pkBattle != null ? 'PK Battle Started' : null;
+    _pkOverlaySubtitle =
+        _pkBattle != null
+            ? 'Host stage switched into a PK battle preview.'
+            : null;
+    if (_pkBattle != null) {
+      _clearPkOverlayLater();
+      _seedDevPkSupporters();
     }
   }
 
@@ -296,31 +259,6 @@ class _VideoCallPageState extends State<VideoCallPage>
     };
   }
 
-  void _startDevPkCycle({required bool initiallyActive}) {
-    _devPkTransitionTimer?.cancel();
-    if (initiallyActive) {
-      _scheduleDevPkExit();
-    } else {
-      _scheduleDevPkEntry();
-    }
-  }
-
-  void _scheduleDevPkEntry() {
-    _devPkTransitionTimer?.cancel();
-    _devPkTransitionTimer = Timer(const Duration(seconds: 4), () {
-      if (!mounted) return;
-      _mockDevEnterPkBattle();
-    });
-  }
-
-  void _scheduleDevPkExit() {
-    _devPkTransitionTimer?.cancel();
-    _devPkTransitionTimer = Timer(const Duration(seconds: 30), () {
-      if (!mounted) return;
-      _mockDevExitPkBattle();
-    });
-  }
-
   void _mockDevEnterPkBattle() {
     final battle = LivePkBattleModel.fromJson(
       _buildDevPkBattlePayload(durationSeconds: 30),
@@ -332,6 +270,9 @@ class _VideoCallPageState extends State<VideoCallPage>
       _opponentMediaUnavailable = true;
       _pkOverlayTitle = 'PK Battle Started';
       _pkOverlaySubtitle = 'Host stage switched into a 30 second PK preview.';
+      _pkOverlayWinnerSide = 0;
+      _primePkGiftLeadersForBattle(battle);
+      _seedDevPkSupporters();
     });
     _appendChatMessage(
       LiveRoomChatMessage.system(
@@ -341,7 +282,6 @@ class _VideoCallPageState extends State<VideoCallPage>
       ),
     );
     _clearPkOverlayLater();
-    _scheduleDevPkExit();
   }
 
   void _mockDevExitPkBattle() {
@@ -352,6 +292,8 @@ class _VideoCallPageState extends State<VideoCallPage>
       _opponentMediaUnavailable = false;
       _pkOverlayTitle = 'PK Battle Ended';
       _pkOverlaySubtitle = 'Returning to the normal host video room preview.';
+      _pkOverlayWinnerSide = 0;
+      _clearPkGiftLeaders();
     });
     _appendChatMessage(
       LiveRoomChatMessage.system(
@@ -361,7 +303,128 @@ class _VideoCallPageState extends State<VideoCallPage>
       ),
     );
     _clearPkOverlayLater();
-    _scheduleDevPkEntry();
+  }
+
+  void _seedDevPkSupporters() {
+    _pkGiftLeadersBySide = <String, Map<int, _PkSupporterStanding>>{
+      'left': <int, _PkSupporterStanding>{
+        901: const _PkSupporterStanding(
+          senderId: 901,
+          senderName: 'Riya',
+          totalCoins: 5400,
+          avatarUrl: 'https://i.pravatar.cc/120?img=32',
+        ),
+        902: const _PkSupporterStanding(
+          senderId: 902,
+          senderName: 'Kabir',
+          totalCoins: 3300,
+          avatarUrl: 'https://i.pravatar.cc/120?img=14',
+        ),
+        903: const _PkSupporterStanding(
+          senderId: 903,
+          senderName: 'Meera',
+          totalCoins: 1800,
+          avatarUrl: 'https://i.pravatar.cc/120?img=47',
+        ),
+      },
+      'right': <int, _PkSupporterStanding>{
+        904: const _PkSupporterStanding(
+          senderId: 904,
+          senderName: 'Arjun',
+          totalCoins: 6200,
+          avatarUrl: 'https://i.pravatar.cc/120?img=12',
+        ),
+        905: const _PkSupporterStanding(
+          senderId: 905,
+          senderName: 'Sara',
+          totalCoins: 2600,
+          avatarUrl: 'https://i.pravatar.cc/120?img=5',
+        ),
+        906: const _PkSupporterStanding(
+          senderId: 906,
+          senderName: 'Dev',
+          totalCoins: 1200,
+          avatarUrl: 'https://i.pravatar.cc/120?img=25',
+        ),
+      },
+    };
+  }
+
+  void _mockDevGiftToSide(String side) {
+    if (!widget.devMode || !_pkActive) return;
+    final left = side == 'left';
+    final payload = LiveRoomDevFixtures.mockGiftPayload(
+      roomId: widget.room.roomId,
+      roomType: 'video',
+      receiverId: left ? 501 : 502,
+      receiverName: left ? 'Host Aman' : 'Zoya',
+      receiverAvatar: null,
+      gift: const LiveGiftItem(
+        id: 999,
+        name: 'PK Burst',
+        coins: 500,
+        giftUrl: 'https://picsum.photos/seed/pkburst/320/320',
+      ),
+      quantity: left ? 1 : 2,
+      pkSide: side,
+    );
+    payload['sender_user_id'] = left ? 921 : 922;
+    payload['sender_name'] = left ? 'Nova' : 'Aisha';
+    payload['sender_avatar'] =
+        left
+            ? 'https://i.pravatar.cc/120?img=41'
+            : 'https://i.pravatar.cc/120?img=9';
+    payload['total_coins'] = left ? 500 : 1000;
+    payload['coins_per_unit'] = 500;
+    _recordPkGiftFromEvent(payload, fallbackSide: side);
+    _giftAnimationOverlay.handleSocketGiftEvent(
+      payload,
+      currentThemeKey: Get.find<AppSettingsService>().activePremiumThemeVariant,
+      receiverFallbackId: left ? 501 : 502,
+      currentUserId: _myUserId ?? 90061,
+      inferredPkSide: side,
+    );
+    final battle = _pkBattle;
+    if (battle != null) {
+      final scoreA = battle.scoreA + (left ? 500 : 0);
+      final scoreB = battle.scoreB + (left ? 0 : 1000);
+      setState(() {
+        _pkBattle = LivePkBattleModel.fromJson({
+          'battle_id': battle.battleId,
+          'status': battle.status,
+          'duration_seconds': battle.durationSeconds,
+          'score_a': scoreA,
+          'score_b': scoreB,
+          'started_at': battle.startedAt?.toIso8601String(),
+          'ended_at': battle.endedAt?.toIso8601String(),
+          'ends_at': battle.endsAt?.toIso8601String(),
+          'winner_room_id': battle.winnerRoomId,
+          'end_reason': battle.endReason,
+          'room_a': battle.roomA,
+          'room_b': battle.roomB,
+          'host_a': battle.hostA,
+          'host_b': battle.hostB,
+          'updated_at': DateTime.now().toIso8601String(),
+        });
+        _recentGiftMessage = '${payload['sender_name']} boosted ${left ? 'left' : 'right'} side';
+      });
+      _recentGiftTimer?.cancel();
+      _recentGiftTimer = Timer(const Duration(seconds: 4), () {
+        if (!mounted) return;
+        setState(() => _recentGiftMessage = null);
+      });
+    }
+  }
+
+  void _mockDevResolvePk(int winnerSide) {
+    if (!widget.devMode || !_pkActive) return;
+    final winLeft = winnerSide == 1;
+    setState(() {
+      _pkOverlayTitle = winLeft ? 'Left Side Won' : 'Right Side Won';
+      _pkOverlaySubtitle = 'Mock PK result preview.';
+      _pkOverlayWinnerSide = winnerSide;
+    });
+    _clearPkOverlayLater();
   }
 
   void _clearPkOverlayLater() {
@@ -371,6 +434,7 @@ class _VideoCallPageState extends State<VideoCallPage>
       setState(() {
         _pkOverlayTitle = null;
         _pkOverlaySubtitle = null;
+        _pkOverlayWinnerSide = 0;
       });
     });
   }
@@ -1319,6 +1383,20 @@ class _VideoCallPageState extends State<VideoCallPage>
     );
   }
 
+  Future<void> _openPkSupporterProfile(_PkSupporterStanding supporter) {
+    if (supporter.senderId <= 0) return Future<void>.value();
+    return _openParticipantProfile(
+      userId: supporter.senderId,
+      name: supporter.senderName,
+      subtitle: 'Top PK supporter',
+      themeKey: 'midnight',
+      isVip: false,
+      isHost: false,
+      speaking: false,
+      avatarUrl: supporter.avatarUrl,
+    );
+  }
+
   Widget _videoParticipantActionTile({
     required IconData icon,
     required String title,
@@ -2160,6 +2238,10 @@ class _VideoCallPageState extends State<VideoCallPage>
       final senderName = (event['sender_name'] ?? 'Someone').toString();
       final giftName = (event['gift_name'] ?? 'a gift').toString();
       final quantity = _safeInt(event['quantity']) ?? 1;
+      _recordPkGiftFromEvent(
+        event,
+        fallbackSide: _pkActive ? GiftAnchorRegistry.pkLeft : null,
+      );
       _giftAnimationOverlay.handleSocketGiftEvent(
         event,
         currentThemeKey:
@@ -2347,7 +2429,19 @@ class _VideoCallPageState extends State<VideoCallPage>
         Map<String, dynamic>.from(event),
       );
 
-      if (eventName == 'pk:invite_received' && _isHost) {
+      final invitedRoomId = roomB['id']?.toString();
+      final invitedHost =
+          (event['host_b'] is Map)
+              ? Map<String, dynamic>.from(event['host_b'] as Map)
+              : const <String, dynamic>{};
+      final invitedHostUserId = _safeInt(invitedHost['user_id']);
+
+      if (eventName == 'pk:invite_received' &&
+          _isHost &&
+          invitedRoomId == widget.room.roomId &&
+          (invitedHostUserId == null ||
+              _myUserId == null ||
+              invitedHostUserId == _myUserId)) {
         setState(() => _incomingPkInvite = model.isPending ? model : null);
       }
 
@@ -2840,6 +2934,7 @@ class _VideoCallPageState extends State<VideoCallPage>
       pkSide: _pkActive ? 'left' : null,
     );
     final settings = Get.find<AppSettingsService>();
+    _recordPkGiftFromEvent(payload, fallbackSide: _pkActive ? 'left' : null);
     _giftAnimationOverlay.handleSocketGiftEvent(
       payload,
       currentThemeKey: settings.activePremiumThemeVariant,
@@ -2880,6 +2975,7 @@ class _VideoCallPageState extends State<VideoCallPage>
       setState(() {
         _pkBattle = null;
         _incomingPkInvite = battle != null && battle.isPending ? battle : null;
+        _clearPkGiftLeaders();
       });
       await _disconnectOpponentRoom();
       if (endedBattle != null && battle != null && battle.isTerminal) {
@@ -2891,19 +2987,123 @@ class _VideoCallPageState extends State<VideoCallPage>
     setState(() {
       _pkBattle = battle;
       _incomingPkInvite = null;
+      _primePkGiftLeadersForBattle(battle);
     });
     await _ensureOpponentRoomConnected(forceRefresh: false);
+  }
+
+  void _primePkGiftLeadersForBattle(LivePkBattleModel? battle) {
+    final battleId = battle?.battleId;
+    if (battleId == null || battleId.isEmpty) {
+      _clearPkGiftLeaders();
+      return;
+    }
+    if (_pkGiftLeadersBattleId == battleId) return;
+    _pkGiftLeadersBattleId = battleId;
+    _pkGiftLeadersBySide = <String, Map<int, _PkSupporterStanding>>{
+      'left': <int, _PkSupporterStanding>{},
+      'right': <int, _PkSupporterStanding>{},
+    };
+  }
+
+  void _clearPkGiftLeaders() {
+    _pkGiftLeadersBattleId = null;
+    _pkGiftLeadersBySide = <String, Map<int, _PkSupporterStanding>>{
+      'left': <int, _PkSupporterStanding>{},
+      'right': <int, _PkSupporterStanding>{},
+    };
+  }
+
+  void _recordPkGiftFromEvent(
+    Map<String, dynamic> event, {
+    String? fallbackSide,
+  }) {
+    final battle = _pkBattle;
+    if (battle == null || !battle.isActive) return;
+    _primePkGiftLeadersForBattle(battle);
+    final side = _normalizePkGiftSide(event['pk_side'] ?? event['pkSide'] ?? fallbackSide);
+    if (side == null) return;
+    final senderId =
+        _safeInt(event['sender_user_id'] ?? event['senderId']) ??
+        _safeInt(event['user_id']);
+    if (senderId == null) return;
+    final senderName = (event['sender_name'] ?? event['senderName'] ?? 'Someone')
+        .toString()
+        .trim();
+    final avatarUrl =
+        (event['sender_avatar'] ?? event['senderAvatar'])?.toString().trim();
+    final quantity = (_safeInt(event['quantity']) ?? 1).clamp(1, 9999);
+    final coinsPerUnit = _safeInt(event['coins_per_unit'] ?? event['coinsPerUnit']) ?? 0;
+    final totalCoins =
+        _safeInt(event['totalCoins'] ?? event['total_coins']) ??
+        (coinsPerUnit * quantity);
+    if (totalCoins <= 0) return;
+    final sideMap = Map<int, _PkSupporterStanding>.from(
+      _pkGiftLeadersBySide[side] ?? const <int, _PkSupporterStanding>{},
+    );
+    final current = sideMap[senderId];
+    sideMap[senderId] = _PkSupporterStanding(
+      senderId: senderId,
+      senderName: senderName.isEmpty ? 'Someone' : senderName,
+      totalCoins: (current?.totalCoins ?? 0) + totalCoins,
+      avatarUrl:
+          avatarUrl != null && avatarUrl.isNotEmpty
+              ? avatarUrl
+              : current?.avatarUrl,
+    );
+    if (!mounted) return;
+    setState(() {
+      _pkGiftLeadersBySide = <String, Map<int, _PkSupporterStanding>>{
+        ..._pkGiftLeadersBySide,
+        side: sideMap,
+      };
+    });
+  }
+
+  String? _normalizePkGiftSide(dynamic raw) {
+    final normalized = raw?.toString().trim().toLowerCase() ?? '';
+    if (normalized.isEmpty) return null;
+    if (normalized == 'left' ||
+        normalized == 'own' ||
+        normalized == 'self' ||
+        normalized == 'a' ||
+        normalized == 'team_a') {
+      return 'left';
+    }
+    if (normalized == 'right' ||
+        normalized == 'opponent' ||
+        normalized == 'other' ||
+        normalized == 'b' ||
+        normalized == 'team_b') {
+      return 'right';
+    }
+    return null;
+  }
+
+  List<_PkSupporterStanding> _topPkSupportersFor(String side) {
+    final items = (_pkGiftLeadersBySide[side] ?? const <int, _PkSupporterStanding>{})
+        .values
+        .toList()
+      ..sort((a, b) {
+        final byCoins = b.totalCoins.compareTo(a.totalCoins);
+        if (byCoins != 0) return byCoins;
+        return a.senderName.toLowerCase().compareTo(b.senderName.toLowerCase());
+      });
+    return items.take(3).toList(growable: false);
   }
 
   void _showPkResult(LivePkBattleModel battle) {
     final myRoomId = widget.room.roomId;
     String title;
+    int winnerSide = 0;
     if (battle.winnerRoomId == null) {
       title = 'PK Draw';
     } else if (battle.winnerRoomId == myRoomId) {
       title = 'Your Side Won';
+      winnerSide = 1;
     } else {
       title = 'Opponent Won';
+      winnerSide = -1;
     }
     final subtitle =
         battle.endReason == 'timer_expired'
@@ -2913,12 +3113,14 @@ class _VideoCallPageState extends State<VideoCallPage>
     setState(() {
       _pkOverlayTitle = title;
       _pkOverlaySubtitle = subtitle;
+      _pkOverlayWinnerSide = winnerSide;
     });
     _pkOverlayTimer = Timer(const Duration(seconds: 4), () {
       if (mounted) {
         setState(() {
           _pkOverlayTitle = null;
           _pkOverlaySubtitle = null;
+          _pkOverlayWinnerSide = 0;
         });
       }
     });
@@ -3047,7 +3249,7 @@ class _VideoCallPageState extends State<VideoCallPage>
     return active.any((speaker) => speaker.identity == participant.identity);
   }
 
-  Widget _buildPkVideoStage() {
+  Widget _buildPkVideoStage({required double topInset}) {
     final battle = _pkBattle!;
     final ownHost = battle.ownHostFor(widget.room.roomId);
     final opponentHost = battle.opponentHostFor(widget.room.roomId);
@@ -3064,11 +3266,23 @@ class _VideoCallPageState extends State<VideoCallPage>
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final stageTop = 74.0;
-        final stageHeight = constraints.maxHeight * 0.38;
+        final stageTop = topInset.clamp(0.0, constraints.maxHeight);
+        final availableHeight = math.max(0.0, constraints.maxHeight - stageTop);
+        final stageHeight = availableHeight * 0.4;
+        final railHeight = math.min(52.0, availableHeight * 0.08);
+        const railGap = 0.0;
+        final leadersTop = stageTop + stageHeight + railHeight + railGap;
+        final leadersHeight = availableHeight * 0.1;
         final showPkGiftRow = !_isHost;
-        final giftRowTop = stageTop + stageHeight + 4;
-        final chatStart = giftRowTop + (showPkGiftRow ? 24 : 6);
+        final giftRowTop = stageTop + stageHeight - 64;
+        final chatStart = leadersTop + leadersHeight;
+        final ownScore = battle.ownScoreFor(widget.room.roomId);
+        final opponentScore = battle.opponentScoreFor(widget.room.roomId);
+        final totalScore = math.max(1, ownScore + opponentScore);
+        final ownFraction = ownScore / totalScore;
+        final opponentFraction = opponentScore / totalScore;
+        final leadSide = ownScore == opponentScore ? 0 : (ownScore > opponentScore ? 1 : -1);
+        final pkDangerMode = battle.remainingSeconds > 0 && battle.remainingSeconds <= 10;
         return Stack(
           children: [
             Positioned.fill(
@@ -3103,7 +3317,7 @@ class _VideoCallPageState extends State<VideoCallPage>
                         const Color(0xFF06080E),
                       ],
                     ),
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
                   ),
                 ),
               ),
@@ -3120,18 +3334,19 @@ class _VideoCallPageState extends State<VideoCallPage>
                         ? ownHost!['name'].toString()
                         : _hostDisplayName),
                 opponentLabel: opponentHost?['name']?.toString() ?? 'Opponent',
-                ownScore: battle.ownScoreFor(widget.room.roomId),
-                opponentScore: battle.opponentScoreFor(widget.room.roomId),
+                ownScore: ownScore,
+                opponentScore: opponentScore,
                 opponentUnavailable:
                     _opponentConnecting || _opponentMediaUnavailable,
                 canEnd: _isHost,
                 onEnd: _isHost ? _endPkBattle : null,
+                showEmbeddedRail: false,
                 ownChild: KeyedSubtree(
                   key: _giftAnchors.keyFor(GiftAnchorRegistry.pkLeft),
                   child: ThemedRoomFrame(
                     themeKey: _pkHostThemeKey(ownHost),
                     isHost: false,
-                    isVip: _pkHostIsVip(ownHost),
+                    isVip: false,
                     isSpeaking:
                         ownParticipant != null &&
                         (_isHost
@@ -3177,7 +3392,7 @@ class _VideoCallPageState extends State<VideoCallPage>
                   child: ThemedRoomFrame(
                     themeKey: _pkHostThemeKey(opponentHost),
                     isHost: false,
-                    isVip: _pkHostIsVip(opponentHost),
+                    isVip: false,
                     isSpeaking: _isOpponentSpeaking(),
                     isPkWinner:
                         battle.winnerRoomId != null &&
@@ -3201,6 +3416,41 @@ class _VideoCallPageState extends State<VideoCallPage>
                 ),
               ),
             ),
+            Positioned(
+              left: 0,
+              right: 0,
+              top: stageTop + stageHeight + railGap,
+              height: railHeight,
+              child: IgnorePointer(
+                child: PkBattleRail(
+                  ownScore: ownScore,
+                  opponentScore: opponentScore,
+                  ownFraction: ownFraction,
+                  opponentFraction: opponentFraction,
+                  leadSide: leadSide,
+                  leadStreak: leadSide == 0 ? 0 : 1,
+                  scoreBurstSide: leadSide,
+                  scoreBurstValue: 0,
+                  dangerMode: pkDangerMode,
+                ),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              top: leadersTop,
+              height: leadersHeight,
+              child: _PkTopSupportersBand(
+                ownLabel:
+                    (ownHost?['name']?.toString().isNotEmpty == true
+                        ? ownHost!['name'].toString()
+                        : _hostDisplayName),
+                opponentLabel: opponentHost?['name']?.toString() ?? 'Opponent',
+                ownSupporters: _topPkSupportersFor('left'),
+                opponentSupporters: _topPkSupportersFor('right'),
+                onSupporterTap: _openPkSupporterProfile,
+              ),
+            ),
             if (showPkGiftRow)
               Positioned(
                 left: 0,
@@ -3208,13 +3458,11 @@ class _VideoCallPageState extends State<VideoCallPage>
                 top: giftRowTop,
                 child: IgnorePointer(
                   ignoring: false,
-                  child: Center(
-                    child: KeyedSubtree(
-                      key: _giftAnchors.keyFor(GiftAnchorRegistry.giftButton),
-                      child: _PkGiftActionRow(
-                        busy: _giftBusy,
-                        onTap: _giftBusy ? null : _openGiftSheet,
-                      ),
+                  child: KeyedSubtree(
+                    key: _giftAnchors.keyFor(GiftAnchorRegistry.giftButton),
+                    child: _PkGiftActionRow(
+                      busy: _giftBusy,
+                      onTap: _giftBusy ? null : _openGiftSheet,
                     ),
                   ),
                 ),
@@ -3651,6 +3899,21 @@ class _VideoCallPageState extends State<VideoCallPage>
         widget.devMode && _room == null ? _devStageTiles() : _stageTiles();
     final inlineError =
         _seatError ?? _giftError ?? _pkOverlaySubtitle ?? _error;
+    final hasTopTicker =
+        _recentGiftMessage != null ||
+        (_viewerStatusText != null && !_canModerate);
+    final topRowHeight = isCompactDevice ? 42.0 : 46.0;
+    final topRowGap = isCompactDevice ? 2.0 : 4.0;
+    final topTickerHeight = hasTopTicker ? (isCompactDevice ? 38.0 : 42.0) : 0.0;
+    final topTickerGap = hasTopTicker ? (isCompactDevice ? 8.0 : 10.0) : 0.0;
+    final pkStageTopInset =
+        pad.top + topRowGap + topRowHeight + topTickerGap + topTickerHeight;
+    final pkAvailableHeight = math.max(0.0, media.size.height - pkStageTopInset);
+    final pkStageHeight = pkAvailableHeight * 0.4;
+    final pkRailHeight = math.min(52.0, pkAvailableHeight * 0.08);
+    final pkLeadersHeight = pkAvailableHeight * 0.1;
+    final pkChatTopOffset =
+        pkStageTopInset + pkStageHeight + pkRailHeight + pkLeadersHeight;
 
     return Obx(
       () => PopScope(
@@ -3719,7 +3982,9 @@ class _VideoCallPageState extends State<VideoCallPage>
                         key: _giftAnchors.keyFor(GiftAnchorRegistry.stageCenter),
                         child:
                             _pkCapable && _pkActive
-                                ? _buildPkVideoStage()
+                                ? _buildPkVideoStage(
+                                  topInset: pkStageTopInset,
+                                )
                                 : _DynamicStageGrid(tiles: stageTiles),
                       ),
             ),
@@ -3814,6 +4079,7 @@ class _VideoCallPageState extends State<VideoCallPage>
                   viewerThemeKey: viewerThemeKey,
                   roomId: widget.room.roomId,
                   roomType: widget.room.roomType,
+                  topOffset: _pkCapable && _pkActive ? pkChatTopOffset : 0,
                   bottomOffset:
                       (_pkCapable && _pkActive
                                   ? (isCompactDevice ? 8 : 14)
@@ -3897,6 +4163,24 @@ class _VideoCallPageState extends State<VideoCallPage>
               PkWinnerOverlay(
                 title: _pkOverlayTitle!,
                 subtitle: _pkOverlaySubtitle!,
+                winnerSide: _pkOverlayWinnerSide,
+              ),
+            if (widget.devMode)
+              Positioned(
+                right: 12,
+                bottom: 148 + pad.bottom,
+                child: _DevPkControlPad(
+                  pkActive: _pkActive,
+                  onStart: _mockDevEnterPkBattle,
+                  onReset: () {
+                    _mockDevExitPkBattle();
+                    _mockDevEnterPkBattle();
+                  },
+                  onLeftGift: () => _mockDevGiftToSide('left'),
+                  onRightGift: () => _mockDevGiftToSide('right'),
+                  onLeftWin: () => _mockDevResolvePk(1),
+                  onRightWin: () => _mockDevResolvePk(-1),
+                ),
               ),
             ],
           ),
@@ -4721,42 +5005,218 @@ class _PkGiftActionRow extends StatelessWidget {
     final tokens = getPremiumThemeTokens(
       Get.find<AppSettingsService>().activePremiumThemeVariant,
     );
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: .97, end: 1),
+      duration: const Duration(milliseconds: 900),
+      curve: Curves.easeInOut,
+      builder: (context, value, child) {
+        return Transform.scale(scale: value, child: child);
+      },
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(22),
+          child: Ink(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xEE121622),
+                  Color(0xF020172A),
+                  Color(0xE90E111A),
+                ],
+              ),
+              border: Border.all(color: Colors.white.withOpacity(.10)),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFFF8BC2).withOpacity(.16),
+                  blurRadius: 16,
+                  spreadRadius: 1,
+                ),
+                BoxShadow(
+                  color: Colors.black.withOpacity(.28),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFFF73B8), Color(0xFFFFB15A)],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFFF8BC2).withOpacity(.34),
+                        blurRadius: 14,
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child:
+                        busy
+                            ? SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  tokens.textPrimary,
+                                ),
+                              ),
+                            )
+                            : Icon(
+                              Icons.card_giftcard_rounded,
+                              color: tokens.textPrimary,
+                              size: 20,
+                            ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Send Battle Gifts',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(.94),
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12.2,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Push your side to the top',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(.64),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 10.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  width: 1,
+                  height: 28,
+                  margin: const EdgeInsets.symmetric(horizontal: 10),
+                  color: Colors.white.withOpacity(.10),
+                ),
+                Text(
+                  busy ? 'Sending…' : 'Tap to gift',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(.72),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 10.4,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: Colors.white.withOpacity(.82),
+                  size: 22,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PkSupporterStanding {
+  const _PkSupporterStanding({
+    required this.senderId,
+    required this.senderName,
+    required this.totalCoins,
+    this.avatarUrl,
+  });
+
+  final int senderId;
+  final String senderName;
+  final int totalCoins;
+  final String? avatarUrl;
+}
+
+class _PkTopSupportersBand extends StatelessWidget {
+  const _PkTopSupportersBand({
+    required this.ownLabel,
+    required this.opponentLabel,
+    required this.ownSupporters,
+    required this.opponentSupporters,
+    required this.onSupporterTap,
+  });
+
+  final String ownLabel;
+  final String opponentLabel;
+  final List<_PkSupporterStanding> ownSupporters;
+  final List<_PkSupporterStanding> opponentSupporters;
+  final ValueChanged<_PkSupporterStanding> onSupporterTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
     return DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        gradient: LinearGradient(
-          colors: [
-            Colors.black.withOpacity(.72),
-            const Color(0xCC111827),
-          ],
+        color: const Color(0xFF0A0D14),
+        border: Border(
+          top: BorderSide(color: Colors.white.withOpacity(.05)),
+          bottom: BorderSide(color: Colors.white.withOpacity(.05)),
         ),
-        border: Border.all(color: Colors.white.withOpacity(.10)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(.22),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: EdgeInsets.zero,
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            _FooterCircleAction(
-              icon: busy ? Icons.hourglass_top_rounded : Icons.redeem_rounded,
-              onTap: onTap,
-              accent: const Color(0xFFFF8BC2),
-              busy: busy,
+            Expanded(
+              child: _PkSupportersLane(
+                title: ownLabel,
+                accent: const [Color(0xFFFF5C8A), Color(0xFFFFA63D)],
+                supporters: ownSupporters,
+                emptyLabel: 'No gifts yet',
+                textColor: tokens.textPrimary,
+                onSupporterTap: onSupporterTap,
+              ),
             ),
-            const SizedBox(width: 8),
-            Text(
-              'Gift',
-              style: TextStyle(
-                color: Colors.white.withOpacity(.90),
-                fontWeight: FontWeight.w800,
-                fontSize: 11.8,
+            Container(
+              width: 14,
+              alignment: Alignment.center,
+              child: Container(
+                width: 1,
+                height: 38,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  color: Colors.white.withOpacity(.08),
+                ),
+              ),
+            ),
+            Expanded(
+              child: _PkSupportersLane(
+                title: opponentLabel,
+                accent: const [Color(0xFF5AB3FF), Color(0xFF8A63E8)],
+                supporters: opponentSupporters,
+                emptyLabel: 'No gifts yet',
+                textColor: tokens.textPrimary,
+                onSupporterTap: onSupporterTap,
               ),
             ),
           ],
@@ -4764,6 +5224,338 @@ class _PkGiftActionRow extends StatelessWidget {
       ),
     );
   }
+}
+
+class _PkSupportersLane extends StatelessWidget {
+  const _PkSupportersLane({
+    required this.title,
+    required this.accent,
+    required this.supporters,
+    required this.emptyLabel,
+    required this.textColor,
+    required this.onSupporterTap,
+  });
+
+  final String title;
+  final List<Color> accent;
+  final List<_PkSupporterStanding> supporters;
+  final String emptyLabel;
+  final Color textColor;
+  final ValueChanged<_PkSupporterStanding> onSupporterTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final rankSupporters = List<_PkSupporterStanding?>.generate(
+      3,
+      (index) => index < supporters.length ? supporters[index] : null,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: textColor.withOpacity(.90),
+                  fontWeight: FontWeight.w900,
+                  fontSize: 10.8,
+                  letterSpacing: .2,
+                ),
+              ),
+            ),
+            Text(
+              '3',
+              style: TextStyle(
+                color: textColor.withOpacity(.34),
+                fontWeight: FontWeight.w800,
+                fontSize: 8.6,
+                letterSpacing: .7,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        SizedBox(
+          height: 38,
+          child: Row(
+            children: [
+              for (var i = 0; i < rankSupporters.length; i++) ...[
+                Expanded(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 320),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, animation) {
+                      return FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(
+                          position: animation.drive(
+                            Tween<Offset>(
+                              begin: const Offset(0, .18),
+                              end: Offset.zero,
+                            ),
+                          ),
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: _PkSupporterCard(
+                      key: ValueKey(
+                        'pk-card-$title-${i + 1}-${rankSupporters[i]?.senderId ?? 'empty'}-${rankSupporters[i]?.totalCoins ?? 0}',
+                      ),
+                      rank: i + 1,
+                      supporter: rankSupporters[i],
+                      accent: accent,
+                      textColor: textColor,
+                      crowned: i == 0 && rankSupporters[i] != null,
+                      emptyLabel: i == 0 ? emptyLabel : null,
+                      onTap: rankSupporters[i] == null ? null : () => onSupporterTap(rankSupporters[i]!),
+                    ),
+                  ),
+                ),
+                if (i != rankSupporters.length - 1) const SizedBox(width: 6),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PkSupporterCard extends StatelessWidget {
+  const _PkSupporterCard({
+    super.key,
+    required this.rank,
+    required this.supporter,
+    required this.accent,
+    required this.textColor,
+    required this.crowned,
+    this.emptyLabel,
+    this.onTap,
+  });
+
+  final int rank;
+  final _PkSupporterStanding? supporter;
+  final List<Color> accent;
+  final Color textColor;
+  final bool crowned;
+  final String? emptyLabel;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = supporter?.senderName ?? (emptyLabel ?? '---');
+    final coins = supporter?.totalCoins ?? 0;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color:
+                crowned
+                    ? Colors.white.withOpacity(.07)
+                    : Colors.white.withOpacity(.04),
+            border: Border.all(
+              color:
+                  crowned
+                      ? accent.first.withOpacity(.34)
+                      : Colors.white.withOpacity(.08),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
+            child: Row(
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    _PkSupporterAvatar(
+                      supporter: supporter,
+                      accent: accent,
+                      crowned: crowned,
+                      size: 22,
+                    ),
+                    Positioned(
+                      left: -2,
+                      bottom: -2,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0A0D14),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color:
+                                crowned
+                                    ? accent.first.withOpacity(.60)
+                                    : Colors.white.withOpacity(.16),
+                            width: .9,
+                          ),
+                        ),
+                        child: Text(
+                          '$rank',
+                          style: TextStyle(
+                            color:
+                                crowned
+                                    ? accent.first.withOpacity(.96)
+                                    : Colors.white.withOpacity(.86),
+                            fontWeight: FontWeight.w900,
+                            fontSize: 7.2,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: textColor.withOpacity(supporter != null ? .88 : .50),
+                          fontWeight: FontWeight.w800,
+                          fontSize: 9.1,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        supporter != null ? _formatCompactPkCoins(coins) : '',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color:
+                              crowned
+                                  ? accent.first.withOpacity(.84)
+                                  : textColor.withOpacity(supporter != null ? .58 : .36),
+                          fontWeight: FontWeight.w800,
+                          fontSize: 8.1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PkSupporterAvatar extends StatelessWidget {
+  const _PkSupporterAvatar({
+    required this.supporter,
+    required this.accent,
+    required this.crowned,
+    this.size = 22,
+  });
+
+  final _PkSupporterStanding? supporter;
+  final List<Color> accent;
+  final bool crowned;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final initials =
+        supporter?.senderName.trim().isNotEmpty == true
+            ? supporter!.senderName.trim().characters.first.toUpperCase()
+            : '?';
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              colors:
+                  supporter == null
+                      ? const [Color(0xFF39404C), Color(0xFF232A35)]
+                      : accent,
+            ),
+            border: Border.all(color: Colors.white.withOpacity(.18), width: .8),
+          ),
+          child: ClipOval(
+            child:
+                supporter?.avatarUrl != null && supporter!.avatarUrl!.isNotEmpty
+                    ? Image.network(
+                      supporter!.avatarUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder:
+                          (_, __, ___) => Center(
+                            child: Text(
+                              initials,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: size * .42,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                    )
+                    : Center(
+                      child: Text(
+                        initials,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: size * .42,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+          ),
+        ),
+        if (crowned)
+          Positioned(
+            top: -7,
+            right: -4,
+            child: Icon(
+              Icons.workspace_premium_rounded,
+              size: 14,
+              color: const Color(0xFFFFD86B),
+              shadows: [
+                Shadow(
+                  color: Colors.black.withOpacity(.35),
+                  blurRadius: 8,
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+String _formatCompactPkCoins(int value) {
+  if (value >= 1000000) {
+    final compact = (value / 1000000).toStringAsFixed(value >= 10000000 ? 0 : 1);
+    return '${compact.replaceAll(RegExp(r'\\.0$'), '')}M';
+  }
+  if (value >= 1000) {
+    final compact = (value / 1000).toStringAsFixed(value >= 10000 ? 0 : 1);
+    return '${compact.replaceAll(RegExp(r'\\.0$'), '')}K';
+  }
+  return '$value';
 }
 
 class _TopRightExitPill extends StatelessWidget {
@@ -4807,6 +5599,139 @@ class _TopRightExitPill extends StatelessWidget {
               color: tokens.textPrimary,
               fontSize: compact ? 11.5 : 12,
               fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DevPkControlPad extends StatelessWidget {
+  const _DevPkControlPad({
+    required this.pkActive,
+    required this.onStart,
+    required this.onReset,
+    required this.onLeftGift,
+    required this.onRightGift,
+    required this.onLeftWin,
+    required this.onRightWin,
+  });
+
+  final bool pkActive;
+  final VoidCallback onStart;
+  final VoidCallback onReset;
+  final VoidCallback onLeftGift;
+  final VoidCallback onRightGift;
+  final VoidCallback onLeftWin;
+  final VoidCallback onRightWin;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xD90A0D13),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(.10)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(.24),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'DEV PK',
+              style: TextStyle(
+                color: tokens.textPrimary.withOpacity(.92),
+                fontWeight: FontWeight.w900,
+                fontSize: 11,
+                letterSpacing: .7,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              alignment: WrapAlignment.end,
+              children: [
+                _DevPkMiniButton(
+                  label: pkActive ? 'Reset' : 'Start',
+                  onTap: pkActive ? onReset : onStart,
+                  accent: const Color(0xFF7B50C5),
+                ),
+                if (pkActive) ...[
+                  _DevPkMiniButton(
+                    label: 'L Gift',
+                    onTap: onLeftGift,
+                    accent: const Color(0xFFFF6C8C),
+                  ),
+                  _DevPkMiniButton(
+                    label: 'R Gift',
+                    onTap: onRightGift,
+                    accent: const Color(0xFF5AB3FF),
+                  ),
+                  _DevPkMiniButton(
+                    label: 'L Win',
+                    onTap: onLeftWin,
+                    accent: const Color(0xFFFFA63D),
+                  ),
+                  _DevPkMiniButton(
+                    label: 'R Win',
+                    onTap: onRightWin,
+                    accent: const Color(0xFF8A63E8),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DevPkMiniButton extends StatelessWidget {
+  const _DevPkMiniButton({
+    required this.label,
+    required this.onTap,
+    required this.accent,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: accent.withOpacity(.16),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: accent.withOpacity(.34)),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withOpacity(.94),
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ),

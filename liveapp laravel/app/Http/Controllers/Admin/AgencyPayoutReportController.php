@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Agency;
 use App\Models\AgencyPayoutReport;
+use App\Models\CallEarningLedger;
+use App\Models\LiveRoomGiftEarningLedger;
 use App\Services\AgencyWeeklyPayoutReportService;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
@@ -56,6 +58,7 @@ class AgencyPayoutReportController extends Controller
 
         return view('admin.agency-payout-reports.show', [
             'report' => $agency_payout_report,
+            'reconciliation' => $this->buildReconciliation($agency_payout_report),
         ]);
     }
 
@@ -224,5 +227,82 @@ class AgencyPayoutReportController extends Controller
             }
             fclose($out);
         }, 'agency-payout-report-' . $agency_payout_report->id . '.csv');
+    }
+
+    private function buildReconciliation(AgencyPayoutReport $report): array
+    {
+        $periodStart = $report->period_start;
+        $periodEnd = $report->period_end;
+        $agencyId = (int) $report->agency_id;
+
+        $callRows = CallEarningLedger::query()
+            ->with([
+                'caller:id,name',
+                'host.user:id,name',
+                'callSession:id,host_id,caller_id,type,status,started_at,ended_at,billable_minutes,total_coins_charged',
+            ])
+            ->where('agency_id', $agencyId)
+            ->whereBetween('created_at', [$periodStart, $periodEnd])
+            ->orderBy('created_at')
+            ->get();
+
+        $giftRows = LiveRoomGiftEarningLedger::query()
+            ->with([
+                'sender:id,name',
+                'host.user:id,name',
+                'room:id,room_id,title,room_type',
+                'roomGift:id,live_room_id,gift_id,sender_user_id,quantity,coins_per_unit,total_coins,transaction_id',
+                'roomGift.gift:id,name',
+            ])
+            ->where('agency_id', $agencyId)
+            ->whereBetween('created_at', [$periodStart, $periodEnd])
+            ->orderBy('created_at')
+            ->get();
+
+        $pkGiftRows = LiveRoomGiftEarningLedger::query()
+            ->selectRaw('
+                live_room_gift_earning_ledgers.*,
+                live_room_pk_events.id as pk_event_id,
+                live_room_pk_events.pk_battle_id as pk_battle_id,
+                live_room_pk_events.room_id as pk_room_id,
+                live_room_pk_events.user_id as pk_user_id,
+                live_room_pk_events.coins as pk_event_coins,
+                live_room_pk_events.wallet_transaction_id as pk_wallet_transaction_id,
+                live_room_pk_events.gift_id as pk_gift_id,
+                live_room_pk_events.created_at as pk_created_at
+            ')
+            ->join('live_room_gifts', 'live_room_gifts.id', '=', 'live_room_gift_earning_ledgers.live_room_gift_id')
+            ->join('live_room_pk_events', function ($join) {
+                $join->on('live_room_pk_events.wallet_transaction_id', '=', 'live_room_gifts.transaction_id')
+                    ->where('live_room_pk_events.event_type', '=', 'gift');
+            })
+            ->with([
+                'sender:id,name',
+                'host.user:id,name',
+                'room:id,room_id,title,room_type',
+                'roomGift:id,live_room_id,gift_id,sender_user_id,quantity,coins_per_unit,total_coins,transaction_id',
+                'roomGift.gift:id,name',
+            ])
+            ->where('live_room_gift_earning_ledgers.agency_id', $agencyId)
+            ->whereBetween('live_room_gift_earning_ledgers.created_at', [$periodStart, $periodEnd])
+            ->orderBy('live_room_gift_earning_ledgers.created_at')
+            ->get();
+
+        return [
+            'summary' => [
+                'call_rows' => $callRows->count(),
+                'call_gross' => (int) $callRows->sum('total_coins'),
+                'gift_rows' => $giftRows->count(),
+                'gift_gross' => (int) $giftRows->sum('total_coins'),
+                'pk_rows' => $pkGiftRows->count(),
+                'pk_gross' => (int) $pkGiftRows->sum('total_coins'),
+                'host_payout' => (int) $report->items->sum(fn ($item) => $item->host_payout),
+                'agency_payout' => (int) $report->items->sum(fn ($item) => $item->agency_payout),
+            ],
+            'call_rows' => $callRows,
+            'gift_rows' => $giftRows,
+            'pk_gift_rows' => $pkGiftRows,
+            'split_rows' => $report->items,
+        ];
     }
 }

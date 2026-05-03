@@ -73,6 +73,7 @@ class SettingsController extends Controller
             'values' => $this->settings->appSettings(),
             'groups' => [
                 'general' => 'Global App Controls',
+                'host_goals' => 'Host Goal Milestones',
                 'android' => 'Android Feature Flags',
             ],
         ]);
@@ -82,9 +83,20 @@ class SettingsController extends Controller
     {
         $rules = [];
         foreach (AppSettingsService::APP_DEFINITIONS as $key => $definition) {
-            if (($definition['type'] ?? 'boolean') === 'string') {
+            $type = $definition['type'] ?? 'boolean';
+            if ($type === 'string' && !empty($definition['options'])) {
                 $options = implode(',', $definition['options'] ?? []);
                 $rules[$key] = 'required|string|in:' . $options;
+                continue;
+            }
+
+            if ($type === 'string') {
+                $rules[$key] = 'required|string';
+                continue;
+            }
+
+            if ($type === 'csv_integer_list') {
+                $rules[$key] = ['required', 'string', 'regex:/^\s*\d+(\s*,\s*\d+)*\s*$/'];
                 continue;
             }
 

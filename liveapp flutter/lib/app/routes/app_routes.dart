@@ -18,6 +18,7 @@ abstract class Routes {
   static const profileBlockedUsers = '/profile/blocked-users';
   static const profileUnblockRequests = '/profile/unblock-requests';
   static const profileModerationHistory = '/profile/moderation-history';
+  static const profileScheduledLives = '/profile/scheduled-lives';
   static const following = '/profile/following';
   static const followers = '/profile/followers';
   static const walletHistory = '/wallet/history';

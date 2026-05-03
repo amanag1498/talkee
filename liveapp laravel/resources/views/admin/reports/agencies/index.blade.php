@@ -49,6 +49,7 @@
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Live Minutes</small><div class="fs-5 fw-semibold mt-1">{{ number_format($kpis['live_minutes']) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Live Gift Coins</small><div class="fs-5 fw-semibold mt-1">{{ number_format($kpis['live_gift_coins']) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Live Agency Earnings</small><div class="fs-5 fw-semibold mt-1">{{ number_format($kpis['live_agency_earnings']) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">PK Gift Coins</small><div class="fs-5 fw-semibold mt-1">{{ number_format($kpis['pk_gift_coins']) }}</div><div class="text-muted small mt-1">Agency {{ number_format($kpis['pk_agency_earnings']) }} · {{ number_format($kpis['pk_event_count']) }} events</div></div></div></div>
   </section>
 
   <section class="row g-3">
@@ -116,6 +117,7 @@
             <th>Earnings</th>
             <th>Live Rooms</th>
             <th>Live Gift Coins</th>
+            <th>PK Coins / Events</th>
             <th>Top Host</th>
             <th></th>
           </tr>
@@ -134,13 +136,14 @@
               <td>{{ number_format($row['earnings']) }}</td>
               <td>{{ number_format($row['live_rooms']) }}</td>
               <td>{{ number_format($row['live_gift_coins']) }}</td>
+              <td>{{ number_format($row['pk_gift_coins']) }} / {{ number_format($row['pk_event_count']) }}</td>
               <td>{{ $row['top_host'] ?? '—' }}</td>
               <td class="text-end">
                 <a href="{{ route('admin.reports.agencies.show', ['agency' => $row['agency']->id, 'from' => $from->format('Y-m-d'), 'to' => $to->format('Y-m-d')]) }}" class="btn btn-sm btn-light border">View Detail</a>
               </td>
             </tr>
           @empty
-            <tr><td colspan="10" class="text-center text-muted py-4">No agency data in this range.</td></tr>
+            <tr><td colspan="11" class="text-center text-muted py-4">No agency data in this range.</td></tr>
           @endforelse
         </tbody>
       </table>

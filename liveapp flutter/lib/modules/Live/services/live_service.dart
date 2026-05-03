@@ -28,6 +28,7 @@ class LiveService {
     String? roomId,
     String? title,
     bool startNow = true, // default true so server returns a host token
+    DateTime? scheduledAt,
     Map<String, dynamic>? meta,
   }) async {
     try {
@@ -37,6 +38,7 @@ class LiveService {
           if (roomId != null) 'room_id': roomId,
           if (title != null) 'title': title,
           'start_now': startNow,
+          if (scheduledAt != null) 'scheduled_at': scheduledAt.toIso8601String(),
           if (meta != null) 'meta': meta,
         },
       );
@@ -67,17 +69,21 @@ class LiveService {
     } on DioException catch (_) {}
   }
 
-  Future<List<home_dto.LiveRoomModel>> listLiveRooms() async {
-    return _listRooms('live/rooms');
+  Future<List<home_dto.LiveRoomModel>> listLiveRooms({bool includeScheduled = false}) async {
+    return _listRooms('live/rooms', query: {
+      if (includeScheduled) 'include_scheduled': 1,
+    });
   }
 
-  Future<List<home_dto.LiveRoomModel>> listAudioRooms() async {
-    return _listRooms('live/audio-rooms');
+  Future<List<home_dto.LiveRoomModel>> listAudioRooms({bool includeScheduled = false}) async {
+    return _listRooms('live/audio-rooms', query: {
+      if (includeScheduled) 'include_scheduled': 1,
+    });
   }
 
-  Future<List<home_dto.LiveRoomModel>> _listRooms(String path) async {
+  Future<List<home_dto.LiveRoomModel>> _listRooms(String path, {Map<String, dynamic>? query}) async {
     try {
-      final res = await api.get<Map<String, dynamic>>(path);
+      final res = await api.get<Map<String, dynamic>>(path, query: query);
       final status = res.statusCode ?? 0;
       final data = res.data ?? const {};
       if (status != 200 || data['ok'] != true) {
@@ -101,6 +107,7 @@ class LiveService {
     int maxParticipants = 50,
     int maxSpeakers = 8,
     bool startNow = true,
+    DateTime? scheduledAt,
   }) async {
     try {
       final res = await api.post<Map<String, dynamic>>(
@@ -112,6 +119,7 @@ class LiveService {
           'max_participants': maxParticipants,
           'max_speakers': maxSpeakers,
           'start_now': startNow,
+          if (scheduledAt != null) 'scheduled_at': scheduledAt.toIso8601String(),
         },
       );
       final data = Map<String, dynamic>.from(res.data ?? const {});
@@ -295,6 +303,26 @@ class LiveService {
       return Map<String, dynamic>.from(res.data ?? const {});
     } on DioException catch (e) {
       throw Exception(_extractError(e, fallback: 'Failed to send gift'));
+    }
+  }
+
+  Future<bool> setRoomReminder(String roomId) async {
+    roomId = _requireRoomId(roomId, action: 'set room reminder');
+    try {
+      final res = await api.post<Map<String, dynamic>>('live/rooms/$roomId/reminder');
+      return res.data?['data']?['has_reminder'] == true;
+    } on DioException catch (e) {
+      throw Exception(_extractError(e, fallback: 'Failed to set reminder'));
+    }
+  }
+
+  Future<bool> clearRoomReminder(String roomId) async {
+    roomId = _requireRoomId(roomId, action: 'clear room reminder');
+    try {
+      final res = await api.delete<Map<String, dynamic>>('live/rooms/$roomId/reminder');
+      return res.data?['data']?['has_reminder'] == true;
+    } on DioException catch (e) {
+      throw Exception(_extractError(e, fallback: 'Failed to clear reminder'));
     }
   }
 

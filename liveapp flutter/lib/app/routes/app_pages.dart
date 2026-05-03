@@ -27,6 +27,7 @@ import '../../modules/profile/views/edit_profile_page.dart';
 import '../../modules/profile/views/blocked_users_page.dart';
 import '../../modules/profile/views/followers_page.dart';
 import '../../modules/profile/views/following_page.dart';
+import '../../modules/profile/views/host_scheduled_lives_page.dart';
 import '../../modules/profile/views/moderation_history_page.dart';
 import '../../modules/profile/views/profile_page.dart';
 import '../../modules/profile/views/unblock_requests_page.dart';
@@ -327,6 +328,11 @@ class AppPages {
       GetPage(
         name: Routes.profileModerationHistory,
         page: () => const ModerationHistoryPage(),
+        middlewares: [AuthMiddleware(Get.find<AuthService>())],
+      ),
+      GetPage(
+        name: Routes.profileScheduledLives,
+        page: () => const HostScheduledLivesPage(),
         middlewares: [AuthMiddleware(Get.find<AuthService>())],
       ),
       GetPage(

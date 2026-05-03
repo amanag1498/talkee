@@ -206,10 +206,8 @@ class _SettingsPageState extends State<SettingsPage>
               physics: const BouncingScrollPhysics(),
               padding: EdgeInsets.fromLTRB(16, 16, 4, widget.bottomPadding),
               children: [
-              const _AnimatedEntrance(index: 0, child: _SettingsPageHeader()),
-              const SizedBox(height: 16),
               _AnimatedEntrance(
-                index: 1,
+                index: 0,
                 child: Obx(() {
                   final profile = _profileController.profile.value;
                   final effectiveName =
@@ -254,7 +252,7 @@ class _SettingsPageState extends State<SettingsPage>
               ),
               const SizedBox(height: 12),
               _AnimatedEntrance(
-                index: 2,
+                index: 1,
                 child: _SettingsSection(
                   title: 'Wallet & Plans',
                   subtitle: 'Coins, subscriptions, and entry effects',
@@ -311,6 +309,12 @@ class _SettingsPageState extends State<SettingsPage>
                       subtitle: 'View recharge orders and wallet top-ups',
                       meta: _rechargeMeta,
                       onTap: () => Get.toNamed(Routes.walletHistory),
+                    ),
+                    _PremiumSettingTile(
+                      icon: Icons.sports_kabaddi_rounded,
+                      title: 'Mock PK Room',
+                      subtitle: 'Open the mocked PK battle preview room',
+                      onTap: () => Get.toNamed(Routes.devLiveVideoPk),
                     ),
                   ],
                 ),

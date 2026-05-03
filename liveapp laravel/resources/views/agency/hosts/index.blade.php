@@ -30,6 +30,7 @@
             <th>Video Gifts</th>
             <th>Audio Room Min</th>
             <th>Audio Gifts</th>
+            <th>PK Gross / Events</th>
             <th>Video Call Min / Earn</th>
             <th>Audio Call Min / Earn</th>
             <th>Gross</th>
@@ -57,6 +58,7 @@
               <td>{{ number_format((int) $host->dashboard_video_gift_gross) }}</td>
               <td>{{ number_format((int) $host->dashboard_audio_room_minutes) }}</td>
               <td>{{ number_format((int) $host->dashboard_audio_gift_gross) }}</td>
+              <td>{{ number_format((int) $host->dashboard_pk_gross) }} / {{ number_format((int) $host->dashboard_pk_event_count) }}</td>
               <td>{{ number_format((int) $host->dashboard_video_call_minutes) }} / {{ number_format((int) $host->dashboard_video_call_gross) }}</td>
               <td>{{ number_format((int) $host->dashboard_audio_call_minutes) }} / {{ number_format((int) $host->dashboard_audio_call_gross) }}</td>
               <td>{{ number_format((int) $host->dashboard_total_gross) }}</td>
@@ -67,7 +69,7 @@
               </td>
             </tr>
           @empty
-            <tr><td colspan="11" class="text-center text-muted py-4">No hosts attached to this agency.</td></tr>
+            <tr><td colspan="13" class="text-center text-muted py-4">No hosts attached to this agency.</td></tr>
           @endforelse
         </tbody>
       </table>

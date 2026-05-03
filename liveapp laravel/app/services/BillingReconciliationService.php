@@ -20,7 +20,15 @@ class BillingReconciliationService
         return WalletTransaction::query()
             ->with(['wallet.user', 'counterparty'])
             ->when($request->filled('type'), fn ($q) => $q->where('type', $request->string('type')))
-            ->when($request->filled('category'), fn ($q) => $q->where('category', $request->string('category')))
+            ->when($request->filled('category'), function ($q) use ($request) {
+                $category = $request->string('category')->toString();
+                if ($category === 'entry_pack_purchase') {
+                    $q->where('type', 'debit')
+                        ->where('reference', 'like', 'ENTRY_PACK_PURCHASE:%');
+                    return;
+                }
+                $q->where('category', $category);
+            })
             ->when($paymentOrdersAvailable && $request->filled('recharge_status'), function ($q) use ($request) {
                 $q->where('category', 'recharge')
                     ->whereExists(function ($subQuery) use ($request) {

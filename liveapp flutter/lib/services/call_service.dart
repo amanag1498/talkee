@@ -5,9 +5,25 @@ class CallService {
 
   CallService(this.api);
 
-  Future<Map<String, dynamic>> fetchLiveUsers() async {
-    final res = await api.get<Map<String, dynamic>>('live-users');
-    return Map<String, dynamic>.from(res.data?['data'] as Map? ?? <String, dynamic>{});
+  Future<Map<String, dynamic>> fetchLiveUsers({
+    int page = 1,
+    int perPage = 50,
+  }) async {
+    final res = await api.get<Map<String, dynamic>>(
+      'live-users',
+      query: {
+        'page': page,
+        'per_page': perPage,
+      },
+    );
+    return {
+      'data': Map<String, dynamic>.from(
+        res.data?['data'] as Map? ?? <String, dynamic>{},
+      ),
+      'meta': Map<String, dynamic>.from(
+        res.data?['meta'] as Map? ?? <String, dynamic>{},
+      ),
+    };
   }
 
   Future<Map<String, dynamic>> toggleHostStatus(String manualStatus) async {

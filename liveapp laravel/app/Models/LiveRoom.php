@@ -54,6 +54,11 @@ public function adminAudits(): HasMany
     return $this->hasMany(\App\Models\LiveRoomAdminAudit::class);
 }
 
+public function reminders(): HasMany
+{
+    return $this->hasMany(\App\Models\LiveRoomReminder::class);
+}
+
 // optional helper
 public function getDurationMinutesAttribute(): ?int
 {

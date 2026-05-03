@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\DB;
 
 class AgencyDashboardService
 {
+    private const AGENCY_VISIBLE_PAYOUT_STATUSES = ['approved', 'paid'];
+
     public function build(Agency $agency, int $perPage = 20): array
     {
         $hostIds = $agency->hosts()->pluck('id');
@@ -23,7 +25,9 @@ class AgencyDashboardService
         $liveRoomsBase = LiveRoom::query()
             ->whereHas('host', fn ($query) => $query->where('agency_id', $agency->id));
         $giftBase = LiveRoomGiftEarningLedger::query()->where('agency_id', $agency->id);
-        $payoutBase = AgencyPayoutReport::query()->where('agency_id', $agency->id);
+        $payoutBase = AgencyPayoutReport::query()
+            ->where('agency_id', $agency->id)
+            ->whereIn('status', self::AGENCY_VISIBLE_PAYOUT_STATUSES);
 
         $activeHostCount = HostAvailability::query()
             ->whereIn('user_id', $hostUserIds)
@@ -61,6 +65,24 @@ class AgencyDashboardService
             ->get()
             ->keyBy('host_id');
 
+        $hostPkAgg = LiveRoomGiftEarningLedger::query()
+            ->join('live_room_gifts', 'live_room_gifts.id', '=', 'live_room_gift_earning_ledgers.live_room_gift_id')
+            ->join('live_room_pk_events', function ($join) {
+                $join->on('live_room_pk_events.wallet_transaction_id', '=', 'live_room_gifts.transaction_id')
+                    ->where('live_room_pk_events.event_type', '=', 'gift');
+            })
+            ->where('live_room_gift_earning_ledgers.agency_id', $agency->id)
+            ->selectRaw("
+                live_room_gift_earning_ledgers.host_id as host_id,
+                COUNT(live_room_pk_events.id) as pk_event_count,
+                SUM(live_room_gift_earning_ledgers.total_coins) as pk_gross,
+                SUM(live_room_gift_earning_ledgers.host_payout_coins) as pk_host_earnings,
+                SUM(live_room_gift_earning_ledgers.agency_payout_coins) as pk_agency_earnings
+            ")
+            ->groupBy('live_room_gift_earning_ledgers.host_id')
+            ->get()
+            ->keyBy('host_id');
+
         $hostRoomAgg = LiveRoom::query()
             ->whereHas('host', fn ($query) => $query->where('agency_id', $agency->id))
             ->selectRaw("
@@ -79,9 +101,10 @@ class AgencyDashboardService
             ->paginate($perPage);
 
         $hosts->setCollection(
-            $hosts->getCollection()->map(function (Host $host) use ($hostCallAgg, $hostGiftAgg, $hostRoomAgg) {
+            $hosts->getCollection()->map(function (Host $host) use ($hostCallAgg, $hostGiftAgg, $hostPkAgg, $hostRoomAgg) {
                 $callAgg = $hostCallAgg->get($host->id);
                 $giftAgg = $hostGiftAgg->get($host->id);
+                $pkAgg = $hostPkAgg->get($host->id);
                 $roomAgg = $hostRoomAgg->get($host->id);
                 $hostPct = (float) ($host->payout_percentage ?? 0);
                 $agencyPct = (float) ($host->agency?->payout_percentage ?? 0);
@@ -101,6 +124,10 @@ class AgencyDashboardService
                 $host->setAttribute('dashboard_audio_room_minutes', (int) ($roomAgg->audio_room_minutes ?? 0));
                 $host->setAttribute('dashboard_video_gift_gross', (int) ($giftAgg->video_gift_gross ?? 0));
                 $host->setAttribute('dashboard_audio_gift_gross', (int) ($giftAgg->audio_gift_gross ?? 0));
+                $host->setAttribute('dashboard_pk_gross', (int) ($pkAgg->pk_gross ?? 0));
+                $host->setAttribute('dashboard_pk_event_count', (int) ($pkAgg->pk_event_count ?? 0));
+                $host->setAttribute('dashboard_pk_host_earnings', (int) ($pkAgg->pk_host_earnings ?? 0));
+                $host->setAttribute('dashboard_pk_agency_earnings', (int) ($pkAgg->pk_agency_earnings ?? 0));
                 $host->setAttribute('dashboard_total_gross', $totalGross);
                 $host->setAttribute('dashboard_host_payout_percentage', $hostPct);
                 $host->setAttribute('dashboard_agency_payout_percentage', $agencyPct);
@@ -143,6 +170,21 @@ class AgencyDashboardService
             ")
             ->first();
 
+        $summaryPk = LiveRoomGiftEarningLedger::query()
+            ->join('live_room_gifts', 'live_room_gifts.id', '=', 'live_room_gift_earning_ledgers.live_room_gift_id')
+            ->join('live_room_pk_events', function ($join) {
+                $join->on('live_room_pk_events.wallet_transaction_id', '=', 'live_room_gifts.transaction_id')
+                    ->where('live_room_pk_events.event_type', '=', 'gift');
+            })
+            ->where('live_room_gift_earning_ledgers.agency_id', $agency->id)
+            ->selectRaw("
+                COUNT(live_room_pk_events.id) as pk_event_count,
+                SUM(live_room_gift_earning_ledgers.total_coins) as pk_gross,
+                SUM(live_room_gift_earning_ledgers.host_payout_coins) as pk_host_earnings,
+                SUM(live_room_gift_earning_ledgers.agency_payout_coins) as pk_agency_earnings
+            ")
+            ->first();
+
         $summaryRooms = LiveRoom::query()
             ->whereHas('host', fn ($query) => $query->where('agency_id', $agency->id))
             ->selectRaw("
@@ -167,6 +209,10 @@ class AgencyDashboardService
                 'audio_room_minutes' => (int) ($summaryRooms->audio_room_minutes ?? 0),
                 'video_gift_gross' => (int) ($summaryGifts->video_gift_gross ?? 0),
                 'audio_gift_gross' => (int) ($summaryGifts->audio_gift_gross ?? 0),
+                'pk_event_count' => (int) ($summaryPk->pk_event_count ?? 0),
+                'pk_gross' => (int) ($summaryPk->pk_gross ?? 0),
+                'pk_host_earnings' => (int) ($summaryPk->pk_host_earnings ?? 0),
+                'pk_agency_earnings' => (int) ($summaryPk->pk_agency_earnings ?? 0),
                 'video_call_minutes' => (int) ($summaryCalls->video_call_minutes ?? 0),
                 'audio_call_minutes' => (int) ($summaryCalls->audio_call_minutes ?? 0),
                 'video_call_gross' => (int) ($summaryCalls->video_call_gross ?? 0),
@@ -184,6 +230,7 @@ class AgencyDashboardService
             'hosts' => $hosts,
             'recentPayoutReports' => AgencyPayoutReport::query()
                 ->where('agency_id', $agency->id)
+                ->whereIn('status', self::AGENCY_VISIBLE_PAYOUT_STATUSES)
                 ->latest('period_start')
                 ->limit(5)
                 ->get(),
@@ -197,15 +244,18 @@ class AgencyDashboardService
                 ->with('user')
                 ->where('agency_id', $agency->id)
                 ->get()
-                ->map(function (Host $host) use ($hostCallAgg, $hostGiftAgg) {
+                ->map(function (Host $host) use ($hostCallAgg, $hostGiftAgg, $hostPkAgg) {
                     $callAgg = $hostCallAgg->get($host->id);
                     $giftAgg = $hostGiftAgg->get($host->id);
+                    $pkAgg = $hostPkAgg->get($host->id);
 
                     return [
                         'host' => $host,
                         'gross' => (int) ($callAgg->call_gross ?? 0) + (int) ($giftAgg->live_gift_gross ?? 0),
                         'agency_earnings' => (int) floor((((int) ($callAgg->call_gross ?? 0) + (int) ($giftAgg->live_gift_gross ?? 0)) * (float) ($host->agency?->payout_percentage ?? 0)) / 100),
                         'call_count' => (int) ($callAgg->call_count ?? 0),
+                        'pk_gross' => (int) ($pkAgg->pk_gross ?? 0),
+                        'pk_event_count' => (int) ($pkAgg->pk_event_count ?? 0),
                     ];
                 })
                 ->sortByDesc('gross')
@@ -249,6 +299,22 @@ class AgencyDashboardService
             ")
             ->first();
 
+        $summaryPk = LiveRoomGiftEarningLedger::query()
+            ->join('live_room_gifts', 'live_room_gifts.id', '=', 'live_room_gift_earning_ledgers.live_room_gift_id')
+            ->join('live_room_pk_events', function ($join) {
+                $join->on('live_room_pk_events.wallet_transaction_id', '=', 'live_room_gifts.transaction_id')
+                    ->where('live_room_pk_events.event_type', '=', 'gift');
+            })
+            ->where('live_room_gift_earning_ledgers.agency_id', $agency->id)
+            ->where('live_room_gift_earning_ledgers.host_id', $host->id)
+            ->selectRaw("
+                COUNT(live_room_pk_events.id) as pk_event_count,
+                SUM(live_room_gift_earning_ledgers.total_coins) as pk_gross,
+                SUM(live_room_gift_earning_ledgers.host_payout_coins) as pk_host_earnings,
+                SUM(live_room_gift_earning_ledgers.agency_payout_coins) as pk_agency_earnings
+            ")
+            ->first();
+
         $summaryRooms = (clone $liveRoomsBase)
             ->selectRaw("
                 SUM(CASE WHEN room_type = 'video' THEN GREATEST(TIMESTAMPDIFF(MINUTE, started_at, COALESCE(ended_at, last_activity_at, started_at)), 0) ELSE 0 END) as video_room_minutes,
@@ -278,6 +344,10 @@ class AgencyDashboardService
                 'live_gift_gross' => (int) LiveRoomGiftEarningLedger::query()->where('agency_id', $agency->id)->where('host_id', $host->id)->sum('total_coins'),
                 'video_gift_gross' => (int) ($summaryGifts->video_gift_gross ?? 0),
                 'audio_gift_gross' => (int) ($summaryGifts->audio_gift_gross ?? 0),
+                'pk_event_count' => (int) ($summaryPk->pk_event_count ?? 0),
+                'pk_gross' => (int) ($summaryPk->pk_gross ?? 0),
+                'pk_host_earnings' => (int) ($summaryPk->pk_host_earnings ?? 0),
+                'pk_agency_earnings' => (int) ($summaryPk->pk_agency_earnings ?? 0),
                 'gross_total' => $totalGross,
                 'host_payout_percentage' => $hostPct,
                 'agency_payout_percentage' => $agencyPct,

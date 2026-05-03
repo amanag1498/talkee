@@ -44,6 +44,9 @@ class HostAdminController extends Controller
             'agency_id'         => 'nullable|exists:agencies,id',
             'audio_call_rate_per_minute' => 'nullable|integer|min:1|max:100000',
             'video_call_rate_per_minute' => 'nullable|integer|min:1|max:100000',
+            'goal_followers' => ['nullable', 'string', 'regex:/^\s*\d+(\s*,\s*\d+)*\s*$/'],
+            'goal_weekly_live_minutes' => ['nullable', 'string', 'regex:/^\s*\d+(\s*,\s*\d+)*\s*$/'],
+            'goal_weekly_gifted_coins' => ['nullable', 'string', 'regex:/^\s*\d+(\s*,\s*\d+)*\s*$/'],
             // photos: optional; if present, replace existing set (max 6)
             'photos'            => 'sometimes|array|max:6',
             'photos.*'          => 'file|image|max:4096', // 4MB each
@@ -62,6 +65,9 @@ class HostAdminController extends Controller
                 'video_call_rate_per_minute' => array_key_exists('video_call_rate_per_minute', $data)
                     ? $data['video_call_rate_per_minute']
                     : $host->video_call_rate_per_minute,
+                'goal_followers' => $this->normalizeGoalList($data['goal_followers'] ?? null),
+                'goal_weekly_live_minutes' => $this->normalizeGoalList($data['goal_weekly_live_minutes'] ?? null),
+                'goal_weekly_gifted_coins' => $this->normalizeGoalList($data['goal_weekly_gifted_coins'] ?? null),
             ]);
 
             // If new photos uploaded, replace full set (keeps it simple/clean)
@@ -119,5 +125,24 @@ class HostAdminController extends Controller
     } catch (\Throwable $e) {}
 
         return back()->with('ok','Host unblocked.');
+    }
+
+    private function normalizeGoalList(?string $value): ?string
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+
+        $parts = preg_split('/\s*,\s*/', $value) ?: [];
+        $normalized = collect($parts)
+            ->map(fn ($part) => (int) $part)
+            ->filter(fn (int $number) => $number > 0)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        return empty($normalized) ? null : implode(',', $normalized);
     }
 }

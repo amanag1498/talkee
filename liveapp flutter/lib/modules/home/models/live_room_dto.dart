@@ -6,6 +6,7 @@ class LiveRoomModel {
   final String roomType;
   final String status;        // 'live' | 'scheduled' | 'ended'
   final int? hostId;
+  final int? hostProfileId;
   final String? hostName;     // 👈 new
   final int capacity;
   final int maxSpeakers;
@@ -18,9 +19,13 @@ class LiveRoomModel {
   final int speakerCount;
   final int pendingSeatRequestCount;
   final int peakViewers;
+  final int followerCount;
   final String? topic;
   final String? language;
   final bool isLocked;
+  final bool isFollowingHost;
+  final bool hasReminder;
+  final DateTime? scheduledAt;
   final DateTime? startedAt;
   final DateTime? updatedAt;
 
@@ -30,6 +35,7 @@ class LiveRoomModel {
     this.roomType = 'video',
     required this.status,
     this.hostId,
+    this.hostProfileId,
     this.hostName,
     this.capacity = 0,
     this.maxSpeakers = 4,
@@ -42,9 +48,13 @@ class LiveRoomModel {
     this.speakerCount = 0,
     this.pendingSeatRequestCount = 0,
     this.peakViewers = 0,
+    this.followerCount = 0,
     this.topic,
     this.language,
     this.isLocked = false,
+    this.isFollowingHost = false,
+    this.hasReminder = false,
+    this.scheduledAt,
     this.startedAt,
     this.updatedAt,
   });
@@ -72,6 +82,7 @@ class LiveRoomModel {
     final status = (j['status'] ?? 'scheduled').toString();
 
     final hostId = j['host_id'] == null ? null : int.tryParse(j['host_id'].toString());
+    final hostProfileId = j['host_profile_id'] == null ? null : int.tryParse(j['host_profile_id'].toString());
     final hostName = j['host_name']?.toString();             // 👈 map new field
     final capacity = j['capacity'] == null ? 0 : (int.tryParse(j['capacity'].toString()) ?? 0);
     final maxSpeakers = j['max_speakers'] == null ? 4 : (int.tryParse(j['max_speakers'].toString()) ?? 4);
@@ -97,6 +108,9 @@ class LiveRoomModel {
     final peakViewers = j['peak_viewers'] == null
         ? 0
         : (int.tryParse(j['peak_viewers'].toString()) ?? 0);
+    final followerCount = j['follower_count'] == null
+        ? 0
+        : (int.tryParse(j['follower_count'].toString()) ?? 0);
 
     final rawThumb = j['thumbnail']?.toString();
     final thumb = _normalizeThumb(rawThumb);
@@ -107,6 +121,9 @@ class LiveRoomModel {
     DateTime? started;
     final rawStarted = j['started_at'];
     if (rawStarted != null) started = DateTime.tryParse(rawStarted.toString());
+    DateTime? scheduled;
+    final rawScheduled = j['scheduled_at'];
+    if (rawScheduled != null) scheduled = DateTime.tryParse(rawScheduled.toString());
     DateTime? updated;
     final rawUpdated = j['updated_at'];
     if (rawUpdated != null) updated = DateTime.tryParse(rawUpdated.toString());
@@ -117,6 +134,7 @@ class LiveRoomModel {
       roomType: roomType,
       status: status,
       hostId: hostId,
+      hostProfileId: hostProfileId,
       hostName: hostName,
       capacity: capacity,
       maxSpeakers: maxSpeakers,
@@ -129,9 +147,13 @@ class LiveRoomModel {
       speakerCount: speakerCount,
       pendingSeatRequestCount: pendingSeatRequestCount,
       peakViewers: peakViewers,
+      followerCount: followerCount,
       topic: topic,
       language: language,
       isLocked: isLocked,
+      isFollowingHost: j['is_following_host'] == true,
+      hasReminder: j['has_reminder'] == true,
+      scheduledAt: scheduled,
       startedAt: started,
       updatedAt: updated,
     );
@@ -143,6 +165,7 @@ class LiveRoomModel {
     'room_type': roomType,
     'status': status,
     'host_id': hostId,
+    'host_profile_id': hostProfileId,
     'host_name': hostName,
     'capacity': capacity,
     'max_speakers': maxSpeakers,
@@ -155,9 +178,13 @@ class LiveRoomModel {
     'speaker_count': speakerCount,
     'pending_seat_request_count': pendingSeatRequestCount,
     'peak_viewers': peakViewers,
+    'follower_count': followerCount,
     'topic': topic,
     'language': language,
     'is_locked': isLocked,
+    'is_following_host': isFollowingHost,
+    'has_reminder': hasReminder,
+    'scheduled_at': scheduledAt?.toIso8601String(),
     'started_at': startedAt?.toIso8601String(),
     'updated_at': updatedAt?.toIso8601String(),
   };

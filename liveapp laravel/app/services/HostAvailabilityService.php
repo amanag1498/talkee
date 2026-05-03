@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\HostAvailability;
 use App\Models\User;
 use App\Models\Wallet;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -113,8 +114,10 @@ class HostAvailabilityService
         });
     }
 
-    public function visibleLiveUsersFor(User $viewer): array
+    public function visibleLiveUsersFor(User $viewer, int $page = 1, int $perPage = 50): LengthAwarePaginator
     {
+        $resolvedPerPage = max(1, min($perPage, 100));
+
         $hostUsers = User::query()
             ->role('host')
             ->with([
@@ -128,9 +131,11 @@ class HostAvailabilityService
                     ->where('manual_status', 'online')
                     ->where('socket_status', 'online');
             })
-            ->get();
+            ->paginate($resolvedPerPage, ['*'], 'page', max(1, $page));
 
-        $followSummary = $this->follows->decorateHostUsers($hostUsers, $viewer);
+        $hostUserCollection = $hostUsers->getCollection();
+
+        $followSummary = $this->follows->decorateHostUsers($hostUserCollection, $viewer);
         $counts = $followSummary['counts'] ?? collect();
         $followingIds = $followSummary['following_ids'] ?? [];
 
@@ -138,7 +143,7 @@ class HostAvailabilityService
         $baseMinimumBalance = (int) config('calls.minimum_balance_to_start_call');
         $callSessionService = app(CallSessionService::class);
 
-        $users = $hostUsers->map(function (User $hostUser) use ($viewerWalletBalance, $baseMinimumBalance, $callSessionService, $counts, $followingIds) {
+        $users = $hostUserCollection->map(function (User $hostUser) use ($viewerWalletBalance, $baseMinimumBalance, $callSessionService, $counts, $followingIds) {
             $host = $hostUser->host;
             $availability = $hostUser->hostAvailability;
             $isOnline = $availability->manual_status === 'online' && $availability->socket_status === 'online';
@@ -208,13 +213,15 @@ class HostAvailabilityService
             return 2;
         })->values()->all();
 
-        return [
+        $hostUsers->setCollection(collect([
             'viewer_balance' => $viewerWalletBalance,
             'minimum_balance_to_start_call' => $baseMinimumBalance,
             'audio_call_rate_per_minute' => (int) (config('calls.audio_coin_rate_per_minute') ?: config('calls.coin_rate_per_minute')),
             'video_call_rate_per_minute' => (int) (config('calls.video_coin_rate_per_minute') ?: config('calls.coin_rate_per_minute')),
             'users' => $users,
-        ];
+        ]));
+
+        return $hostUsers;
     }
 
     public function cleanupStaleSocketStatuses(int $seconds = 120): int

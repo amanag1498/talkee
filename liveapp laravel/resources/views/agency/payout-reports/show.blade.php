@@ -19,6 +19,7 @@
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Audio Rooms</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_audio_room_minutes) }} min</div><div class="text-muted small mt-1">Gifts {{ number_format($report->total_audio_gift_gross) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Video Calls</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_video_call_minutes) }} min</div><div class="text-muted small mt-1">Gross {{ number_format($report->total_video_call_gross) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Audio Calls</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_audio_call_minutes) }} min</div><div class="text-muted small mt-1">Gross {{ number_format($report->total_audio_call_gross) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">PK Gross / Events</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_pk_earnings) }} / {{ number_format($report->total_pk_event_count) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Host Payout</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->host_share) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Combined Payout</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_payout) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Gift Events / Qty</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_gift_events) }} / {{ number_format($report->total_gift_quantity) }}</div></div></div></div>
@@ -47,7 +48,8 @@
             <th>Agency Payout</th>
             <th>Total Payout</th>
             <th>Gift Events / Qty</th>
-            <th>PK Gross / Events</th>
+            <th>PK Gross</th>
+            <th>PK Events</th>
             <th>Final Payable</th>
           </tr>
         </thead>
@@ -66,11 +68,12 @@
               <td>{{ number_format($item->agency_payout) }} <div class="text-muted small">{{ number_format($item->agency_payout_percentage, 2) }}%</div></td>
               <td>{{ number_format($item->total_payout) }}</td>
               <td>{{ number_format((int) data_get($item->meta, 'gift_events', 0)) }} / {{ number_format((int) data_get($item->meta, 'gift_quantity', 0)) }}</td>
-              <td>{{ number_format($item->pk_earnings) }} / {{ number_format((int) data_get($item->meta, 'pk_event_count', 0)) }}</td>
+              <td>{{ number_format($item->pk_earnings) }}</td>
+              <td>{{ number_format((int) data_get($item->meta, 'pk_event_count', 0)) }}</td>
               <td>{{ number_format($item->final_payable) }}</td>
             </tr>
           @empty
-            <tr><td colspan="14" class="text-center text-muted py-4">No host rows in this report.</td></tr>
+            <tr><td colspan="15" class="text-center text-muted py-4">No host rows in this report.</td></tr>
           @endforelse
         </tbody>
       </table>

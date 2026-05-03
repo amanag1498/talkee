@@ -214,6 +214,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       payload.value?.features.walletRechargeEnabled ?? true;
   bool get hostCallingEnabled =>
       payload.value?.features.hostCallingEnabled ?? true;
+  AppHostGoalSettings get hostGoals =>
+      payload.value?.hostGoals ?? const AppHostGoalSettings.defaults();
   bool get anyLiveCreationEnabled => audioRoomsEnabled || videoRoomsEnabled;
 
   void _syncRemoteThemeRegistration(AppSettingsPayload? next) {
@@ -289,6 +291,11 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       'android_min_version_name': '1.0.0',
       'android_update_message':
           'Please update Talkee to continue using the app.',
+      'host_goals': const <String, dynamic>{
+        'followers': <int>[25, 50, 100, 250, 500, 1000, 2500],
+        'weekly_live_minutes': <int>[60, 180, 300, 600, 900, 1200],
+        'weekly_gifted_coins': <int>[500, 1000, 2500, 5000, 10000, 25000],
+      },
       'features': const <String, dynamic>{
         'audio_rooms_enabled': true,
         'video_rooms_enabled': true,
@@ -332,6 +339,7 @@ class AppSettingsPayload {
     required this.androidMinVersionCode,
     required this.androidMinVersionName,
     required this.androidUpdateMessage,
+    required this.hostGoals,
     required this.features,
   });
 
@@ -349,6 +357,7 @@ class AppSettingsPayload {
   final int androidMinVersionCode;
   final String androidMinVersionName;
   final String androidUpdateMessage;
+  final AppHostGoalSettings hostGoals;
   final AppPlatformFeatureFlags features;
 
   AppSettingsPayload copyWith({
@@ -367,6 +376,7 @@ class AppSettingsPayload {
     int? androidMinVersionCode,
     String? androidMinVersionName,
     String? androidUpdateMessage,
+    AppHostGoalSettings? hostGoals,
     AppPlatformFeatureFlags? features,
   }) {
     return AppSettingsPayload(
@@ -395,6 +405,7 @@ class AppSettingsPayload {
           androidMinVersionName ?? this.androidMinVersionName,
       androidUpdateMessage:
           androidUpdateMessage ?? this.androidUpdateMessage,
+      hostGoals: hostGoals ?? this.hostGoals,
       features: features ?? this.features,
     );
   }
@@ -456,6 +467,9 @@ class AppSettingsPayload {
                   false)
               ? json['android_update_message'].toString().trim()
               : 'Please update Talkee to continue using the app.',
+      hostGoals: AppHostGoalSettings.fromJson(
+        Map<String, dynamic>.from(json['host_goals'] as Map? ?? const {}),
+      ),
       features: AppPlatformFeatureFlags.fromJson(
         Map<String, dynamic>.from(json['features'] as Map? ?? const {}),
       ),
@@ -480,6 +494,49 @@ class AppSettingsPayload {
             .where((value) => value.isNotEmpty)
             .toList(growable: false);
     return values.isEmpty ? const <String>['midnight'] : values;
+  }
+}
+
+class AppHostGoalSettings {
+  const AppHostGoalSettings({
+    required this.followers,
+    required this.weeklyLiveMinutes,
+    required this.weeklyGiftedCoins,
+  });
+
+  const AppHostGoalSettings.defaults()
+    : followers = const <int>[25, 50, 100, 250, 500, 1000, 2500],
+      weeklyLiveMinutes = const <int>[60, 180, 300, 600, 900, 1200],
+      weeklyGiftedCoins = const <int>[500, 1000, 2500, 5000, 10000, 25000];
+
+  final List<int> followers;
+  final List<int> weeklyLiveMinutes;
+  final List<int> weeklyGiftedCoins;
+
+  factory AppHostGoalSettings.fromJson(Map<String, dynamic> json) {
+    const defaults = AppHostGoalSettings.defaults();
+    return AppHostGoalSettings(
+      followers: _intListFromJson(json['followers'], defaults.followers),
+      weeklyLiveMinutes: _intListFromJson(
+        json['weekly_live_minutes'],
+        defaults.weeklyLiveMinutes,
+      ),
+      weeklyGiftedCoins: _intListFromJson(
+        json['weekly_gifted_coins'],
+        defaults.weeklyGiftedCoins,
+      ),
+    );
+  }
+
+  static List<int> _intListFromJson(dynamic raw, List<int> fallback) {
+    final values =
+        (raw is List ? raw : const <dynamic>[])
+            .map((value) => int.tryParse(value.toString()) ?? 0)
+            .where((value) => value > 0)
+            .toSet()
+            .toList()
+          ..sort();
+    return values.isEmpty ? fallback : List<int>.unmodifiable(values);
   }
 }
 

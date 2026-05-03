@@ -1,13 +1,16 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/theme/brand.dart';
 import '../../../../app/widgets/haptics.dart';
 import '../../../../services/app_settings_service.dart';
+import '../../home/controllers/live_room_controller.dart';
 import '../services/live_service.dart';
 import 'video_call_page.dart';
 
@@ -29,6 +32,8 @@ Future<void> showLivePreflightSheet(
   String roomType = appSettings.videoRoomsEnabled ? 'video' : 'audio';
   bool micOn = true;
   bool camOn = true;
+  bool scheduleMode = false;
+  DateTime? scheduledAt;
   bool loading = false;
   String? err;
 
@@ -55,6 +60,9 @@ Future<void> showLivePreflightSheet(
               if (roomType == 'audio' && !appSettings.audioRoomsEnabled) {
                 throw Exception('Audio rooms are currently unavailable.');
               }
+              if (scheduleMode && scheduledAt == null) {
+                throw Exception('Select a schedule time first.');
+              }
               final mic = await Permission.microphone.request();
               if (!mic.isGranted) {
                 throw Exception('Microphone permission is required.');
@@ -70,10 +78,31 @@ Future<void> showLivePreflightSheet(
 
               final room =
                   roomType == 'audio'
-                      ? await live.createAudioRoom(title: initialTitle)
-                      : await live.createOrStart(title: initialTitle);
+                      ? await live.createAudioRoom(
+                          title: initialTitle,
+                          startNow: !scheduleMode,
+                          scheduledAt: scheduledAt,
+                        )
+                      : await live.createOrStart(
+                          title: initialTitle,
+                          startNow: !scheduleMode,
+                          scheduledAt: scheduledAt,
+                        );
               if (context.mounted) Navigator.of(sheetContext).pop();
               Haptics.success();
+              if (scheduleMode) {
+                if (Get.isRegistered<LiveRoomsController>()) {
+                  unawaited(Get.find<LiveRoomsController>().refreshRooms());
+                }
+                Get.snackbar(
+                  'Live scheduled',
+                  scheduledAt == null
+                      ? 'Your room has been saved as scheduled.'
+                      : 'Scheduled for ${DateFormat('dd MMM, hh:mm a').format(scheduledAt!.toLocal())}.',
+                  snackPosition: SnackPosition.BOTTOM,
+                );
+                return;
+              }
               if (roomType == 'audio') {
                 await Get.toNamed(
                   Routes.liveAudio,
@@ -180,8 +209,91 @@ Future<void> showLivePreflightSheet(
                           ],
                         ),
                         const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _ModeChip(
+                                icon: Icons.flash_on_rounded,
+                                label: 'Start Now',
+                                selected: !scheduleMode,
+                                onTap: () => setSheetState(() => scheduleMode = false),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _ModeChip(
+                                icon: Icons.schedule_rounded,
+                                label: 'Schedule',
+                                selected: scheduleMode,
+                                onTap: () => setSheetState(() => scheduleMode = true),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (scheduleMode) ...[
+                          const SizedBox(height: 12),
+                          InkWell(
+                            onTap: () async {
+                              final now = DateTime.now().add(const Duration(minutes: 15));
+                              final firstDate = DateTime(now.year, now.month, now.day);
+                              final pickedDate = await showDatePicker(
+                                context: context,
+                                firstDate: firstDate,
+                                initialDate: scheduledAt?.toLocal() ?? now,
+                                lastDate: now.add(const Duration(days: 30)),
+                              );
+                              if (pickedDate == null || !context.mounted) return;
+                              final pickedTime = await showTimePicker(
+                                context: context,
+                                initialTime: TimeOfDay.fromDateTime(
+                                  scheduledAt?.toLocal() ?? now,
+                                ),
+                              );
+                              if (pickedTime == null) return;
+                              setSheetState(() {
+                                scheduledAt = DateTime(
+                                  pickedDate.year,
+                                  pickedDate.month,
+                                  pickedDate.day,
+                                  pickedTime.hour,
+                                  pickedTime.minute,
+                                );
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(16),
+                            child: Ink(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: tokens.glassColor.withOpacity(.52),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: tokens.borderColor.withOpacity(.54)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.event_available_rounded, color: tokens.textPrimary),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      scheduledAt == null
+                                          ? 'Pick date and time'
+                                          : DateFormat('dd MMM yyyy • hh:mm a').format(scheduledAt!.toLocal()),
+                                      style: TextStyle(
+                                        color: tokens.textPrimary,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  Icon(Icons.chevron_right_rounded, color: tokens.textSecondary),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 14),
                         Text(
-                          roomType == 'audio'
+                          scheduleMode
+                              ? 'Followers can discover the scheduled room and viewers can set reminders before you go live.'
+                              : roomType == 'audio'
                               ? 'Audio rooms use microphone access only.'
                               : 'Camera and microphone permissions will be requested before your live starts.',
                           style: TextStyle(
@@ -245,10 +357,12 @@ Future<void> showLivePreflightSheet(
                                         ),
                                 label: Text(
                                   loading
-                                      ? 'Starting...'
-                                      : (roomType == 'audio'
-                                          ? 'Start Audio Room'
-                                          : 'Start Live'),
+                                      ? (scheduleMode ? 'Scheduling...' : 'Starting...')
+                                      : scheduleMode
+                                          ? 'Schedule Room'
+                                          : (roomType == 'audio'
+                                              ? 'Start Audio Room'
+                                              : 'Start Live'),
                                 ),
                               ),
                             ),

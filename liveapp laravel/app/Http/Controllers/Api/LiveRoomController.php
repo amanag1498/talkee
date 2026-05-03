@@ -3,14 +3,17 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\HostFollower;
 use App\Models\Host;
 use App\Models\LiveRoom;
 use App\Models\LiveRoomParticipant;
+use App\Models\LiveRoomReminder;
 use App\Services\LiveRoomBroadcaster;
 use App\Services\EntryPackService;
 use App\Services\LiveRoomPkService;
 use App\Services\LiveRoomSeatService;
 use App\Services\LiveRoomStateService;
+use App\Services\NotifyUser;
 use App\Services\ThemeUnlockService;
 use App\Services\LivekitToken;
 use App\Models\UserSubscription;
@@ -88,7 +91,8 @@ class LiveRoomController extends Controller
 
     public function index(Request $request)
     {
-        abort_unless($request->user(), 401);
+        $viewer = $request->user();
+        abort_unless($viewer, 401);
 
         $enabledTypes = collect([
             'audio' => (bool) config('app_features.platform.android.audio_rooms_enabled', true),
@@ -97,19 +101,16 @@ class LiveRoomController extends Controller
 
         abort_if($enabledTypes->isEmpty(), 403, 'Live rooms are currently unavailable.');
 
-        // Keep the Redis-backed rooms snapshot aligned with the DB query that
-        // powers the app list. Without this, a stale socket snapshot can
-        // re-introduce an already ended room right after the initial API load.
         $this->state->syncRedis();
 
-        $rooms = $this->state->liveRoomsQuery()
+        $rooms = $this->discoverRoomsQuery($request->boolean('include_scheduled'))
             ->whereIn('room_type', $enabledTypes->all())
             ->when($request->filled('room_type'), fn ($q) => $q->where('room_type', $request->string('room_type')->trim()->toString()))
             ->paginate(20);
 
         return response()->json([
             'ok' => true,
-            'data' => $rooms->getCollection()->map(fn (LiveRoom $room) => $this->state->payload($room))->values(),
+            'data' => $this->state->payloads($rooms->getCollection(), $viewer)->values(),
             'meta' => [
                 'current_page' => $rooms->currentPage(),
                 'per_page' => $rooms->perPage(),
@@ -135,6 +136,45 @@ class LiveRoomController extends Controller
         $live_room->forceFill(['last_activity_at' => now()])->save();
 
         return response()->json(['ok' => true]);
+    }
+
+    public function setReminder(Request $request, LiveRoom $live_room)
+    {
+        abort_if($live_room->status !== 'scheduled', 422, 'Reminders are only available for scheduled rooms.');
+        abort_if($live_room->ended_at !== null, 422, 'This room is no longer active.');
+
+        $reminder = LiveRoomReminder::query()->firstOrCreate(
+            [
+                'live_room_id' => $live_room->id,
+                'user_id' => $request->user()->id,
+            ],
+            [
+                'meta' => ['source' => 'app'],
+            ],
+        );
+
+        return response()->json([
+            'ok' => true,
+            'data' => [
+                'has_reminder' => true,
+                'reminder_id' => $reminder->id,
+            ],
+        ]);
+    }
+
+    public function clearReminder(Request $request, LiveRoom $live_room)
+    {
+        LiveRoomReminder::query()
+            ->where('live_room_id', $live_room->id)
+            ->where('user_id', $request->user()->id)
+            ->delete();
+
+        return response()->json([
+            'ok' => true,
+            'data' => [
+                'has_reminder' => false,
+            ],
+        ]);
     }
 
     /**
@@ -275,6 +315,7 @@ class LiveRoomController extends Controller
             // broadcast
             if (!$wasStarted && $room->status === 'live') {
                 LiveRoomBroadcaster::broadcast($room, 'live');
+                $this->notifyScheduledRoomLive($room, $host, $user);
                 Log::info('LIVE_ROOM_START_EXISTING_BROADCAST', ['room_id' => $room->room_id, 'event' => 'live']);
             } else {
                 $afterMeta = $room->meta ?? [];
@@ -353,6 +394,10 @@ class LiveRoomController extends Controller
         $room = LiveRoom::query()->findOrFail($room->id);
         LiveRoomBroadcaster::broadcast($room, $startNow ? 'live' : 'created');
         Log::info('LIVE_ROOM_CREATE_BROADCAST', ['room_id' => $room->room_id, 'event' => $startNow ? 'live' : 'created']);
+
+        if ($room->status === 'scheduled') {
+            $this->notifyScheduledRoomCreated($room, $host, $user);
+        }
 
         $entryEffect = null;
         if ($startNow && $hostToken) {
@@ -459,6 +504,95 @@ class LiveRoomController extends Controller
             'language' => $room->language,
             'meta'         => $room->meta,
         ];
+    }
+
+    private function discoverRoomsQuery(bool $includeScheduled)
+    {
+        return LiveRoom::query()
+            ->with(['host.user'])
+            ->whereNull('ended_at')
+            ->where(function ($query) use ($includeScheduled) {
+                $query->where('status', 'live');
+                if ($includeScheduled) {
+                    $query->orWhere(function ($scheduled) {
+                        $scheduled
+                            ->where('status', 'scheduled')
+                            ->whereNotNull('scheduled_at')
+                            ->where('scheduled_at', '>=', now()->subMinutes(2));
+                    });
+                }
+            })
+            ->withCount([
+                'participants as participant_count' => fn ($q) => $q->whereNull('left_at'),
+                'participants as viewer_count' => fn ($q) => $q->whereNull('left_at')->where('role', 'viewer'),
+                'participants as listener_count' => fn ($q) => $q->whereNull('left_at')->where('role', 'listener'),
+                'participants as speaker_count' => fn ($q) => $q->whereNull('left_at')->where('role', 'speaker'),
+                'participants as open_host_count' => fn ($q) => $q->whereNull('left_at')->where('role', 'host'),
+                'seatRequests as pending_seat_request_count' => fn ($q) => $q->where('status', 'pending'),
+                'reminders as reminder_count',
+            ])
+            ->orderByRaw("CASE WHEN status = 'live' THEN 0 ELSE 1 END")
+            ->orderByRaw("CASE WHEN room_type = 'audio' THEN 0 ELSE 1 END")
+            ->orderByRaw("CASE WHEN status = 'scheduled' THEN scheduled_at END ASC")
+            ->orderByDesc('started_at')
+            ->orderByDesc('id');
+    }
+
+    private function notifyScheduledRoomCreated(LiveRoom $room, Host $host, User $hostUser): void
+    {
+        $audience = HostFollower::query()
+            ->where('host_id', $host->id)
+            ->pluck('user_id');
+
+        if ($audience->isEmpty()) {
+            return;
+        }
+
+        $hostName = $host->stage_name ?: ($hostUser->name ?: 'A host');
+        $scheduledLabel = optional($room->scheduled_at)?->timezone(config('app.timezone'))->format('d M, h:i A');
+
+        NotifyUser::sendMany($audience, [
+            'type' => 'scheduled_live_created',
+            'title' => $hostName . ' scheduled a live',
+            'body' => $scheduledLabel
+                ? '"' . $room->title . '" is set for ' . $scheduledLabel . '.'
+                : 'A followed host scheduled "' . $room->title . '".',
+            'screen' => 'notifications',
+            'room_id' => $room->room_id,
+            'meta' => [
+                'room_id' => $room->room_id,
+                'host_id' => $hostUser->id,
+                'host_name' => $hostName,
+                'scheduled_at' => optional($room->scheduled_at)?->toIso8601String(),
+            ],
+        ]);
+    }
+
+    private function notifyScheduledRoomLive(LiveRoom $room, Host $host, User $hostUser): void
+    {
+        $audience = LiveRoomReminder::query()
+            ->where('live_room_id', $room->id)
+            ->pluck('user_id');
+
+        if ($audience->isEmpty()) {
+            return;
+        }
+
+        $hostName = $host->stage_name ?: ($hostUser->name ?: 'A host');
+
+        NotifyUser::sendMany($audience, [
+            'type' => 'scheduled_live_started',
+            'title' => $hostName . ' is live now',
+            'body' => '"' . $room->title . '" has started. Join the room now.',
+            'screen' => 'notifications',
+            'room_id' => $room->room_id,
+            'meta' => [
+                'room_id' => $room->room_id,
+                'host_id' => $hostUser->id,
+                'host_name' => $hostName,
+                'started_at' => optional($room->started_at)?->toIso8601String(),
+            ],
+        ]);
     }
 
     protected function generateRoomId(int $len = 8): string

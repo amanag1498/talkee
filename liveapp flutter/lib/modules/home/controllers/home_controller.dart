@@ -110,7 +110,7 @@ class HomeController extends SuperController {
                 NotificationsController(Get.find<ApiClient>()),
                 permanent: true,
               );
-      c.refreshAll(); // pulls first page + updates badge
+      c.refreshBadge(); // lightweight unread badge refresh only
     } catch (e, st) {
       debugPrint('[home] _refreshNotifications skipped: $e\n$st');
     }
@@ -120,7 +120,7 @@ class HomeController extends SuperController {
   void _startNotifPolling() {
     _stopNotifPolling();
     _notifTick = Timer.periodic(
-      const Duration(seconds: 30),
+      const Duration(minutes: 2),
       (_) => _refreshNotifications(),
     );
   }
@@ -291,6 +291,13 @@ class HomeController extends SuperController {
     if (_welcomeChecked) return;
     _welcomeChecked = true;
 
+    final userId = auth.currentUser?.id;
+    if (userId != null &&
+        Get.isRegistered<StorageService>() &&
+        Get.find<StorageService>().hasWelcomeTipAck(userId)) {
+      return;
+    }
+
     try {
       // GET /subscriptions/welcome-tip (server returns {show, plan, sub_id...})
       final tip = await _subs.welcomeTip();
@@ -311,6 +318,9 @@ class HomeController extends SuperController {
                 : int.tryParse('${tip['sub_id']}') ?? 0;
         if (subId > 0) {
           await _subs.ackWelcomeTip(subId: subId);
+          if (userId != null && Get.isRegistered<StorageService>()) {
+            await Get.find<StorageService>().markWelcomeTipAck(userId);
+          }
         }
       }
     } catch (e, st) {

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\LiveRoom;
 use App\Models\LiveRoomParticipant;
+use App\Services\NotifyUser;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -46,6 +47,69 @@ class LiveRoomMaintenanceService
         return [
             'count' => count($ended),
             'ended' => $ended,
+        ];
+    }
+
+    public function remindScheduledHosts(int $leadMinutes = 2): array
+    {
+        $windowStart = now()->subMinutes(2);
+        $windowEnd = now()->addMinutes(max(1, $leadMinutes));
+        $sent = [];
+
+        LiveRoom::query()
+            ->with(['host.user'])
+            ->where('status', 'scheduled')
+            ->whereNull('ended_at')
+            ->whereNotNull('scheduled_at')
+            ->whereBetween('scheduled_at', [$windowStart, $windowEnd])
+            ->orderBy('scheduled_at')
+            ->orderBy('id')
+            ->chunkById(100, function ($rooms) use (&$sent) {
+                foreach ($rooms as $room) {
+                    $meta = is_array($room->meta) ? $room->meta : [];
+                    if (!empty($meta['host_self_reminder_sent_at'])) {
+                        continue;
+                    }
+
+                    $hostUser = $room->host?->user;
+                    if (!$hostUser) {
+                        continue;
+                    }
+
+                    $hostName = $room->host?->stage_name ?: ($hostUser->name ?: 'Host');
+                    $scheduledLabel = optional($room->scheduled_at)
+                        ?->timezone(config('app.timezone'))
+                        ->format('d M, h:i A');
+
+                    NotifyUser::send((int) $hostUser->id, [
+                        'type' => 'host_scheduled_live_reminder',
+                        'title' => 'Time to start your live',
+                        'body' => $scheduledLabel
+                            ? '"' . $room->title . '" is scheduled for ' . $scheduledLabel . '. Start the room now.'
+                            : 'Your scheduled live "' . $room->title . '" is about to start.',
+                        'screen' => 'notifications',
+                        'room_id' => $room->room_id,
+                        'meta' => [
+                            'room_id' => $room->room_id,
+                            'host_id' => $hostUser->id,
+                            'host_name' => $hostName,
+                            'scheduled_at' => optional($room->scheduled_at)?->toIso8601String(),
+                        ],
+                    ]);
+
+                    $meta['host_self_reminder_sent_at'] = now()->toIso8601String();
+                    $room->forceFill(['meta' => $meta])->save();
+
+                    $sent[] = [
+                        'room_id' => $room->room_id,
+                        'user_id' => $hostUser->id,
+                    ];
+                }
+            });
+
+        return [
+            'count' => count($sent),
+            'sent' => $sent,
         ];
     }
 

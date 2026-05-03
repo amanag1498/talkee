@@ -80,6 +80,15 @@
       <div class="col-md-6 col-xl-3">
         <div class="card agency-stat-card">
           <div class="card-body">
+            <small class="text-muted">PK Earnings</small>
+            <div class="stat-value mt-1">{{ number_format($summary['pk_gross'] ?? 0) }}</div>
+            <div class="stat-meta mt-2">Events {{ number_format($summary['pk_event_count'] ?? 0) }} · Agency {{ number_format($summary['pk_agency_earnings'] ?? 0) }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-xl-3">
+        <div class="card agency-stat-card">
+          <div class="card-body">
             <small class="text-muted">Payout Reports</small>
             <div class="stat-value mt-1">{{ number_format($summary['payout_reports'] ?? 0) }}</div>
             <div class="stat-meta mt-2">Approved unpaid: {{ number_format($summary['approved_unpaid_reports'] ?? 0) }}</div>
@@ -147,11 +156,11 @@
                 <div class="agency-top-item">
                   <div>
                     <div class="fw-semibold">{{ $row['host']->user?->name ?? $row['host']->stage_name }}</div>
-                    <div class="text-muted small">{{ $row['host']->stage_name ?: '—' }} · Calls: {{ number_format($row['call_count']) }}</div>
+                    <div class="text-muted small">{{ $row['host']->stage_name ?: '—' }} · Calls: {{ number_format($row['call_count']) }} · PK {{ number_format($row['pk_event_count']) }}</div>
                   </div>
                   <div class="text-end">
                     <div class="fw-semibold">{{ number_format($row['gross']) }}</div>
-                    <div class="text-muted small">Agency payout {{ number_format($row['agency_earnings']) }}</div>
+                    <div class="text-muted small">Agency payout {{ number_format($row['agency_earnings']) }} · PK {{ number_format($row['pk_gross']) }}</div>
                   </div>
                 </div>
               @empty
@@ -178,6 +187,7 @@
               <th>Video Gifts</th>
               <th>Audio Room Min</th>
               <th>Audio Gifts</th>
+              <th>PK Gross / Events</th>
               <th>Video Call Min / Earn</th>
               <th>Audio Call Min / Earn</th>
               <th>Gross</th>
@@ -210,6 +220,7 @@
                 <td>{{ number_format((int) $host->dashboard_video_gift_gross) }}</td>
                 <td>{{ number_format((int) $host->dashboard_audio_room_minutes) }}</td>
                 <td>{{ number_format((int) $host->dashboard_audio_gift_gross) }}</td>
+                <td>{{ number_format((int) $host->dashboard_pk_gross) }} / {{ number_format((int) $host->dashboard_pk_event_count) }}</td>
                 <td>{{ number_format((int) $host->dashboard_video_call_minutes) }} / {{ number_format((int) $host->dashboard_video_call_gross) }}</td>
                 <td>{{ number_format((int) $host->dashboard_audio_call_minutes) }} / {{ number_format((int) $host->dashboard_audio_call_gross) }}</td>
                 <td>{{ number_format((int) $host->dashboard_total_gross) }}</td>
@@ -219,7 +230,7 @@
                 <td>{{ optional($host->created_at)->format('d M Y') ?: '—' }}</td>
               </tr>
             @empty
-              <tr><td colspan="13" class="text-center text-muted py-4">No hosts attached to this agency.</td></tr>
+              <tr><td colspan="14" class="text-center text-muted py-4">No hosts attached to this agency.</td></tr>
             @endforelse
           </tbody>
         </table>

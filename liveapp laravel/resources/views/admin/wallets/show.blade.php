@@ -2,6 +2,40 @@
 @section('title','Wallet · '.$user->name)
 
 @section('content')
+@php
+  $adminWalletCategoryOptions = [
+    'recharge' => 'Recharge',
+    'purchase' => 'Wallet purchase',
+    'gift' => 'Gift',
+    'subscription' => 'Subscription purchase',
+    'entry_pack_purchase' => 'Entry pack purchase',
+    'audio_call' => 'Audio call',
+    'video_call' => 'Video call',
+    'adjustment' => 'Adjustment',
+    'other' => 'Other',
+  ];
+
+  $adminWalletTxLabel = function ($tx) {
+      $reference = trim((string) ($tx->reference ?? ''));
+      $category = strtolower(trim((string) ($tx->category ?? '')));
+      $type = strtolower(trim((string) ($tx->type ?? '')));
+
+      if (str_starts_with($reference, 'ENTRY_PACK_PURCHASE:')) {
+          return 'Entry pack purchase';
+      }
+
+      return match ($category) {
+          'subscription' => 'Subscription purchase',
+          'recharge', 'purchase' => 'Wallet recharge',
+          'gift' => 'Gift sent',
+          'audio_call' => 'Audio call spend',
+          'video_call' => 'Video call spend',
+          'adjustment' => $type === 'credit' ? 'Wallet credit' : 'Wallet debit',
+          'other' => $type === 'credit' ? 'Wallet credit' : 'Wallet spend',
+          default => str_replace('_', ' ', ucfirst($category)),
+      };
+  };
+@endphp
 <div class="row g-3">
 
   {{-- Summary --}}
@@ -227,8 +261,8 @@
             <label class="form-label">Category</label>
             <select name="category" class="form-select">
               <option value="">Any</option>
-              @foreach(['recharge','purchase','gift','subscription','audio_call','video_call','adjustment','other'] as $category)
-                <option value="{{ $category }}" @selected(request('category') === $category)>{{ str_replace('_', ' ', ucfirst($category)) }}</option>
+              @foreach($adminWalletCategoryOptions as $category => $label)
+                <option value="{{ $category }}" @selected(request('category') === $category)>{{ $label }}</option>
               @endforeach
             </select>
           </div>
@@ -321,7 +355,7 @@
                   {{ ucfirst($tx->type) }}
                 </span>
               </td>
-              <td><span class="badge bg-light text-dark border">{{ str_replace('_',' ', ucfirst($tx->category)) }}</span></td>
+              <td><span class="badge bg-light text-dark border">{{ $adminWalletTxLabel($tx) }}</span></td>
               <td class="fw-semibold">{{ number_format($tx->coins) }}</td>
               <td class="text-nowrap">
                 @if(!is_null($tx->amount))

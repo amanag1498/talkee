@@ -8,8 +8,50 @@ import '../../../services/app_settings_service.dart';
 import '../../profile/widgets/public_profile_card_sheet.dart';
 import '../controllers/live_users_controller.dart';
 
-class LiveUsersView extends GetView<LiveUsersController> {
+class LiveUsersView extends StatefulWidget {
   const LiveUsersView({super.key});
+
+  @override
+  State<LiveUsersView> createState() => _LiveUsersViewState();
+}
+
+class _LiveUsersViewState extends State<LiveUsersView> {
+  late final LiveUsersController controller;
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = Get.find<LiveUsersController>();
+    _scrollController = ScrollController()
+      ..addListener(() {
+        if (!_scrollController.hasClients) return;
+        if (_scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 280) {
+          controller.loadMore();
+        }
+      });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.activateDirectory();
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _LiveUsersScreen(scrollController: _scrollController);
+  }
+}
+
+class _LiveUsersScreen extends GetView<LiveUsersController> {
+  const _LiveUsersScreen({required this.scrollController});
+
+  final ScrollController scrollController;
 
   PremiumThemeTokens _tokens() {
     final settings = Get.find<AppSettingsService>();
@@ -32,7 +74,7 @@ class LiveUsersView extends GetView<LiveUsersController> {
             ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: EdgeInsets.fromLTRB(24, 24, 24, listBottomPadding),
-              children: [
+              children: const [
                 SizedBox(height: 32),
                 _GlassPanel(
                   padding: EdgeInsets.all(24),
@@ -41,7 +83,7 @@ class LiveUsersView extends GetView<LiveUsersController> {
                     children: [
                       Icon(
                         Icons.phone_disabled_rounded,
-                        color: tokens.primaryButtonGradient.first,
+                        color: Colors.white,
                         size: 34,
                       ),
                       SizedBox(height: 14),
@@ -73,6 +115,7 @@ class LiveUsersView extends GetView<LiveUsersController> {
 
                 if (controller.loading.value && users.isEmpty) {
                   return ListView(
+                    controller: scrollController,
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: EdgeInsets.fromLTRB(16, 12, 16, listBottomPadding),
                     children: const [
@@ -87,6 +130,7 @@ class LiveUsersView extends GetView<LiveUsersController> {
 
                 if (controller.errorMessage.value != null && users.isEmpty) {
                   return ListView(
+                    controller: scrollController,
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: EdgeInsets.fromLTRB(24, 12, 24, listBottomPadding),
                     children: [
@@ -136,9 +180,23 @@ class LiveUsersView extends GetView<LiveUsersController> {
                 }
 
                 return ListView(
+                  controller: scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(16, 12, 16, listBottomPadding),
                   children: [
+                    if (users.isNotEmpty) ...[
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          'Showing ${users.length} of ${controller.totalUsers.value}',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: .62),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
                     if (users.isEmpty)
                       _GlassPanel(
                         padding: const EdgeInsets.all(22),
@@ -212,6 +270,29 @@ class LiveUsersView extends GetView<LiveUsersController> {
                           ),
                         );
                       }),
+                    if (users.isNotEmpty && controller.loadingMore.value)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 14),
+                        child: Center(
+                          child: CircularProgressIndicator(strokeWidth: 2.6),
+                        ),
+                      ),
+                    if (users.isNotEmpty &&
+                        !controller.hasMore.value &&
+                        !controller.loadingMore.value)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 14),
+                        child: Center(
+                          child: Text(
+                            'All live hosts loaded',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: .56),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 );
               }),
@@ -588,7 +669,7 @@ class _CallPromptSheet extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: tokens.cardGradient.first.withValues(alpha: .98),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
         ),
         padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
         child: Column(
@@ -722,119 +803,6 @@ class _CallPromptSheet extends StatelessWidget {
                   ),
                 ),
               ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CallActionButton extends StatelessWidget {
-  const _CallActionButton({
-    required this.icon,
-    required this.label,
-    required this.subtitle,
-    required this.enabled,
-    required this.accent,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final String subtitle;
-  final bool enabled;
-  final Color accent;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(18),
-      child: Ink(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          gradient: LinearGradient(
-            colors:
-                enabled
-                    ? [
-                      accent.withValues(alpha: .24),
-                      accent.withValues(alpha: .10),
-                    ]
-                    : [
-                      Colors.white.withValues(alpha: .06),
-                      Colors.white.withValues(alpha: .04),
-                    ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          border: Border.all(
-            color:
-                enabled
-                    ? accent.withValues(alpha: .42)
-                    : Colors.white.withValues(alpha: .08),
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color:
-                    enabled
-                        ? accent.withValues(alpha: .22)
-                        : Colors.white.withValues(alpha: .06),
-                borderRadius: BorderRadius.circular(11),
-              ),
-              child: Icon(
-                icon,
-                size: 18,
-                color: enabled ? accent : Colors.white.withValues(alpha: .42),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    label,
-                    style: TextStyle(
-                      color:
-                          enabled
-                              ? Colors.white
-                              : Colors.white.withValues(alpha: .42),
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color:
-                          enabled
-                              ? Colors.white.withValues(alpha: .72)
-                              : Colors.white.withValues(alpha: .34),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.arrow_forward_rounded,
-              size: 16,
-              color:
-                  enabled
-                      ? Colors.white.withValues(alpha: .72)
-                      : Colors.white.withValues(alpha: .30),
             ),
           ],
         ),

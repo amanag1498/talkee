@@ -39,6 +39,7 @@
           <th>Unique</th>
           <th>Call Coins</th>
           <th>Gift Coins</th>
+          <th>PK Coins</th>
           <th>Gross Coins</th>
           <th>Host %</th>
           @if($range==='weekly')
@@ -71,6 +72,7 @@
           <td>{{ $r['participants_unique'] }}</td>
           <td class="fw-semibold">{{ number_format($r['call_coins']) }}</td>
           <td class="fw-semibold">{{ number_format($r['gift_coins']) }}</td>
+          <td class="fw-semibold">{{ number_format($r['pk_coins']) }} <div class="text-muted small">{{ number_format($r['pk_events']) }} events</div></td>
           <td class="fw-semibold">{{ number_format($r['gross_coins']) }}</td>
           <td>{{ number_format((float) $r['host_payout_percentage'], 2) }}%</td>
           @if($range==='weekly')
@@ -82,7 +84,7 @@
           <td>{{ $r['gift_events'] }}</td>
         </tr>
       @empty
-        <tr><td colspan="{{ $range==='weekly' ? 15 : 14 }}" class="text-center text-muted py-4">No data in this range.</td></tr>
+        <tr><td colspan="{{ $range==='weekly' ? 16 : 15 }}" class="text-center text-muted py-4">No data in this range.</td></tr>
       @endforelse
       </tbody>
     </table>

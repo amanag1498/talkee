@@ -3,6 +3,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:liveapp/app/routes/app_routes.dart';
 
@@ -12,6 +13,7 @@ import '../../../services/app_settings_service.dart';
 import '../../Live/services/live_service.dart';
 import '../../banners/models/banner_item.dart';
 import '../../banners/services/banner_service.dart';
+import '../../profile/controllers/host_follow_controller.dart';
 import '../controllers/live_room_controller.dart';
 import '../models/live_room_dto.dart';
 import 'package:liveapp/modules/subscriptions/controllers/viewer_gate_controller.dart';
@@ -136,7 +138,10 @@ class _LivePageState extends State<LivePage> {
       final tokens = _tokens();
       final allAudioRooms =
           ctrl.liveRooms.where((room) => room.isAudioRoom).toList();
+      final scheduledAudioRooms =
+          ctrl.scheduledRooms.where((room) => room.isAudioRoom).toList();
       final list = allAudioRooms;
+      final follows = Get.find<HostFollowController>();
 
       return RefreshIndicator(
         color: tokens.primaryButtonGradient.first,
@@ -159,6 +164,30 @@ class _LivePageState extends State<LivePage> {
                     tokens: tokens,
                   ),
                 ),
+                if (scheduledAudioRooms.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: _UpcomingRoomsStrip(
+                      rooms: scheduledAudioRooms,
+                      tokens: tokens,
+                      onReminderToggle: ctrl.toggleReminder,
+                      onFollowToggle: (room) async {
+                        final hostProfileId = room.hostProfileId;
+                        if (hostProfileId == null) return;
+                        await follows.toggleForHost(
+                          hostId: hostProfileId,
+                          current: follows.isFollowing(
+                            hostProfileId,
+                            fallback: room.isFollowingHost,
+                          ),
+                          currentCount: follows.followerCount(
+                            hostProfileId,
+                            fallback: room.followerCount,
+                          ),
+                        );
+                        await ctrl.refreshRooms();
+                      },
+                    ),
+                  ),
                 if (ctrl.loading.value && allAudioRooms.isEmpty)
                   SliverPadding(
                     padding: EdgeInsets.fromLTRB(
@@ -214,43 +243,53 @@ class _LivePageState extends State<LivePage> {
                             room: room,
                             tokens: tokens,
                             onTap: () async {
-                              await gate.ensureAccessThen(
-                                onGranted: () async {
-                                  try {
-                                    final joined = await live.joinAudioRoom(
-                                      room.id,
-                                    );
-                                    await Get.toNamed(
-                                      Routes.liveAudio,
-                                      arguments: {
-                                        'room': joined,
-                                        'viewer_only': true,
-                                      },
-                                    );
-                                  } catch (e) {
-                                    final message = e.toString().replaceFirst(
-                                      'Exception: ',
-                                      '',
-                                    );
-                                    if (message.toLowerCase().contains(
-                                          'blocked by this host',
-                                        )) {
-                                      await _handleBlockedJoin(
-                                        live: live,
-                                        room: room,
-                                        message: message,
-                                      );
-                                      return;
-                                    }
-                                    Get.snackbar(
-                                      'Unable to join room',
-                                      message,
-                                      snackPosition: SnackPosition.BOTTOM,
-                                      duration: const Duration(seconds: 3),
-                                    );
-                                  }
-                                },
-                              );
+                              Future<void> attemptJoin() async {
+                                final joined = await live.joinAudioRoom(room.id);
+                                await Get.toNamed(
+                                  Routes.liveAudio,
+                                  arguments: {
+                                    'room': joined,
+                                    'viewer_only': true,
+                                  },
+                                );
+                              }
+
+                              try {
+                                await attemptJoin();
+                              } catch (e) {
+                                final message = e.toString().replaceFirst(
+                                  'Exception: ',
+                                  '',
+                                );
+                                final normalized = message.toLowerCase();
+
+                                if (normalized.contains(
+                                  'active subscription is required',
+                                )) {
+                                  await gate.ensureAccessThen(
+                                    onGranted: attemptJoin,
+                                  );
+                                  return;
+                                }
+
+                                if (normalized.contains(
+                                  'blocked by this host',
+                                )) {
+                                  await _handleBlockedJoin(
+                                    live: live,
+                                    room: room,
+                                    message: message,
+                                  );
+                                  return;
+                                }
+
+                                Get.snackbar(
+                                  'Unable to join room',
+                                  message,
+                                  snackPosition: SnackPosition.BOTTOM,
+                                  duration: const Duration(seconds: 3),
+                                );
+                              }
                             },
                           ),
                         );
@@ -269,6 +308,211 @@ class _LivePageState extends State<LivePage> {
         ),
       );
     });
+  }
+}
+
+class _UpcomingRoomsStrip extends StatelessWidget {
+  const _UpcomingRoomsStrip({
+    required this.rooms,
+    required this.tokens,
+    required this.onReminderToggle,
+    required this.onFollowToggle,
+  });
+
+  final List<LiveRoomModel> rooms;
+  final PremiumThemeTokens tokens;
+  final Future<void> Function(LiveRoomModel room) onReminderToggle;
+  final Future<void> Function(LiveRoomModel room) onFollowToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+      child: SizedBox(
+        height: 188,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: rooms.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 12),
+          itemBuilder: (context, index) {
+            final room = rooms[index];
+            return _UpcomingRoomCard(
+              room: room,
+              tokens: tokens,
+              onReminderToggle: () => onReminderToggle(room),
+              onFollowToggle: () => onFollowToggle(room),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _UpcomingRoomCard extends StatelessWidget {
+  const _UpcomingRoomCard({
+    required this.room,
+    required this.tokens,
+    required this.onReminderToggle,
+    required this.onFollowToggle,
+  });
+
+  final LiveRoomModel room;
+  final PremiumThemeTokens tokens;
+  final Future<void> Function() onReminderToggle;
+  final Future<void> Function() onFollowToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final when = room.scheduledAt;
+    final timeText = when == null
+        ? 'Schedule pending'
+        : DateFormat('dd MMM • hh:mm a').format(when.toLocal());
+    return Container(
+      width: 272,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: tokens.borderColor.withOpacity(.5)),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if ((room.thumbnail ?? '').isNotEmpty)
+            Image.network(room.thumbnail!, fit: BoxFit.cover)
+          else
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    tokens.cardGradient.first.withOpacity(.92),
+                    tokens.cardGradient.last.withOpacity(.94),
+                  ],
+                ),
+              ),
+            ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withOpacity(.18),
+                  Colors.black.withOpacity(.42),
+                  Colors.black.withOpacity(.82),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Align(
+                  alignment: Alignment.topRight,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      color: Colors.black.withOpacity(.28),
+                      border: Border.all(color: Colors.white.withOpacity(.18)),
+                    ),
+                    child: Text(
+                      room.roomType.toUpperCase(),
+                      style: TextStyle(
+                        color: tokens.textPrimary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  room.hostName ?? 'Host',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: tokens.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  timeText,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(.9),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  room.isFollowingHost
+                      ? 'Reminder is the only thing left.'
+                      : 'Follow the host and set your reminder.',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(.82),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.tonal(
+                        onPressed: onReminderToggle,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: room.hasReminder
+                              ? Colors.white.withOpacity(.18)
+                              : tokens.primaryButtonGradient.first.withOpacity(.42),
+                          foregroundColor: tokens.textPrimary,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          minimumSize: const Size(0, 38),
+                          textStyle: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        child: Text(room.hasReminder ? 'Reminder Set' : 'Remind Me'),
+                      ),
+                    ),
+                    if (!room.isFollowingHost && room.hostProfileId != null) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: onFollowToggle,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: tokens.textPrimary,
+                            side: BorderSide(color: Colors.white.withOpacity(.28)),
+                            backgroundColor: Colors.black.withOpacity(.12),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            minimumSize: const Size(0, 38),
+                            textStyle: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          child: const Text('Follow Host'),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

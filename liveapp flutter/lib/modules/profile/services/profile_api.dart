@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../services/api_client.dart';
+import '../models/host_earnings_report_dto.dart';
 import '../models/profile_dto.dart';
 
 class ProfileApi {
@@ -20,6 +21,12 @@ class ProfileApi {
     final res = await _api.get<Map<String, dynamic>>('profile/users/$userId');
     final body = _asMap(res.data);
     return ProfileDto.fromJson(_asMap(body['data']));
+  }
+
+  Future<HostEarningsReportDto> fetchHostEarningsReport() async {
+    final res = await _api.get<Map<String, dynamic>>('profile/host-earnings-report');
+    final body = _asMap(res.data);
+    return HostEarningsReportDto.fromJson(_asMap(body['data']));
   }
 
   Future<ProfileDto> updateProfile({

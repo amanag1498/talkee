@@ -2,8 +2,13 @@
 
 namespace App\Services;
 
+use App\Models\HostFollower;
 use App\Models\LiveRoom;
+use App\Models\LiveRoomPkBattle;
+use App\Models\LiveRoomReminder;
 use App\Models\LiveRoomParticipant;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Redis;
@@ -51,15 +56,116 @@ class LiveRoomStateService
 
     public function liveRoomsPayload(): Collection
     {
-        return $this->liveRoomsQuery()
-            ->get()
-            ->map(fn (LiveRoom $room) => $this->payload($room));
+        return $this->payloads($this->liveRoomsQuery()->get());
     }
 
-    public function payload(LiveRoom $room): array
+    public function payload(LiveRoom $room, ?User $viewer = null): array
     {
-        $room->loadMissing(['host.user']);
+        return $this->payloads(new EloquentCollection([$room]), $viewer)->first() ?? [];
+    }
 
+    public function payloads(iterable $rooms, ?User $viewer = null): Collection
+    {
+        $collection = $rooms instanceof EloquentCollection
+            ? new EloquentCollection($rooms->all())
+            : new EloquentCollection($rooms instanceof Collection ? $rooms->all() : collect($rooms)->all());
+        if ($collection->isEmpty()) {
+            return collect();
+        }
+
+        $collection->loadMissing(['host.user']);
+        $hostIds = $collection->pluck('host.id')->filter()->map(fn ($id) => (int) $id)->unique()->values();
+        $scheduledRoomIds = $collection
+            ->where('status', 'scheduled')
+            ->pluck('id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->values();
+        $videoRoomIds = $collection
+            ->where('room_type', 'video')
+            ->pluck('id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->values();
+
+        $followerCounts = $hostIds->isEmpty()
+            ? collect()
+            : HostFollower::query()
+                ->selectRaw('host_id, COUNT(*) as aggregate')
+                ->whereIn('host_id', $hostIds->all())
+                ->groupBy('host_id')
+                ->pluck('aggregate', 'host_id');
+
+        $followingHostIds = (!$viewer || $hostIds->isEmpty())
+            ? []
+            : array_fill_keys(
+                HostFollower::query()
+                    ->where('user_id', $viewer->id)
+                    ->whereIn('host_id', $hostIds->all())
+                    ->pluck('host_id')
+                    ->map(fn ($id) => (int) $id)
+                    ->all(),
+                true,
+            );
+
+        $reminderRoomIds = (!$viewer || $scheduledRoomIds->isEmpty())
+            ? []
+            : array_fill_keys(
+                LiveRoomReminder::query()
+                    ->where('user_id', $viewer->id)
+                    ->whereIn('live_room_id', $scheduledRoomIds->all())
+                    ->pluck('live_room_id')
+                    ->map(fn ($id) => (int) $id)
+                    ->all(),
+                true,
+            );
+
+        $pkPayloadByRoomId = [];
+        if ($videoRoomIds->isNotEmpty()) {
+            $battles = LiveRoomPkBattle::query()
+                ->with(['roomA.host.user', 'roomB.host.user', 'hostA.user', 'hostB.user', 'winnerRoom'])
+                ->where('status', 'active')
+                ->where(function ($query) use ($videoRoomIds) {
+                    $query
+                        ->whereIn('room_a_id', $videoRoomIds->all())
+                        ->orWhereIn('room_b_id', $videoRoomIds->all());
+                })
+                ->get();
+
+            foreach ($battles as $battle) {
+                $payload = $this->pk->payload($battle);
+                if (!$payload) {
+                    continue;
+                }
+                if ($battle->room_a_id) {
+                    $pkPayloadByRoomId[(int) $battle->room_a_id] = $payload;
+                }
+                if ($battle->room_b_id) {
+                    $pkPayloadByRoomId[(int) $battle->room_b_id] = $payload;
+                }
+            }
+        }
+
+        return $collection->map(function (LiveRoom $room) use ($viewer, $followerCounts, $followingHostIds, $reminderRoomIds, $pkPayloadByRoomId) {
+            return $this->buildPayload(
+                $room,
+                $viewer,
+                $followerCounts,
+                $followingHostIds,
+                $reminderRoomIds,
+                $pkPayloadByRoomId,
+            );
+        });
+    }
+
+    private function buildPayload(
+        LiveRoom $room,
+        ?User $viewer,
+        Collection $followerCounts,
+        array $followingHostIds,
+        array $reminderRoomIds,
+        array $pkPayloadByRoomId,
+    ): array {
         $host = $room->host;
         $hostUser = optional($host)->user;
 
@@ -83,6 +189,9 @@ class LiveRoomStateService
         $pendingSeatRequestCount = array_key_exists('pending_seat_request_count', $room->getAttributes())
             ? (int) $room->getAttribute('pending_seat_request_count')
             : (int) $room->seatRequests()->where('status', 'pending')->count();
+        $followerCount = $host?->id ? (int) ($followerCounts->get((int) $host->id) ?? 0) : 0;
+        $isFollowingHost = $viewer && $host?->id ? isset($followingHostIds[(int) $host->id]) : false;
+        $hasReminder = $viewer && $room->status === 'scheduled' ? isset($reminderRoomIds[(int) $room->id]) : false;
 
         return [
             'id' => (string) $room->room_id,
@@ -91,6 +200,7 @@ class LiveRoomStateService
             'room_type' => (string) ($room->room_type ?? 'video'),
             'status' => (string) $room->status,
             'host_id' => $hostUser ? (int) $hostUser->id : null,
+            'host_profile_id' => $host ? (int) $host->id : null,
             'host_name' => optional($host)->stage_name ?: optional($hostUser)->name,
             'thumbnail' => optional($hostUser)->avatar_url,
             'capacity' => (int) data_get($room->meta, 'capacity', 0),
@@ -106,7 +216,11 @@ class LiveRoomStateService
             'speaker_count' => $speakerCount,
             'speaker_participant_count' => $speakerParticipantCount,
             'pending_seat_request_count' => $pendingSeatRequestCount,
+            'follower_count' => $followerCount,
+            'is_following_host' => $isFollowingHost,
+            'has_reminder' => $hasReminder,
             'peak_viewers' => (int) ($room->peak_viewers ?? 0),
+            'scheduled_at' => optional($room->scheduled_at)?->toIso8601String(),
             'peak_listeners' => (int) ($room->peak_viewers ?? 0),
             'started_at' => optional($room->started_at)?->toIso8601String(),
             'ended_at' => optional($room->ended_at)?->toIso8601String(),
@@ -114,7 +228,7 @@ class LiveRoomStateService
             'last_activity_at' => optional($room->last_activity_at)?->toIso8601String(),
             'updated_at' => optional($room->updated_at)?->toIso8601String(),
             'host_active' => $openHostCount > 0,
-            'pk_active' => $this->pk->payload($this->pk->activeForRoom($room)),
+            'pk_active' => $pkPayloadByRoomId[(int) $room->id] ?? null,
         ];
     }
 

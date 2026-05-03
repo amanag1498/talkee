@@ -41,7 +41,7 @@
       <div class="card-body">
         <div class="row g-4">
           @foreach($groups as $groupKey => $groupLabel)
-            <div class="col-12 {{ $groupKey === 'general' ? '' : 'col-xl-4' }}">
+            <div class="col-12 {{ in_array($groupKey, ['general', 'host_goals']) ? '' : 'col-xl-4' }}">
               <div class="border rounded-3 p-3 h-100">
                 <h6 class="mb-3">{{ $groupLabel }}</h6>
                 <div class="d-grid gap-3">
@@ -57,7 +57,7 @@
                           <small class="text-muted">{{ $definition['hint'] }}</small>
                         @endif
                       </div>
-                      @if(($definition['type'] ?? 'boolean') === 'string')
+                      @if(($definition['type'] ?? 'boolean') === 'string' && !empty($definition['options']))
                         <div class="flex-shrink-0" style="min-width: 200px;">
                           <select
                             class="form-select form-select-sm @error($key) is-invalid @enderror"
@@ -72,6 +72,16 @@
                               </option>
                             @endforeach
                           </select>
+                        </div>
+                      @elseif(($definition['type'] ?? 'boolean') === 'csv_integer_list' || ($definition['type'] ?? 'boolean') === 'string')
+                        <div class="flex-shrink-0" style="min-width: 240px;">
+                          <input
+                            type="text"
+                            class="form-control form-control-sm @error($key) is-invalid @enderror"
+                            name="{{ $inputName }}"
+                            value="{{ old($key, $values[$key] ?? $definition['default'] ?? '') }}"
+                            @if(($definition['type'] ?? 'boolean') === 'csv_integer_list') inputmode="numeric" @endif
+                          >
                         </div>
                       @else
                         <div class="form-check form-switch m-0">

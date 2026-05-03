@@ -64,6 +64,16 @@ Artisan::command('live-rooms:cleanup {--stale-minutes=2}', function (LiveRoomMai
     $this->info("Ended {$result['count']} live room(s).");
 })->purpose('End stale live rooms or rooms with no active host participant');
 
+Artisan::command('live-rooms:remind-hosts {--lead-minutes=2}', function (LiveRoomMaintenanceService $service) {
+    $result = $service->remindScheduledHosts((int) $this->option('lead-minutes'));
+
+    $this->table(
+        ['Room ID', 'User ID'],
+        collect($result['sent'] ?? [])->map(fn ($row) => [$row['room_id'], $row['user_id']])->all()
+    );
+    $this->info("Sent {$result['count']} scheduled host reminder(s).");
+})->purpose('Send self-reminder notifications to hosts shortly before their scheduled live starts');
+
 Artisan::command('live-rooms:sync-redis', function (LiveRoomStateService $service) {
     $count = $service->syncRedis();
     $this->info("Synced {$count} live room(s) to Redis.");

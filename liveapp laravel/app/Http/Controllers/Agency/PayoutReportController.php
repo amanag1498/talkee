@@ -11,6 +11,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PayoutReportController extends Controller
 {
+    private const VISIBLE_STATUSES = ['approved', 'paid'];
+
     public function __construct(private AgencyWeeklyPayoutReportService $service)
     {
     }
@@ -22,6 +24,7 @@ class PayoutReportController extends Controller
         $reports = AgencyPayoutReport::query()
             ->with('items')
             ->where('agency_id', $agency->id)
+            ->whereIn('status', self::VISIBLE_STATUSES)
             ->when($request->filled('status'), fn ($query) => $query->where('status', $request->string('status')->toString()))
             ->when($request->filled('week_start'), fn ($query) => $query->whereDate('period_start', $request->date('week_start')->toDateString()))
             ->latest('period_start')
@@ -31,7 +34,7 @@ class PayoutReportController extends Controller
         return view('agency.payout-reports.index', [
             'agency' => $agency,
             'reports' => $reports,
-            'statuses' => ['generated', 'pending_review', 'approved', 'paid', 'rejected'],
+            'statuses' => self::VISIBLE_STATUSES,
         ]);
     }
 
@@ -39,6 +42,7 @@ class PayoutReportController extends Controller
     {
         $agency = Agency::query()->where('owner_user_id', $request->user()->id)->firstOrFail();
         abort_unless((int) $agency_payout_report->agency_id === (int) $agency->id, 403);
+        abort_unless(in_array($agency_payout_report->status, self::VISIBLE_STATUSES, true), 404);
 
         $agency_payout_report->load(['agency.owner', 'items.host.user']);
 
@@ -52,6 +56,7 @@ class PayoutReportController extends Controller
     {
         $agency = Agency::query()->where('owner_user_id', $request->user()->id)->firstOrFail();
         abort_unless((int) $agency_payout_report->agency_id === (int) $agency->id, 403);
+        abort_unless(in_array($agency_payout_report->status, self::VISIBLE_STATUSES, true), 404);
 
         $rows = $this->service->exportRows($agency_payout_report);
 
