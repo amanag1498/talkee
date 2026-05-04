@@ -256,7 +256,7 @@ public function join(Request $request, string $room_id)
         name: $name,
         role: $role,
         roomType: (string) ($room->room_type ?? 'video'),
-        ttlSec: (int) env('LK_TTL', 3600),
+        ttlSec: (int) config('services.livekit.ttl', 3600),
         metadata: $tokenMetadata,
     );
     Log::info('LIVE_INGEST_TOKEN_ISSUED', [
@@ -289,7 +289,7 @@ public function join(Request $request, string $room_id)
         'room_type'     => (string) ($room->room_type ?? 'video'),
         'identity'      => $identity,
         'role'          => $role,
-        'ws_url'        => env('LIVEKIT_WS_URL', 'ws://localhost:7880'),
+        'ws_url'        => (string) config('services.livekit.ws_url', 'ws://localhost:7880'),
         'token'         => $token,
         'speakers'      => $snapshot['speakers'] ?? [],
         'participant_count' => (int) ($snapshot['participant_count'] ?? 0),

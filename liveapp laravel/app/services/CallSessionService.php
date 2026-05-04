@@ -335,7 +335,7 @@ class CallSessionService
             identity: (string) $actor->id,
             name: $actor->name,
             role: $role,
-            ttlSec: (int) env('LK_TTL', 3600),
+            ttlSec: (int) config('services.livekit.ttl', 3600),
             metadata: [
                 'call_id' => $call->id,
                 'type' => $call->type,
@@ -346,7 +346,7 @@ class CallSessionService
         return [
             'call_id' => $call->id,
             'room_name' => $call->livekit_room_name,
-            'ws_url' => env('LIVEKIT_WS_URL', 'ws://localhost:7880'),
+            'ws_url' => (string) config('services.livekit.ws_url', 'ws://localhost:7880'),
             'token' => $token,
             'identity' => (string) $actor->id,
             'type' => $call->type,

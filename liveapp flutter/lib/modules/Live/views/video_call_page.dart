@@ -180,45 +180,7 @@ class _VideoCallPageState extends State<VideoCallPage>
       Get.find<AppSettingsService>().payload,
       (_) => _syncOwnChatTheme(),
     );
-    if (widget.devMode) {
-      _seedDevPreview();
-      return;
-    }
     _bootstrap();
-  }
-
-  void _seedDevPreview() {
-    LivePkBattleModel? initialBattle;
-    final prefill = widget.room.pkActive;
-    if (prefill != null && prefill.isNotEmpty && prefill['battle_id'] != null) {
-      initialBattle = LivePkBattleModel.fromJson(prefill);
-    }
-
-    _connecting = false;
-    _error = null;
-    _timerText = '';
-    _localSpeaking = false;
-    _availableGifts = const <LiveGiftItem>[];
-    _chatMessages.value = const <LiveRoomChatMessage>[];
-    _speakers = const <Map<String, dynamic>>[];
-    _speakerCount = widget.room.speakerCount;
-    _maxSpeakers = widget.room.maxSpeakers;
-    _pendingRequests = const <Map<String, dynamic>>[];
-    _pkBattle = initialBattle?.isActive == true ? initialBattle : null;
-    _incomingPkInvite = null;
-    _opponentConnecting = false;
-    _opponentMediaUnavailable = _pkBattle != null;
-    _pendingRequestId = null;
-    _requestStatus = null;
-    _pkOverlayTitle = _pkBattle != null ? 'PK Battle Started' : null;
-    _pkOverlaySubtitle =
-        _pkBattle != null
-            ? 'Host stage switched into a PK battle preview.'
-            : null;
-    if (_pkBattle != null) {
-      _clearPkOverlayLater();
-      _seedDevPkSupporters();
-    }
   }
 
   Map<String, dynamic> _buildDevPkBattlePayload({
@@ -1350,25 +1312,6 @@ class _VideoCallPageState extends State<VideoCallPage>
     int? level,
     String? avatarUrl,
   }) {
-    if (widget.devMode) {
-      return showModalBottomSheet<void>(
-        context: context,
-        backgroundColor: Colors.transparent,
-        isScrollControlled: true,
-        builder:
-            (_) => _VideoParticipantProfileFallbackSheet(
-              name: name,
-              subtitle: subtitle,
-              themeKey: themeKey,
-              isVip: isVip,
-              isHost: isHost,
-              speaking: speaking,
-              userId: userId,
-              level: level,
-              avatarUrl: avatarUrl,
-            ),
-      );
-    }
     return showPublicProfileCardSheet(
       context,
       userId: userId,
@@ -1681,27 +1624,6 @@ class _VideoCallPageState extends State<VideoCallPage>
     }
     if (trimmed.length > 250) {
       return 'Message must be 250 characters or less.';
-    }
-    if (widget.devMode) {
-      final currentUser = Get.find<AuthService>().currentUser;
-      _appendChatMessage(
-        LiveRoomChatMessage(
-          id: 'dev-video-${DateTime.now().microsecondsSinceEpoch}',
-          roomId: widget.room.roomId,
-          roomType: widget.room.roomType,
-          senderId: currentUser?.id ?? 9999,
-          senderName: currentUser?.name ?? 'You',
-          senderLevel: currentUser?.level,
-          senderIsVip: _currentUserLooksVip(),
-          senderIsHost: _isHost,
-          senderActiveThemeKey:
-              Get.find<AppSettingsService>().activePremiumThemeVariant,
-          message: trimmed,
-          messageType: 'text',
-          createdAt: DateTime.now(),
-        ),
-      );
-      return null;
     }
     if (!Get.isRegistered<RoomsSocketService>()) {
       return 'Room chat is unavailable.';
@@ -2887,13 +2809,6 @@ class _VideoCallPageState extends State<VideoCallPage>
         giftName: selection.gift.name,
         currentThemeKey: Get.find<AppSettingsService>().activePremiumThemeVariant,
       );
-      if (widget.devMode) {
-        _simulateMockGift(selection);
-        Haptics.success();
-        if (!mounted) return;
-        setState(() => _giftError = null);
-        return;
-      }
       await widget.live.sendRoomGift(
         widget.room.roomId,
         giftId: selection.gift.id,
@@ -2909,49 +2824,6 @@ class _VideoCallPageState extends State<VideoCallPage>
       if (mounted) {
         setState(() => _giftBusy = false);
       }
-    }
-  }
-
-  void _simulateMockGift(LiveRoomGiftSelection selection) {
-    final hostTile = ((widget.room.meta?['dev_video_tiles'] as List?) ?? const [])
-        .whereType<Map>()
-        .cast<Map>()
-        .firstWhere(
-          (tile) => tile['is_host'] == true,
-          orElse: () => const <String, dynamic>{},
-        );
-    final payload = LiveRoomDevFixtures.mockGiftPayload(
-      roomId: widget.room.roomId,
-      roomType: 'video',
-      receiverId: (hostTile['user_id'] as int?) ?? 501,
-      receiverName:
-          hostTile['label']?.toString() ??
-          widget.room.meta?['host_name']?.toString() ??
-          'Host Aman',
-      receiverAvatar: hostTile['avatar_url']?.toString(),
-      gift: selection.gift,
-      quantity: selection.quantity,
-      pkSide: _pkActive ? 'left' : null,
-    );
-    final settings = Get.find<AppSettingsService>();
-    _recordPkGiftFromEvent(payload, fallbackSide: _pkActive ? 'left' : null);
-    _giftAnimationOverlay.handleSocketGiftEvent(
-      payload,
-      currentThemeKey: settings.activePremiumThemeVariant,
-      receiverFallbackId: (hostTile['user_id'] as int?) ?? 501,
-      currentUserId: _myUserId ?? 90061,
-      inferredPkSide: _pkActive ? 'left' : null,
-    );
-    if (mounted) {
-      setState(() {
-        _recentGiftMessage =
-            'Gift Tester sent ${selection.gift.name} x${selection.quantity}';
-      });
-      _recentGiftTimer?.cancel();
-      _recentGiftTimer = Timer(const Duration(seconds: 4), () {
-        if (!mounted) return;
-        setState(() => _recentGiftMessage = null);
-      });
     }
   }
 
@@ -3895,8 +3767,7 @@ class _VideoCallPageState extends State<VideoCallPage>
     final pad = media.padding;
     final isCompactDevice =
         media.size.width < 360 || media.size.height < 760;
-    final stageTiles =
-        widget.devMode && _room == null ? _devStageTiles() : _stageTiles();
+    final stageTiles = _stageTiles();
     final inlineError =
         _seatError ?? _giftError ?? _pkOverlaySubtitle ?? _error;
     final hasTopTicker =
@@ -4164,23 +4035,6 @@ class _VideoCallPageState extends State<VideoCallPage>
                 title: _pkOverlayTitle!,
                 subtitle: _pkOverlaySubtitle!,
                 winnerSide: _pkOverlayWinnerSide,
-              ),
-            if (widget.devMode)
-              Positioned(
-                right: 12,
-                bottom: 148 + pad.bottom,
-                child: _DevPkControlPad(
-                  pkActive: _pkActive,
-                  onStart: _mockDevEnterPkBattle,
-                  onReset: () {
-                    _mockDevExitPkBattle();
-                    _mockDevEnterPkBattle();
-                  },
-                  onLeftGift: () => _mockDevGiftToSide('left'),
-                  onRightGift: () => _mockDevGiftToSide('right'),
-                  onLeftWin: () => _mockDevResolvePk(1),
-                  onRightWin: () => _mockDevResolvePk(-1),
-                ),
               ),
             ],
           ),

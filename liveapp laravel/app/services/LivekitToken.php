@@ -10,8 +10,8 @@ class LivekitToken
 {
     public static function serverToken(?int $ttlSec = null, ?string $roomId = null): string
     {
-        $apiKey = (string) env('LK_API_KEY');
-        $apiSecret = (string) env('LK_API_SECRET');
+        $apiKey = (string) config('services.livekit.api_key', '');
+        $apiSecret = (string) config('services.livekit.api_secret', '');
         $ttl = $ttlSec ?? 300;
         $now = time();
 
@@ -46,9 +46,9 @@ class LivekitToken
         bool $canPublishData = true,
         bool $canUpdateOwnMetadata = true,
     ): string {
-        $apiKey    = (string) env('LK_API_KEY');
-        $apiSecret = (string) env('LK_API_SECRET');
-        $ttl       = $ttlSec ?? (int) env('LK_TTL', 3600);
+        $apiKey    = (string) config('services.livekit.api_key', '');
+        $apiSecret = (string) config('services.livekit.api_secret', '');
+        $ttl       = $ttlSec ?? (int) config('services.livekit.ttl', 3600);
         Log::info('LIVEKIT_TOKEN_ISSUE_BEGIN', [
             'room_id' => $roomId,
             'identity' => $identity,

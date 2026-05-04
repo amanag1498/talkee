@@ -39,4 +39,12 @@ return [
         'enabled' => env('MOCK_PAYMENTS_ENABLED', true),
     ],
 
+    'livekit' => [
+        'ws_url' => env('LIVEKIT_WS_URL', 'ws://localhost:7880'),
+        'http_url' => env('LIVEKIT_HTTP_URL', ''),
+        'api_key' => env('LK_API_KEY', ''),
+        'api_secret' => env('LK_API_SECRET', ''),
+        'ttl' => (int) env('LK_TTL', 3600),
+    ],
+
 ];

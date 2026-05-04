@@ -220,7 +220,7 @@ class LiveRoomController extends Controller
         Log::info('LIVE_ROOM_HOST_PROFILE_OK', ['user_id' => $user->id, 'host_id' => $host->id]);
 
         $startNow = (bool) ($data['start_now'] ?? true);
-        $wsUrl    = (string) env('LIVEKIT_WS_URL', 'ws://localhost:7880');
+        $wsUrl    = (string) config('services.livekit.ws_url', 'ws://localhost:7880');
         $deviceId = (string) $request->header('X-Device-Id', 'dev'); // <- align with client
 
         // ─── START EXISTING ─────────────────────────────────────────
@@ -293,7 +293,7 @@ class LiveRoomController extends Controller
                     name:     $name,
                     role:     'host',
                     roomType: (string) ($room->room_type ?? $roomType),
-                    ttlSec:   (int) env('LK_TTL', 3600),
+                    ttlSec:   (int) config('services.livekit.ttl', 3600),
                     metadata: $this->hostTokenMetadata($user, $host, (string) ($room->room_type ?? $roomType), $deviceId)
                 );
                 Log::info('LIVE_ROOM_START_EXISTING_TOKEN_ISSUED', ['room_id' => $room->room_id, 'identity' => $identity]);
@@ -380,7 +380,7 @@ class LiveRoomController extends Controller
                     name:     $name,
                     role:     'host',
                     roomType: $roomType,
-                    ttlSec:   (int) env('LK_TTL', 3600),
+                    ttlSec:   (int) config('services.livekit.ttl', 3600),
                     metadata: $this->hostTokenMetadata($user, $host, $roomType, $deviceId),
                     publishSources: $roomType === 'audio' ? ['microphone'] : ['camera', 'microphone']
                 );

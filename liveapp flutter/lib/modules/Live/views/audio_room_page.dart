@@ -13,7 +13,6 @@ import '../../../services/auth_service.dart';
 import '../../../services/live_rooms_ws_service.dart';
 import '../../profile/controllers/host_follow_controller.dart';
 import '../../profile/widgets/public_profile_card_sheet.dart';
-import '../dev/live_room_dev_fixtures.dart';
 import '../models/live_gift_item.dart';
 import '../models/live_pk_battle_model.dart';
 import '../models/live_room_chat_message.dart';
@@ -170,23 +169,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
       Get.find<AppSettingsService>().payload,
       (_) => _syncOwnChatTheme(),
     );
-    if (widget.devMode) {
-      _seedDevPreview();
-      return;
-    }
     _bootstrap();
-  }
-
-  void _seedDevPreview() {
-    _connecting = false;
-    _reconnecting = false;
-    _error = null;
-    _hostName ??= widget.room.meta?['host_name']?.toString();
-    _hostUserId ??=
-        widget.room.meta?['host_user_id'] as int? ??
-        widget.room.meta?['host_id'] as int?;
-    _availableGifts = const <LiveGiftItem>[];
-    _chatMessages.value = const <LiveRoomChatMessage>[];
   }
 
   Future<void> _bootstrap() async {
@@ -1112,27 +1095,6 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     if (trimmed.length > 250) {
       return 'Message must be 250 characters or less.';
     }
-    if (widget.devMode) {
-      final currentUser = Get.find<AuthService>().currentUser;
-      _appendChatMessage(
-        LiveRoomChatMessage(
-          id: 'dev-audio-${DateTime.now().microsecondsSinceEpoch}',
-          roomId: widget.room.roomId,
-          roomType: widget.room.roomType,
-          senderId: currentUser?.id ?? 9999,
-          senderName: currentUser?.name ?? 'You',
-          senderLevel: currentUser?.level,
-          senderIsVip: _currentUserLooksVip(),
-          senderIsHost: _isHost,
-          senderActiveThemeKey:
-              Get.find<AppSettingsService>().activePremiumThemeVariant,
-          message: trimmed,
-          messageType: 'text',
-          createdAt: DateTime.now(),
-        ),
-      );
-      return null;
-    }
     if (!Get.isRegistered<RoomsSocketService>()) {
       return 'Room chat is unavailable.';
     }
@@ -1332,11 +1294,6 @@ class _AudioRoomPageState extends State<AudioRoomPage>
       currentThemeKey: Get.find<AppSettingsService>().activePremiumThemeVariant,
     );
     try {
-      if (widget.devMode) {
-        _simulateMockGift(selection);
-        Haptics.light();
-        return;
-      }
       await widget.live.sendRoomGift(
         widget.room.roomId,
         giftId: selection.gift.id,
@@ -1347,40 +1304,6 @@ class _AudioRoomPageState extends State<AudioRoomPage>
       if (mounted) setState(() => _giftError = e.toString());
     } finally {
       if (mounted) setState(() => _giftBusy = false);
-    }
-  }
-
-  void _simulateMockGift(LiveRoomGiftSelection selection) {
-    final payload = LiveRoomDevFixtures.mockGiftPayload(
-      roomId: widget.room.roomId,
-      roomType: 'audio',
-      receiverId: _hostUserId ?? 301,
-      receiverName: _hostName ?? 'Host Aman',
-      receiverAvatar: widget.room.meta?['host_avatar']?.toString(),
-      gift: selection.gift,
-      quantity: selection.quantity,
-    );
-    final settings = Get.find<AppSettingsService>();
-    _giftAnimationOverlay.handleSocketGiftEvent(
-      payload,
-      currentThemeKey: settings.activePremiumThemeVariant,
-      receiverFallbackId: _hostUserId ?? 301,
-      currentUserId: _myUserId ?? 90061,
-    );
-    if (mounted) {
-      setState(() {
-        _recentGiftMessage =
-            'Gift Tester sent ${selection.gift.name} x${selection.quantity}';
-        _recentGiftEmoji = '🎁';
-      });
-      _recentGiftTimer?.cancel();
-      _recentGiftTimer = Timer(const Duration(seconds: 4), () {
-        if (!mounted) return;
-        setState(() {
-          _recentGiftMessage = null;
-          _recentGiftEmoji = null;
-        });
-      });
     }
   }
 
@@ -2353,8 +2276,6 @@ class _AudioRoomPageState extends State<AudioRoomPage>
 
   Future<void> _showListenersSheet() async {
     final listeners = _listenerParticipants();
-    final devListeners = _buildDevListenerEntries();
-    final showDevListeners = widget.devMode && _room == null;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -2362,41 +2283,9 @@ class _AudioRoomPageState extends State<AudioRoomPage>
       builder:
           (_) => _AudioSheet(
             title: 'Listeners',
-            subtitle:
-                '${showDevListeners ? devListeners.length : listeners.length} visible here',
+            subtitle: '${listeners.length} visible here',
             child:
-                showDevListeners
-                    ? (devListeners.isEmpty
-                        ? const _ModalEmptyState(
-                          icon: Icons.headphones_rounded,
-                          title: 'No listeners visible',
-                          body: 'Add more mock listeners in the dev fixture.',
-                        )
-                        : ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: devListeners.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 10),
-                          itemBuilder:
-                              (_, i) => _AudienceTile(
-                                label: devListeners[i].label,
-                                subtitle: 'Listening',
-                                speaking: devListeners[i].speaking,
-                                onProfileTap:
-                                    () => _showParticipantProfileCard(
-                                      name: devListeners[i].label,
-                                      subtitle: 'Listener',
-                                      themeKey: devListeners[i].themeKey,
-                                      isVip: devListeners[i].isVip,
-                                      isHost: false,
-                                      speaking: devListeners[i].speaking,
-                                      userId: devListeners[i].userId,
-                                      level: devListeners[i].level,
-                                      avatarUrl: devListeners[i].avatarUrl,
-                                    ),
-                              ),
-                        ))
-                    : listeners.isEmpty
+                listeners.isEmpty
                     ? const _ModalEmptyState(
                       icon: Icons.headphones_rounded,
                       title: 'No listeners visible',
@@ -3031,10 +2920,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
             : _listenerCount + _speakerCount;
     final listeners = _listenerParticipants();
     final speakerEntries = _buildSpeakerEntries();
-    final listenerEntries =
-        widget.devMode && _room == null
-            ? _buildDevListenerEntries()
-            : _buildListenerEntries(listeners);
+    final listenerEntries = _buildListenerEntries(listeners);
 
     return Obx(
       () => WillPopScope(

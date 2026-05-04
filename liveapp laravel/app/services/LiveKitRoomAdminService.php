@@ -51,12 +51,12 @@ class LiveKitRoomAdminService
 
     private function httpBaseUrl(): string
     {
-        $url = (string) env('LIVEKIT_HTTP_URL', '');
+        $url = (string) config('services.livekit.http_url', '');
         if ($url !== '') {
             return $url;
         }
 
-        $wsUrl = (string) env('LIVEKIT_WS_URL', '');
+        $wsUrl = (string) config('services.livekit.ws_url', '');
         if ($wsUrl === '') {
             return '';
         }

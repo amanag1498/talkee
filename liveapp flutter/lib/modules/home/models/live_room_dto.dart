@@ -194,9 +194,9 @@ class LiveRoomModel {
     final t = v.trim();
     if (t.startsWith('http://') || t.startsWith('https://')) return t;
     if (t.startsWith('/')) {
-      return '${AppUrls.scheme}://${AppUrls.host}:${AppUrls.apiPort}$t';
+      return '${AppUrls.apiOrigin}$t';
     }
-    return '${AppUrls.scheme}://${AppUrls.host}:${AppUrls.apiPort}/$t';
+    return '${AppUrls.apiOrigin}/$t';
   }
 
   static String _normalizeRoomType(dynamic value) {
