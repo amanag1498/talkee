@@ -2213,40 +2213,68 @@ class _AudioRoomPageState extends State<AudioRoomPage>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder:
-          (_) => _AudioSheet(
-            title: 'Mic Requests',
-            subtitle: '${_pendingRequests.length} pending',
-            child:
-                _pendingRequests.isEmpty
-                    ? const _ModalEmptyState(
-                      icon: Icons.inbox_rounded,
-                      title: 'No pending requests',
-                      body: 'Listeners who request the mic will appear here.',
-                    )
-                    : ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _pendingRequests.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (_, i) {
-                        final request = _pendingRequests[i];
-                        return _RequestCard(
-                          request: request,
-                          canModerate: _isHost,
-                          busy: _seatActionBusy,
-                          onAccept:
-                              () => _acceptRequest(
-                                (request['request_id'] as num).toInt(),
-                              ),
-                          onReject:
-                              () => _rejectRequest(
-                                (request['request_id'] as num).toInt(),
-                              ),
-                        );
-                      },
-                    ),
-          ),
+      builder: (_) {
+        var pendingRequests = List<Map<String, dynamic>>.from(_pendingRequests);
+        var busy = _seatActionBusy;
+
+        void syncFromParent(StateSetter setModalState) {
+          if (!mounted) return;
+          setModalState(() {
+            pendingRequests = List<Map<String, dynamic>>.from(_pendingRequests);
+            busy = _seatActionBusy;
+          });
+        }
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            Future<void> handleAccept(int requestId) async {
+              setModalState(() => busy = true);
+              await _acceptRequest(requestId);
+              syncFromParent(setModalState);
+            }
+
+            Future<void> handleReject(int requestId) async {
+              setModalState(() => busy = true);
+              await _rejectRequest(requestId);
+              syncFromParent(setModalState);
+            }
+
+            return _AudioSheet(
+              title: 'Mic Requests',
+              subtitle: '${pendingRequests.length} pending',
+              child:
+                  pendingRequests.isEmpty
+                      ? const _ModalEmptyState(
+                        icon: Icons.inbox_rounded,
+                        title: 'No pending requests',
+                        body: 'Listeners who request the mic will appear here.',
+                      )
+                      : ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: pendingRequests.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (_, i) {
+                          final request = pendingRequests[i];
+                          return _RequestCard(
+                            request: request,
+                            canModerate: _isHost,
+                            busy: busy,
+                            onAccept:
+                                () => handleAccept(
+                                  (request['request_id'] as num).toInt(),
+                                ),
+                            onReject:
+                                () => handleReject(
+                                  (request['request_id'] as num).toInt(),
+                                ),
+                          );
+                        },
+                      ),
+            );
+          },
+        );
+      },
     );
   }
 

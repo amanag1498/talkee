@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/brand.dart';
@@ -124,6 +126,16 @@ class _FlyInJoinBannerState extends State<FlyInJoinBanner>
     TweenSequenceItem<double>(tween: ConstantTween<double>(1.15), weight: 56),
   ]).animate(_controller);
 
+  late final Animation<double> _scale = Tween<double>(
+    begin: 0.95,
+    end: 1.0,
+  ).animate(
+    CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.0, 0.22, curve: Curves.easeOutCubic),
+    ),
+  );
+
   bool get _isHighLevel => (widget.level ?? 0) >= _highLevelThreshold;
 
   bool get _isHostBanner => widget.isHost;
@@ -140,12 +152,12 @@ class _FlyInJoinBannerState extends State<FlyInJoinBanner>
 
   double get _maxWidth {
     if (_isHostBanner) {
-      return 286;
+      return 300;
     }
     if (_isVipBanner) {
-      return 266;
+      return 284;
     }
-    return 238;
+    return 258;
   }
 
   EdgeInsets get _margin {
@@ -154,16 +166,14 @@ class _FlyInJoinBannerState extends State<FlyInJoinBanner>
 
   String get _headline {
     final safeName = widget.name.trim().isEmpty ? 'Someone' : widget.name.trim();
-    if (_isHostBanner) {
-      return 'Host $safeName joined';
-    }
-    if (_isVipBanner) {
-      return 'VIP $safeName joined';
-    }
-    if (_isHighLevel) {
-      return '$safeName joined';
-    }
-    return '$safeName joined';
+    return safeName;
+  }
+
+  String get _subtitle {
+    if (_isHostBanner) return 'Host entered the room';
+    if (_isVipBanner) return 'VIP joined the live';
+    if (_isHighLevel) return 'Level ${widget.level} joined the live';
+    return 'Joined the live';
   }
 
   String? get _badgeLabel {
@@ -188,26 +198,18 @@ class _FlyInJoinBannerState extends State<FlyInJoinBanner>
   @override
   Widget build(BuildContext context) {
     final tokens = getPremiumThemeTokens(widget.themeKey);
-    final shellRadius = _isHostBanner ? 22.0 : 19.0;
-    final shellColors = <Color>[
-      tokens.cardGradient.first.withValues(alpha: .96),
-      tokens.cardGradient.last.withValues(alpha: .92),
+    final radius = _isHostBanner ? 28.0 : 26.0;
+    final tint = _themeTint(widget.themeKey, tokens);
+    final baseGlow = tint.withValues(alpha: _isHostBanner ? 0.22 : 0.16);
+    final shellGradient = <Color>[
+      Colors.white.withValues(alpha: 0.14),
+      Colors.black.withValues(alpha: 0.34),
     ];
-    final accentColors =
-        _isHostBanner
-            ? <Color>[
-              tokens.primaryButtonGradient.first,
-              tokens.primaryButtonGradient.last,
-            ]
-            : _isVipBanner
-            ? <Color>[
-              tokens.primaryButtonGradient.last,
-              tokens.primaryButtonGradient.first,
-            ]
-            : <Color>[
-              tokens.primaryButtonGradient.first.withValues(alpha: .88),
-              tokens.primaryButtonGradient.last.withValues(alpha: .72),
-            ];
+    final washGradient = <Color>[
+      tint.withValues(alpha: _isHostBanner ? 0.28 : 0.22),
+      tint.withValues(alpha: 0.08),
+      Colors.transparent,
+    ];
 
     return RepaintBoundary(
       child: IgnorePointer(
@@ -219,160 +221,225 @@ class _FlyInJoinBannerState extends State<FlyInJoinBanner>
               position: _slide,
               child: FadeTransition(
                 opacity: _fade,
-                child: Container(
-                  constraints: BoxConstraints(maxWidth: _maxWidth),
-                  margin: _margin,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(shellRadius),
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: shellColors,
-                      ),
-                      border: Border.all(
-                        color: tokens.borderColor.withValues(alpha: .82),
-                        width: _isHostBanner ? 1.3 : 1.05,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: tokens.glowColor.withValues(
-                            alpha: _isHostBanner ? .28 : .2,
-                          ),
-                          blurRadius: _isHostBanner ? 22 : 16,
-                          spreadRadius: _isHostBanner ? .7 : .2,
-                        ),
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: .16),
-                          blurRadius: 14,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
+                child: ScaleTransition(
+                  scale: _scale,
+                  child: Container(
+                    constraints: BoxConstraints(maxWidth: _maxWidth),
+                    margin: _margin,
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(shellRadius),
-                      child: Stack(
-                        children: [
-                          Positioned.fill(
-                            child: AnimatedBuilder(
-                              animation: _controller,
-                              builder: (context, _) {
-                                return FractionallySizedBox(
-                                  alignment: Alignment.centerLeft,
-                                  widthFactor: 0.16,
-                                  child: Transform.translate(
-                                    offset: Offset(
-                                      _maxWidth * _shimmerProgress.value,
-                                      0,
+                      borderRadius: BorderRadius.circular(radius),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(radius),
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: shellGradient,
+                            ),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.12),
+                              width: 1,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: baseGlow,
+                                blurRadius: _isHostBanner ? 24 : 18,
+                                spreadRadius: 0.5,
+                              ),
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.16),
+                                blurRadius: 18,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: Stack(
+                            children: [
+                              Positioned.fill(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.centerLeft,
+                                      end: Alignment.centerRight,
+                                      colors: washGradient,
+                                      stops: const <double>[0.0, 0.42, 1.0],
                                     ),
-                                    child: DecoratedBox(
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          begin: Alignment.topCenter,
-                                          end: Alignment.bottomCenter,
-                                          colors: <Color>[
-                                            Colors.white.withValues(alpha: 0),
-                                            Colors.white.withValues(alpha: .14),
-                                            Colors.white.withValues(alpha: 0),
-                                          ],
+                                  ),
+                                ),
+                              ),
+                              Positioned.fill(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: RadialGradient(
+                                      center: const Alignment(-0.92, -0.18),
+                                      radius: 1.05,
+                                      colors: <Color>[
+                                        tint.withValues(alpha: 0.20),
+                                        Colors.transparent,
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Positioned.fill(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: <Color>[
+                                        Colors.white.withValues(alpha: 0.08),
+                                        Colors.transparent,
+                                        Colors.black.withValues(alpha: 0.08),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Positioned.fill(
+                                child: AnimatedBuilder(
+                                  animation: _controller,
+                                  builder: (context, _) {
+                                    return FractionallySizedBox(
+                                      alignment: Alignment.centerLeft,
+                                      widthFactor: 0.18,
+                                      child: Transform.translate(
+                                        offset: Offset(
+                                          _maxWidth * _shimmerProgress.value,
+                                          0,
+                                        ),
+                                        child: DecoratedBox(
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                              begin: Alignment.topCenter,
+                                              end: Alignment.bottomCenter,
+                                              colors: <Color>[
+                                                Colors.white.withValues(alpha: 0),
+                                                Colors.white.withValues(alpha: 0.14),
+                                                Colors.white.withValues(alpha: 0),
+                                              ],
+                                            ),
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                          Positioned(
-                            left: 0,
-                            right: 0,
-                            top: 0,
-                            child: Container(
-                              height: 2,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(colors: accentColors),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            top: -22,
-                            right: -8,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: tokens.glowColor.withValues(alpha: .22),
-                                    blurRadius: 28,
-                                    spreadRadius: 6,
-                                  ),
-                                ],
-                              ),
-                              child: const SizedBox(width: 34, height: 34),
-                            ),
-                          ),
-                          Padding(
-                            padding: EdgeInsets.fromLTRB(
-                              _isHostBanner ? 12 : 10,
-                              _isHostBanner ? 10 : 8,
-                              _isHostBanner ? 12 : 10,
-                              _isHostBanner ? 10 : 8,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _Avatar(
-                                  name: widget.name,
-                                  avatarUrl: widget.avatarUrl,
-                                  tokens: tokens,
-                                  emphasis: _isHostBanner || _isVipBanner,
+                                    );
+                                  },
                                 ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
+                              ),
+                              Padding(
+                                padding: EdgeInsets.fromLTRB(
+                                  _isHostBanner ? 13 : 12,
+                                  _isHostBanner ? 11 : 10,
+                                  _isHostBanner ? 14 : 12,
+                                  _isHostBanner ? 11 : 10,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    _Avatar(
+                                      name: widget.name,
+                                      avatarUrl: widget.avatarUrl,
+                                      tint: tint,
+                                      emphasis: _isHostBanner || _isVipBanner,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
                                         mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          if (_badgeLabel != null) ...[
-                                            FadeTransition(
-                                              opacity: _badgeOpacity,
-                                              child: ScaleTransition(
-                                                scale: _badgeScale,
-                                                child: _RoleBadge(
-                                                  label: _badgeLabel!,
-                                                  tokens: tokens,
-                                                  emphasis:
-                                                      _isHostBanner || _isVipBanner,
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  _headline,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    color: Colors.white.withValues(
+                                                      alpha: 0.92,
+                                                    ),
+                                                    fontSize:
+                                                        _isHostBanner ? 14.2 : 13.2,
+                                                    fontWeight: FontWeight.w800,
+                                                    letterSpacing: 0.1,
+                                                    shadows: [
+                                                      Shadow(
+                                                        color: tint.withValues(
+                                                          alpha: 0.28,
+                                                        ),
+                                                        blurRadius: 12,
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
                                               ),
-                                            ),
-                                            const SizedBox(width: 0),
-                                          ],
+                                              if (_badgeLabel != null) ...[
+                                                const SizedBox(width: 8),
+                                                FadeTransition(
+                                                  opacity: _badgeOpacity,
+                                                  child: ScaleTransition(
+                                                    scale: _badgeScale,
+                                                    child: _RoleBadge(
+                                                      label: _badgeLabel!,
+                                                      tint: tint,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                          const SizedBox(height: 3),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  _subtitle,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    color: Colors.white.withValues(
+                                                      alpha: 0.68,
+                                                    ),
+                                                    fontSize: 11.2,
+                                                    fontWeight: FontWeight.w500,
+                                                    letterSpacing: 0.05,
+                                                    height: 1.1,
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'x1',
+                                                style: TextStyle(
+                                                  color: Colors.white.withValues(
+                                                    alpha: 0.88,
+                                                  ),
+                                                  fontSize: 12.2,
+                                                  fontWeight: FontWeight.w700,
+                                                  shadows: [
+                                                    Shadow(
+                                                      color: tint.withValues(
+                                                        alpha: 0.24,
+                                                      ),
+                                                      blurRadius: 10,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ],
                                       ),
-                                      const SizedBox(height: 5),
-                                      Text(
-                                        _headline,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: tokens.textPrimary,
-                                          fontSize: _isHostBanner ? 13.6 : 12.6,
-                                          fontWeight: FontWeight.w900,
-                                          letterSpacing: 0.1,
-                                          height: 1.04,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -384,24 +451,46 @@ class _FlyInJoinBannerState extends State<FlyInJoinBanner>
       ),
     );
   }
+
+  Color _themeTint(String themeKey, PremiumThemeTokens tokens) {
+    final key = themeKey.trim().toLowerCase();
+    if (key.contains('gold')) {
+      return const Color(0xFFFFD700);
+    }
+    if (key.contains('fire') || key.contains('flame')) {
+      return const Color(0xFFFF7A45);
+    }
+    if (key.contains('ice') || key.contains('frost')) {
+      return const Color(0xFF7CCBFF);
+    }
+    if (key.contains('neon')) {
+      return const Color(0xFF8C7BFF);
+    }
+    return Color.lerp(
+          tokens.primaryButtonGradient.first,
+          tokens.primaryButtonGradient.last,
+          0.45,
+        ) ??
+        tokens.glowColor;
+  }
 }
 
 class _Avatar extends StatelessWidget {
   const _Avatar({
     required this.name,
     required this.avatarUrl,
-    required this.tokens,
+    required this.tint,
     required this.emphasis,
   });
 
   final String name;
   final String? avatarUrl;
-  final PremiumThemeTokens tokens;
+  final Color tint;
   final bool emphasis;
 
   @override
   Widget build(BuildContext context) {
-    final radius = emphasis ? 17.0 : 15.0;
+    final radius = emphasis ? 18.0 : 16.0;
     final trimmed = avatarUrl?.trim();
     final initial =
         name.trim().isNotEmpty ? name.trim().characters.first.toUpperCase() : '?';
@@ -411,37 +500,48 @@ class _Avatar extends StatelessWidget {
       height: radius * 2,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: LinearGradient(
-          colors: <Color>[
-            tokens.primaryButtonGradient.first,
-            tokens.primaryButtonGradient.last,
-          ],
-        ),
         border: Border.all(
-          color: tokens.borderColor.withValues(alpha: .65),
+          color: Colors.white.withValues(alpha: 0.2),
         ),
         boxShadow: [
           BoxShadow(
-            color: tokens.glowColor.withValues(alpha: emphasis ? .28 : .18),
-            blurRadius: emphasis ? 12 : 8,
+            color: tint.withValues(alpha: emphasis ? 0.18 : 0.12),
+            blurRadius: emphasis ? 14 : 10,
           ),
         ],
       ),
       padding: const EdgeInsets.all(2),
-      child: CircleAvatar(
-        backgroundColor: tokens.chipColor,
-        backgroundImage:
-            trimmed != null && trimmed.isNotEmpty ? NetworkImage(trimmed) : null,
-        child:
-            trimmed == null || trimmed.isEmpty
-                ? Text(
-                  initial,
-                  style: TextStyle(
-                    color: tokens.textPrimary,
-                    fontWeight: FontWeight.w900,
-                  ),
-                )
-                : null,
+      child: ClipOval(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: <Color>[
+                  Colors.white.withValues(alpha: 0.2),
+                  tint.withValues(alpha: 0.18),
+                ],
+              ),
+            ),
+            child: CircleAvatar(
+              backgroundColor: Colors.black.withValues(alpha: 0.12),
+              backgroundImage: trimmed != null && trimmed.isNotEmpty
+                  ? NetworkImage(trimmed)
+                  : null,
+              child: trimmed == null || trimmed.isEmpty
+                  ? Text(
+                      initial,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    )
+                  : null,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -450,40 +550,49 @@ class _Avatar extends StatelessWidget {
 class _RoleBadge extends StatelessWidget {
   const _RoleBadge({
     required this.label,
-    required this.tokens,
-    required this.emphasis,
+    required this.tint,
   });
 
   final String label;
-  final PremiumThemeTokens tokens;
-  final bool emphasis;
+  final Color tint;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: emphasis ? 7 : 6,
-        vertical: emphasis ? 3.5 : 3,
-      ),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: <Color>[
-            tokens.chipColor.withValues(alpha: .98),
-            tokens.glassColor.withValues(alpha: .88),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: tokens.borderColor.withValues(alpha: .76),
-        ),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: tokens.textSecondary,
-          fontSize: 8.6,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0.8,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[
+                Colors.white.withValues(alpha: 0.12),
+                tint.withValues(alpha: 0.16),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.14),
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.78),
+              fontSize: 8.4,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.7,
+              shadows: [
+                Shadow(
+                  color: tint.withValues(alpha: 0.22),
+                  blurRadius: 8,
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

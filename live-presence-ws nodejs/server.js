@@ -1413,20 +1413,26 @@ sub.on('message', async (channel, message) => {
         return;
       }
       const roomId = String(payload.room_id || '');
+      const opponentRoomId = String(payload.opponent_room_id || '');
       const eventName = String(payload.event || 'room:gift');
       if (!roomId) return;
 
-      const roomName = `room:${roomId}`;
-      console.log('[rooms][GIFT]', nowISO(), JSON.stringify({
-        event: eventName,
-        room_id: roomId,
-        sender_user_id: Number(payload.sender_user_id || 0),
-        room_listeners: socketsInRoom(roomName),
-      }));
+      const targetRoomIds = Array.from(new Set([roomId, opponentRoomId].filter(Boolean)));
 
-      roomsNs.to(roomName).emit(eventName, payload);
-      if (String(payload.room_type || 'video') === 'audio') {
-        roomsNs.to(roomName).emit('audio_room:gift_sent', payload);
+      for (const targetRoomId of targetRoomIds) {
+        const roomName = `room:${targetRoomId}`;
+        console.log('[rooms][GIFT]', nowISO(), JSON.stringify({
+          event: eventName,
+          room_id: roomId,
+          target_room_id: targetRoomId,
+          sender_user_id: Number(payload.sender_user_id || 0),
+          room_listeners: socketsInRoom(roomName),
+        }));
+
+        roomsNs.to(roomName).emit(eventName, payload);
+        if (String(payload.room_type || 'video') === 'audio') {
+          roomsNs.to(roomName).emit('audio_room:gift_sent', payload);
+        }
       }
     } catch (e) {
       console.error('[rooms][ERR]', nowISO(), 'rooms:gift-events parse', e.message, message);

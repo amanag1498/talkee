@@ -142,8 +142,13 @@ class _VideoCallPageState extends State<VideoCallPage>
   String? _pkOverlayTitle;
   String? _pkOverlaySubtitle;
   int _pkOverlayWinnerSide = 0;
+  String? _pkOverlayWinnerName;
+  String? _pkOverlayWinnerAvatarUrl;
+  List<PkWinnerSupporter> _pkOverlayTopSupporters = const <PkWinnerSupporter>[];
   Timer? _pkOverlayTimer;
   Timer? _devPkTransitionTimer;
+  Timer? _pkExpiryWatcher;
+  bool _pkExpiryActionInFlight = false;
   String? _pkGiftLeadersBattleId;
   Map<String, Map<int, _PkSupporterStanding>> _pkGiftLeadersBySide =
       const <String, Map<int, _PkSupporterStanding>>{
@@ -233,6 +238,9 @@ class _VideoCallPageState extends State<VideoCallPage>
       _pkOverlayTitle = 'PK Battle Started';
       _pkOverlaySubtitle = 'Host stage switched into a 30 second PK preview.';
       _pkOverlayWinnerSide = 0;
+      _pkOverlayWinnerName = null;
+      _pkOverlayWinnerAvatarUrl = null;
+      _pkOverlayTopSupporters = const <PkWinnerSupporter>[];
       _primePkGiftLeadersForBattle(battle);
       _seedDevPkSupporters();
     });
@@ -255,6 +263,9 @@ class _VideoCallPageState extends State<VideoCallPage>
       _pkOverlayTitle = 'PK Battle Ended';
       _pkOverlaySubtitle = 'Returning to the normal host video room preview.';
       _pkOverlayWinnerSide = 0;
+      _pkOverlayWinnerName = null;
+      _pkOverlayWinnerAvatarUrl = null;
+      _pkOverlayTopSupporters = const <PkWinnerSupporter>[];
       _clearPkGiftLeaders();
     });
     _appendChatMessage(
@@ -381,10 +392,29 @@ class _VideoCallPageState extends State<VideoCallPage>
   void _mockDevResolvePk(int winnerSide) {
     if (!widget.devMode || !_pkActive) return;
     final winLeft = winnerSide == 1;
+    final winnerHost =
+        winLeft
+            ? _pkBattle?.ownHostFor(widget.room.roomId)
+            : _pkBattle?.opponentHostFor(widget.room.roomId);
+    final winnerSupporters = _topPkSupportersFor(winLeft ? 'left' : 'right');
     setState(() {
       _pkOverlayTitle = winLeft ? 'Left Side Won' : 'Right Side Won';
       _pkOverlaySubtitle = 'Mock PK result preview.';
       _pkOverlayWinnerSide = winnerSide;
+      _pkOverlayWinnerName = winnerHost?['name']?.toString();
+      _pkOverlayWinnerAvatarUrl =
+          winnerHost?['avatar_url']?.toString() ?? winnerHost?['avatar']?.toString();
+      _pkOverlayTopSupporters =
+          winnerSupporters
+              .map(
+                (supporter) => PkWinnerSupporter(
+                  userId: supporter.senderId,
+                  name: supporter.senderName,
+                  coins: supporter.totalCoins,
+                  avatarUrl: supporter.avatarUrl,
+                ),
+              )
+              .toList(growable: false);
     });
     _clearPkOverlayLater();
   }
@@ -397,6 +427,9 @@ class _VideoCallPageState extends State<VideoCallPage>
         _pkOverlayTitle = null;
         _pkOverlaySubtitle = null;
         _pkOverlayWinnerSide = 0;
+        _pkOverlayWinnerName = null;
+        _pkOverlayWinnerAvatarUrl = null;
+        _pkOverlayTopSupporters = const <PkWinnerSupporter>[];
       });
     });
   }
@@ -404,6 +437,25 @@ class _VideoCallPageState extends State<VideoCallPage>
   Future<void> _bootstrap() async {
     await _renderer.initialize();
     _rendererReady = true;
+    if (widget.devMode) {
+      setState(() {
+        _availableGifts = LiveRoomDevFixtures.mockGiftCatalog();
+        _speakerCount =
+            widget.room.speakerCount > 0 ? widget.room.speakerCount : 1;
+        _maxSpeakers = widget.room.maxSpeakers;
+        _connecting = false;
+        _error = null;
+      });
+      if (_pkCapable) {
+        await _syncPkState(prefill: widget.room.pkActive);
+      }
+      _startLiveHud(widget.room.startedAt ?? DateTime.now());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _showSelfJoinAnimation();
+      });
+      return;
+    }
     await _refreshSeatSnapshot();
     await _loadGiftCatalog();
     _bindSeatEvents();
@@ -419,6 +471,20 @@ class _VideoCallPageState extends State<VideoCallPage>
     _connect();
   }
 
+  void _startLiveHud(DateTime startAt) {
+    _liveStart = startAt;
+    _hudTimer?.cancel();
+    _hudTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || _liveStart == null) return;
+      final diff = DateTime.now().difference(_liveStart!);
+      final hh = diff.inHours;
+      final mm = diff.inMinutes.remainder(60).toString().padLeft(2, '0');
+      final ss = diff.inSeconds.remainder(60).toString().padLeft(2, '0');
+      final hPrefix = hh > 0 ? '$hh:' : '';
+      setState(() => _timerText = 'LIVE • $hPrefix$mm:$ss');
+    });
+  }
+
   @override
   void dispose() {
     if (!_endSent) {
@@ -431,6 +497,7 @@ class _VideoCallPageState extends State<VideoCallPage>
     _recentGiftTimer?.cancel();
     _pkOverlayTimer?.cancel();
     _devPkTransitionTimer?.cancel();
+    _pkExpiryWatcher?.cancel();
     _glow.dispose();
     _detachPreview();
     _listener?.dispose();
@@ -745,6 +812,10 @@ class _VideoCallPageState extends State<VideoCallPage>
 
   Future<void> _toggleMic() async {
     if (!_canPublishMedia) return;
+    if (widget.devMode) {
+      setState(() => _micOn = !_micOn);
+      return;
+    }
     final lp = _room?.localParticipant;
     if (lp == null) return;
     final next = !(lp.isMicrophoneEnabled());
@@ -756,6 +827,10 @@ class _VideoCallPageState extends State<VideoCallPage>
   Future<void> _toggleCam() async {
     if (!_canPublishMedia) return;
     if (_camBusy) return;
+    if (widget.devMode) {
+      setState(() => _camOn = !_camOn);
+      return;
+    }
     _camBusy = true;
     try {
       final room = _room;
@@ -808,6 +883,10 @@ class _VideoCallPageState extends State<VideoCallPage>
   Future<void> _flipCamera() async {
     if (!_canPublishMedia) return;
     if (_flipBusy) return;
+    if (widget.devMode) {
+      setState(() => _frontFacing = !_frontFacing);
+      return;
+    }
     _flipBusy = true;
     try {
       _frontFacing = !_frontFacing;
@@ -1115,7 +1194,7 @@ class _VideoCallPageState extends State<VideoCallPage>
 
   int get _viewerCount {
     final room = _room;
-    if (room == null) return 0;
+    if (room == null) return widget.room.participantCount;
     return room.remoteParticipants.length + 1;
   }
 
@@ -1404,7 +1483,7 @@ class _VideoCallPageState extends State<VideoCallPage>
 
   List<Widget> _buildChatTrailingActions() {
     final actions = <Widget>[];
-    final showGiftInChatFooter = !_pkActive;
+    final showGiftInChatFooter = !_isHost;
 
     if (_isHost) {
       actions.add(
@@ -1447,17 +1526,20 @@ class _VideoCallPageState extends State<VideoCallPage>
 
     if (_currentRole == 'speaker') {
       if (showGiftInChatFooter) {
+        final giftAction = _FooterCircleAction(
+          icon:
+              _giftBusy ? Icons.hourglass_top_rounded : Icons.redeem_rounded,
+          onTap: _giftBusy ? null : _openGiftSheet,
+          accent: const Color(0xFFFF8BC2),
+          busy: _giftBusy,
+        );
         actions.add(
-          KeyedSubtree(
-            key: _giftAnchors.keyFor(GiftAnchorRegistry.giftButton),
-            child: _FooterCircleAction(
-              icon:
-                  _giftBusy ? Icons.hourglass_top_rounded : Icons.redeem_rounded,
-              onTap: _giftBusy ? null : _openGiftSheet,
-              accent: const Color(0xFFFF8BC2),
-              busy: _giftBusy,
-            ),
-          ),
+          _pkActive
+              ? giftAction
+              : KeyedSubtree(
+                key: _giftAnchors.keyFor(GiftAnchorRegistry.giftButton),
+                child: giftAction,
+              ),
         );
       }
       actions.add(
@@ -1486,17 +1568,20 @@ class _VideoCallPageState extends State<VideoCallPage>
     }
 
     if (showGiftInChatFooter) {
+      final giftAction = _FooterCircleAction(
+        icon:
+            _giftBusy ? Icons.hourglass_top_rounded : Icons.redeem_rounded,
+        onTap: _giftBusy ? null : _openGiftSheet,
+        accent: const Color(0xFFFF8BC2),
+        busy: _giftBusy,
+      );
       actions.add(
-        KeyedSubtree(
-          key: _giftAnchors.keyFor(GiftAnchorRegistry.giftButton),
-          child: _FooterCircleAction(
-            icon:
-                _giftBusy ? Icons.hourglass_top_rounded : Icons.redeem_rounded,
-            onTap: _giftBusy ? null : _openGiftSheet,
-            accent: const Color(0xFFFF8BC2),
-            busy: _giftBusy,
-          ),
-        ),
+        _pkActive
+            ? giftAction
+            : KeyedSubtree(
+              key: _giftAnchors.keyFor(GiftAnchorRegistry.giftButton),
+              child: giftAction,
+            ),
       );
     }
     if (!_pkActive) {
@@ -2011,41 +2096,81 @@ class _VideoCallPageState extends State<VideoCallPage>
 
   Future<void> _showHostModerationSheet() async {
     Haptics.selection();
-    final participants = _hostModerationParticipants();
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: _HostModerationSheet(
-              pendingRequests: _pendingRequests,
-              speakers: _speakers,
-              participants: participants,
-              speakerCount: _speakerCount,
-              maxSpeakers: _maxSpeakers,
-              busy: _seatActionBusy,
-              onAccept: _acceptSeatRequest,
-              onReject: _rejectSeatRequest,
-              onRemoveSpeaker: _removeSpeaker,
-              onOpenParticipant: (participant) {
-                return _showParticipantActionsSheet(
-                  userId: participant.userId,
-                  name: participant.name,
-                  subtitle: participant.subtitle,
-                  themeKey: participant.themeKey,
-                  isVip: participant.isVip,
-                  isHost: participant.isHost,
-                  speaking: participant.speaking,
-                  level: participant.level,
-                  avatarUrl: participant.avatarUrl,
-                );
-              },
-            ),
-          ),
+        var pendingRequests = List<Map<String, dynamic>>.from(_pendingRequests);
+        var speakers = List<Map<String, dynamic>>.from(_speakers);
+        var participants = _hostModerationParticipants();
+        var speakerCount = _speakerCount;
+        var maxSpeakers = _maxSpeakers;
+        var busy = _seatActionBusy;
+
+        void syncFromParent(StateSetter setModalState) {
+          if (!mounted) return;
+          setModalState(() {
+            pendingRequests = List<Map<String, dynamic>>.from(_pendingRequests);
+            speakers = List<Map<String, dynamic>>.from(_speakers);
+            participants = _hostModerationParticipants();
+            speakerCount = _speakerCount;
+            maxSpeakers = _maxSpeakers;
+            busy = _seatActionBusy;
+          });
+        }
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            Future<void> handleAccept(int requestId) async {
+              setModalState(() => busy = true);
+              await _acceptSeatRequest(requestId);
+              syncFromParent(setModalState);
+            }
+
+            Future<void> handleReject(int requestId) async {
+              setModalState(() => busy = true);
+              await _rejectSeatRequest(requestId);
+              syncFromParent(setModalState);
+            }
+
+            Future<void> handleRemoveSpeaker(int userId) async {
+              setModalState(() => busy = true);
+              await _removeSpeaker(userId);
+              syncFromParent(setModalState);
+            }
+
+            return SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: _HostModerationSheet(
+                  pendingRequests: pendingRequests,
+                  speakers: speakers,
+                  participants: participants,
+                  speakerCount: speakerCount,
+                  maxSpeakers: maxSpeakers,
+                  busy: busy,
+                  onAccept: handleAccept,
+                  onReject: handleReject,
+                  onRemoveSpeaker: handleRemoveSpeaker,
+                  onOpenParticipant: (participant) {
+                    return _showParticipantActionsSheet(
+                      userId: participant.userId,
+                      name: participant.name,
+                      subtitle: participant.subtitle,
+                      themeKey: participant.themeKey,
+                      isVip: participant.isVip,
+                      isHost: participant.isHost,
+                      speaking: participant.speaking,
+                      level: participant.level,
+                      avatarUrl: participant.avatarUrl,
+                    );
+                  },
+                ),
+              ),
+            );
+          },
         );
       },
     );
@@ -2154,15 +2279,23 @@ class _VideoCallPageState extends State<VideoCallPage>
       final eventRoomId = (event['room_id'] ?? '').toString();
       final eventRoomType = _normalizeGiftRoomType(event['room_type']);
       final expectedRoomType = _normalizeGiftRoomType(widget.room.roomType);
-      if (eventRoomId != widget.room.roomId) return;
+      final opponentRoomId = (event['opponent_room_id'] ?? '').toString();
+      final touchesCurrentRoom =
+          eventRoomId == widget.room.roomId || opponentRoomId == widget.room.roomId;
+      if (!touchesCurrentRoom) return;
       if (eventRoomType.isNotEmpty && eventRoomType != expectedRoomType) return;
       final senderId = _safeInt(event['sender_user_id']);
       final senderName = (event['sender_name'] ?? 'Someone').toString();
       final giftName = (event['gift_name'] ?? 'a gift').toString();
       final quantity = _safeInt(event['quantity']) ?? 1;
+      final inferredPkSide =
+          _pkActive
+              ? (_normalizePkGiftSide(event['pk_side'] ?? event['pkSide']) ??
+                  _inferPkGiftSideFromRoomEvent(eventRoomId))
+              : null;
       _recordPkGiftFromEvent(
         event,
-        fallbackSide: _pkActive ? GiftAnchorRegistry.pkLeft : null,
+        fallbackSide: inferredPkSide,
       );
       _giftAnimationOverlay.handleSocketGiftEvent(
         event,
@@ -2172,7 +2305,7 @@ class _VideoCallPageState extends State<VideoCallPage>
             _safeInt(widget.room.meta?['host_user_id']) ??
             _safeInt(widget.room.meta?['host_id']),
         currentUserId: _myUserId,
-        inferredPkSide: _pkActive ? GiftAnchorRegistry.pkLeft : null,
+        inferredPkSide: inferredPkSide,
       );
       _recentGiftTimer?.cancel();
       setState(() {
@@ -2187,6 +2320,17 @@ class _VideoCallPageState extends State<VideoCallPage>
         Haptics.success();
       }
     });
+  }
+
+  String? _inferPkGiftSideFromRoomEvent(String eventRoomId) {
+    final battle = _pkBattle;
+    if (battle == null || !battle.isActive || eventRoomId.isEmpty) return null;
+    final ownRoomId = battle.ownRoomFor(widget.room.roomId)?['id']?.toString();
+    final opponentRoomId =
+        battle.opponentRoomFor(widget.room.roomId)?['id']?.toString();
+    if (eventRoomId == ownRoomId) return 'left';
+    if (eventRoomId == opponentRoomId) return 'right';
+    return null;
   }
 
   String _normalizeGiftRoomType(dynamic value) {
@@ -2360,10 +2504,11 @@ class _VideoCallPageState extends State<VideoCallPage>
 
       if (eventName == 'pk:invite_received' &&
           _isHost &&
-          invitedRoomId == widget.room.roomId &&
-          (invitedHostUserId == null ||
-              _myUserId == null ||
-              invitedHostUserId == _myUserId)) {
+          _isIncomingPkInviteForThisHost(
+            battle: model,
+            invitedRoomId: invitedRoomId,
+            invitedHostUserId: invitedHostUserId,
+          )) {
         setState(() => _incomingPkInvite = model.isPending ? model : null);
       }
 
@@ -2480,6 +2625,15 @@ class _VideoCallPageState extends State<VideoCallPage>
   }
 
   Future<void> _loadGiftCatalog() async {
+    if (widget.devMode) {
+      if (mounted) {
+        setState(() {
+          _availableGifts = LiveRoomDevFixtures.mockGiftCatalog();
+          _giftError = null;
+        });
+      }
+      return;
+    }
     if (!Get.find<AppSettingsService>().giftsEnabled) {
       if (mounted) {
         setState(() {
@@ -2809,11 +2963,15 @@ class _VideoCallPageState extends State<VideoCallPage>
         giftName: selection.gift.name,
         currentThemeKey: Get.find<AppSettingsService>().activePremiumThemeVariant,
       );
-      await widget.live.sendRoomGift(
-        widget.room.roomId,
-        giftId: selection.gift.id,
-        quantity: selection.quantity,
-      );
+      if (widget.devMode) {
+        _mockDevGiftToSide(_pkActive ? 'left' : 'left');
+      } else {
+        await widget.live.sendRoomGift(
+          widget.room.roomId,
+          giftId: selection.gift.id,
+          quantity: selection.quantity,
+        );
+      }
       Haptics.success();
       if (!mounted) return;
       setState(() => _giftError = null);
@@ -2846,9 +3004,14 @@ class _VideoCallPageState extends State<VideoCallPage>
       final endedBattle = _pkBattle;
       setState(() {
         _pkBattle = null;
-        _incomingPkInvite = battle != null && battle.isPending ? battle : null;
+        _incomingPkInvite =
+            battle != null && _isIncomingPkInviteForThisHost(battle: battle)
+                ? battle
+                : null;
         _clearPkGiftLeaders();
       });
+      _pkExpiryWatcher?.cancel();
+      _pkExpiryActionInFlight = false;
       await _disconnectOpponentRoom();
       if (endedBattle != null && battle != null && battle.isTerminal) {
         _showPkResult(battle);
@@ -2861,7 +3024,33 @@ class _VideoCallPageState extends State<VideoCallPage>
       _incomingPkInvite = null;
       _primePkGiftLeadersForBattle(battle);
     });
+    _ensurePkExpiryWatcher();
     await _ensureOpponentRoomConnected(forceRefresh: false);
+  }
+
+  void _ensurePkExpiryWatcher() {
+    _pkExpiryWatcher ??= Timer.periodic(const Duration(seconds: 1), (_) async {
+      final battle = _pkBattle;
+      if (!mounted || battle == null || !battle.isActive) {
+        _pkExpiryWatcher?.cancel();
+        _pkExpiryWatcher = null;
+        _pkExpiryActionInFlight = false;
+        return;
+      }
+      if (battle.remainingSeconds > 0 || _pkExpiryActionInFlight || _pkBusy) {
+        return;
+      }
+      _pkExpiryActionInFlight = true;
+      try {
+        if (_isHost) {
+          await _endPkBattle();
+        } else {
+          await _syncPkState();
+        }
+      } finally {
+        _pkExpiryActionInFlight = false;
+      }
+    });
   }
 
   void _primePkGiftLeadersForBattle(LivePkBattleModel? battle) {
@@ -2968,14 +3157,47 @@ class _VideoCallPageState extends State<VideoCallPage>
     final myRoomId = widget.room.roomId;
     String title;
     int winnerSide = 0;
+    String? winnerName;
+    String? winnerAvatarUrl;
+    List<PkWinnerSupporter> topSupporters = const <PkWinnerSupporter>[];
     if (battle.winnerRoomId == null) {
       title = 'PK Draw';
     } else if (battle.winnerRoomId == myRoomId) {
       title = 'Your Side Won';
       winnerSide = 1;
+      final winnerHost = battle.ownHostFor(widget.room.roomId);
+      winnerName = winnerHost?['name']?.toString();
+      winnerAvatarUrl =
+          winnerHost?['avatar_url']?.toString() ?? winnerHost?['avatar']?.toString();
+      topSupporters =
+          _topPkSupportersFor('left')
+              .map(
+                (supporter) => PkWinnerSupporter(
+                  userId: supporter.senderId,
+                  name: supporter.senderName,
+                  coins: supporter.totalCoins,
+                  avatarUrl: supporter.avatarUrl,
+                ),
+              )
+              .toList(growable: false);
     } else {
       title = 'Opponent Won';
       winnerSide = -1;
+      final winnerHost = battle.opponentHostFor(widget.room.roomId);
+      winnerName = winnerHost?['name']?.toString();
+      winnerAvatarUrl =
+          winnerHost?['avatar_url']?.toString() ?? winnerHost?['avatar']?.toString();
+      topSupporters =
+          _topPkSupportersFor('right')
+              .map(
+                (supporter) => PkWinnerSupporter(
+                  userId: supporter.senderId,
+                  name: supporter.senderName,
+                  coins: supporter.totalCoins,
+                  avatarUrl: supporter.avatarUrl,
+                ),
+              )
+              .toList(growable: false);
     }
     final subtitle =
         battle.endReason == 'timer_expired'
@@ -2986,6 +3208,9 @@ class _VideoCallPageState extends State<VideoCallPage>
       _pkOverlayTitle = title;
       _pkOverlaySubtitle = subtitle;
       _pkOverlayWinnerSide = winnerSide;
+      _pkOverlayWinnerName = winnerName;
+      _pkOverlayWinnerAvatarUrl = winnerAvatarUrl;
+      _pkOverlayTopSupporters = topSupporters;
     });
     _pkOverlayTimer = Timer(const Duration(seconds: 4), () {
       if (mounted) {
@@ -2993,6 +3218,9 @@ class _VideoCallPageState extends State<VideoCallPage>
           _pkOverlayTitle = null;
           _pkOverlaySubtitle = null;
           _pkOverlayWinnerSide = 0;
+          _pkOverlayWinnerName = null;
+          _pkOverlayWinnerAvatarUrl = null;
+          _pkOverlayTopSupporters = const <PkWinnerSupporter>[];
         });
       }
     });
@@ -3003,6 +3231,12 @@ class _VideoCallPageState extends State<VideoCallPage>
   }) async {
     final battle = _pkBattle;
     if (battle == null || !battle.isActive || _opponentConnecting) return;
+    if (widget.devMode) {
+      if (mounted) {
+        setState(() => _opponentMediaUnavailable = true);
+      }
+      return;
+    }
     if (!forceRefresh && _opponentRoom != null) return;
 
     _opponentConnecting = true;
@@ -3206,6 +3440,12 @@ class _VideoCallPageState extends State<VideoCallPage>
                         ? ownHost!['name'].toString()
                         : _hostDisplayName),
                 opponentLabel: opponentHost?['name']?.toString() ?? 'Opponent',
+                ownAvatarUrl:
+                    ownHost?['avatar_url']?.toString() ??
+                    ownHost?['avatar']?.toString(),
+                opponentAvatarUrl:
+                    opponentHost?['avatar_url']?.toString() ??
+                    opponentHost?['avatar']?.toString(),
                 ownScore: ownScore,
                 opponentScore: opponentScore,
                 opponentUnavailable:
@@ -3410,6 +3650,18 @@ class _VideoCallPageState extends State<VideoCallPage>
                               (_, __) => const SizedBox(height: 10),
                           itemBuilder: (_, i) {
                             final room = candidates[i];
+                            final hostName =
+                                room.hostName?.trim().isNotEmpty == true
+                                    ? room.hostName!.trim()
+                                    : 'Host';
+                            final avatarUrl =
+                                room.thumbnail?.trim().isNotEmpty == true
+                                    ? room.thumbnail!.trim()
+                                    : null;
+                            final roomTitle =
+                                room.title.trim().isNotEmpty
+                                    ? room.title.trim()
+                                    : room.id;
                             return InkWell(
                               onTap: () async {
                                 Navigator.of(context).pop();
@@ -3429,12 +3681,19 @@ class _VideoCallPageState extends State<VideoCallPage>
                                   children: [
                                     CircleAvatar(
                                       backgroundColor: const Color(0xFF7B50C5),
-                                      child: Text(
-                                        room.title.isNotEmpty
-                                            ? room.title.characters.first
-                                                .toUpperCase()
-                                            : 'H',
-                                      ),
+                                      backgroundImage:
+                                          avatarUrl != null
+                                              ? NetworkImage(avatarUrl)
+                                              : null,
+                                      child:
+                                          avatarUrl == null
+                                              ? Text(
+                                                hostName.isNotEmpty
+                                                    ? hostName.characters.first
+                                                        .toUpperCase()
+                                                    : 'H',
+                                              )
+                                              : null,
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
@@ -3443,9 +3702,7 @@ class _VideoCallPageState extends State<VideoCallPage>
                                             CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            room.title.isNotEmpty
-                                                ? room.title
-                                                : room.id,
+                                            hostName,
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                             style: const TextStyle(
@@ -3455,7 +3712,7 @@ class _VideoCallPageState extends State<VideoCallPage>
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
-                                            '${room.roomType.toUpperCase()} • ${room.participantCount} in room',
+                                            '${room.roomType.toUpperCase()} • $roomTitle • ${room.participantCount} in room',
                                             style: TextStyle(
                                               color: Colors.white.withOpacity(
                                                 .64,
@@ -3503,7 +3760,7 @@ class _VideoCallPageState extends State<VideoCallPage>
         targetRoomId: targetRoomId,
       );
       if (!mounted) return;
-      setState(() => _incomingPkInvite = battle.isPending ? battle : null);
+      setState(() => _incomingPkInvite = null);
       Get.snackbar(
         'PK Invite',
         'PK invite sent successfully.',
@@ -3517,6 +3774,22 @@ class _VideoCallPageState extends State<VideoCallPage>
         );
       }
     }
+  }
+
+  bool _isIncomingPkInviteForThisHost({
+    required LivePkBattleModel battle,
+    String? invitedRoomId,
+    int? invitedHostUserId,
+  }) {
+    if (!_isHost || !battle.isPending) return false;
+    final targetRoomId = invitedRoomId ?? battle.roomB?['id']?.toString();
+    if (targetRoomId != widget.room.roomId) return false;
+    final targetHostUserId =
+        invitedHostUserId ?? _safeInt(battle.hostB?['user_id']);
+    if (targetHostUserId != null && _myUserId != null) {
+      return targetHostUserId == _myUserId;
+    }
+    return true;
   }
 
   Future<void> _respondToIncomingPk(bool accept) async {
@@ -3644,6 +3917,7 @@ class _VideoCallPageState extends State<VideoCallPage>
                   : _PkVideoFallback(
                     name: localDisplayName,
                     subtitle: _camOn ? 'Camera starting…' : 'Camera off',
+                    avatarUrl: currentUser?.avatarUrl,
                     showSubtitle: true,
                   ),
         ),
@@ -3652,17 +3926,24 @@ class _VideoCallPageState extends State<VideoCallPage>
 
     for (final participant in room.remoteParticipants.values) {
       final track = _firstRemoteVideo(participant, excludeScreenshare: true);
-      if (track == null) continue;
       final name =
           participant.name.isNotEmpty ? participant.name : participant.identity;
       final metadata = _participantMetadata(participant);
       final userId = _safeInt(metadata['user_id']);
+      final role = metadata['role']?.toString().toLowerCase().trim() ?? '';
       final isHost =
           participant.identity.startsWith('host-') || metadata['is_host'] == true;
       final isVip = _participantIsVip(participant);
       final isSpeaking = room.activeSpeakers.any(
         (speaker) => speaker.identity == participant.identity,
       );
+      final isSpeaker = role == 'speaker';
+      final isSeatSpeaker =
+          userId != null &&
+          _speakers.any((row) => _safeInt(row['user_id']) == userId);
+      if (!isHost && !isSpeaker && !isSeatSpeaker && !isSpeaking) {
+        continue;
+      }
       final themeKey = _participantThemeKey(participant);
       final avatarUrl =
           metadata['avatar_url']?.toString() ?? metadata['avatar']?.toString();
@@ -3674,7 +3955,7 @@ class _VideoCallPageState extends State<VideoCallPage>
                   ? _giftAnchors.keyFor(GiftAnchorRegistry.videoHostTile)
                   : null,
           label: name,
-          subtitle: isHost ? 'Host' : 'Guest',
+          subtitle: isHost ? 'Host' : 'Speaker',
           isLocal: false,
           themeKey: themeKey,
           isHost: isHost,
@@ -3697,7 +3978,15 @@ class _VideoCallPageState extends State<VideoCallPage>
                     level: level,
                     avatarUrl: avatarUrl,
                   ),
-          child: VideoTrackRenderer(track, fit: VideoViewFit.cover),
+          child:
+              track != null
+                  ? VideoTrackRenderer(track, fit: VideoViewFit.cover)
+                  : _PkVideoFallback(
+                    name: name,
+                    subtitle: 'Camera off',
+                    avatarUrl: avatarUrl,
+                    showSubtitle: true,
+                  ),
         ),
       );
     }
@@ -3767,7 +4056,7 @@ class _VideoCallPageState extends State<VideoCallPage>
     final pad = media.padding;
     final isCompactDevice =
         media.size.width < 360 || media.size.height < 760;
-    final stageTiles = _stageTiles();
+    final stageTiles = widget.devMode && _room == null ? _devStageTiles() : _stageTiles();
     final inlineError =
         _seatError ?? _giftError ?? _pkOverlaySubtitle ?? _error;
     final hasTopTicker =
@@ -4035,6 +4324,33 @@ class _VideoCallPageState extends State<VideoCallPage>
                 title: _pkOverlayTitle!,
                 subtitle: _pkOverlaySubtitle!,
                 winnerSide: _pkOverlayWinnerSide,
+                winnerName: _pkOverlayWinnerName,
+                winnerAvatarUrl: _pkOverlayWinnerAvatarUrl,
+                topSupporters: _pkOverlayTopSupporters,
+                onSupporterTap: (supporter) {
+                  _openPkSupporterProfile(
+                    _PkSupporterStanding(
+                      senderId: supporter.userId,
+                      senderName: supporter.name,
+                      totalCoins: supporter.coins,
+                      avatarUrl: supporter.avatarUrl,
+                    ),
+                  );
+                },
+              ),
+            if (widget.devMode)
+              Positioned(
+                right: 16,
+                bottom: 132 + pad.bottom,
+                child: _DevPkControlPad(
+                  pkActive: _pkActive,
+                  onStart: _mockDevEnterPkBattle,
+                  onReset: _mockDevExitPkBattle,
+                  onLeftGift: () => _mockDevGiftToSide('left'),
+                  onRightGift: () => _mockDevGiftToSide('right'),
+                  onLeftWin: () => _mockDevResolvePk(1),
+                  onRightWin: () => _mockDevResolvePk(-1),
+                ),
               ),
             ],
           ),
@@ -4186,11 +4502,13 @@ class _PkVideoFallback extends StatelessWidget {
   const _PkVideoFallback({
     required this.name,
     required this.subtitle,
+    this.avatarUrl,
     this.showSubtitle = false,
   });
 
   final String name;
   final String subtitle;
+  final String? avatarUrl;
   final bool showSubtitle;
 
   @override
@@ -4215,14 +4533,23 @@ class _PkVideoFallback extends StatelessWidget {
               CircleAvatar(
                 radius: 28,
                 backgroundColor: tokens.primaryButtonGradient.first,
-                child: Text(
-                  name.isNotEmpty ? name.characters.first.toUpperCase() : '?',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 20,
-                  ),
-                ),
+                backgroundImage:
+                    avatarUrl?.trim().isNotEmpty == true
+                        ? NetworkImage(avatarUrl!.trim())
+                        : null,
+                child:
+                    avatarUrl?.trim().isNotEmpty == true
+                        ? null
+                        : Text(
+                          name.isNotEmpty
+                              ? name.characters.first.toUpperCase()
+                              : '?',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 20,
+                          ),
+                        ),
               ),
               if (showSubtitle) ...[
                 const SizedBox(height: 8),
@@ -5995,7 +6322,7 @@ class _StageTile extends StatelessWidget {
                     ),
                   ),
                   child: Text(
-                    tile.isLocal ? 'You' : 'Guest',
+                    tile.isLocal ? 'You' : tile.label,
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w800,

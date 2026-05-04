@@ -199,10 +199,26 @@ class LiveRoomGiftService
 
     public function payload(LiveRoomGift $roomGift, LiveRoom $room, User $hostUser): array
     {
+        $activeBattle = $this->pk->activeForRoom($room);
+        $pkSide = null;
+        $opponentRoomId = null;
+        if ($activeBattle) {
+            if ((int) $activeBattle->room_a_id === (int) $room->id) {
+                $pkSide = 'left';
+                $opponentRoomId = $activeBattle->roomB?->room_id;
+            } elseif ((int) $activeBattle->room_b_id === (int) $room->id) {
+                $pkSide = 'right';
+                $opponentRoomId = $activeBattle->roomA?->room_id;
+            }
+        }
+
         return [
             'event' => 'room:gift',
             'room_id' => (string) $room->room_id,
             'room_type' => (string) ($room->room_type ?? 'video'),
+            'pk_battle_id' => $activeBattle?->battle_id,
+            'pk_side' => $pkSide,
+            'opponent_room_id' => $opponentRoomId,
             'host_user_id' => (int) $hostUser->id,
             'sender_user_id' => (int) $roomGift->sender_user_id,
             'sender_name' => (string) ($roomGift->sender?->name ?? 'User'),

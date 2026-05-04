@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -11,6 +12,8 @@ class PkBattleOverlay extends StatefulWidget {
     required this.battle,
     required this.ownLabel,
     required this.opponentLabel,
+    this.ownAvatarUrl,
+    this.opponentAvatarUrl,
     required this.ownScore,
     required this.opponentScore,
     required this.ownChild,
@@ -24,6 +27,8 @@ class PkBattleOverlay extends StatefulWidget {
   final LivePkBattleModel battle;
   final String ownLabel;
   final String opponentLabel;
+  final String? ownAvatarUrl;
+  final String? opponentAvatarUrl;
   final int ownScore;
   final int opponentScore;
   final Widget ownChild;
@@ -277,6 +282,10 @@ class _PkBattleOverlayState extends State<PkBattleOverlay> with TickerProviderSt
                           child: _PkIntroText(
                             animation: _intro,
                             leadSide: _leadSide,
+                            ownLabel: widget.ownLabel,
+                            opponentLabel: widget.opponentLabel,
+                            ownAvatarUrl: widget.ownAvatarUrl,
+                            opponentAvatarUrl: widget.opponentAvatarUrl,
                           ),
                         ),
                       ),
@@ -378,125 +387,643 @@ class _ScoreBurstEntry {
   final int amount;
 }
 
-class PkWinnerOverlay extends StatelessWidget {
+class PkWinnerOverlay extends StatefulWidget {
   const PkWinnerOverlay({
     super.key,
     required this.title,
     required this.subtitle,
     this.winnerSide = 0,
+    this.winnerName,
+    this.winnerAvatarUrl,
+    this.topSupporters = const <PkWinnerSupporter>[],
+    this.onSupporterTap,
   });
 
   final String title;
   final String subtitle;
   final int winnerSide;
+  final String? winnerName;
+  final String? winnerAvatarUrl;
+  final List<PkWinnerSupporter> topSupporters;
+  final ValueChanged<PkWinnerSupporter>? onSupporterTap;
+
+  @override
+  State<PkWinnerOverlay> createState() => _PkWinnerOverlayState();
+}
+
+class _PkWinnerOverlayState extends State<PkWinnerOverlay>
+    with TickerProviderStateMixin {
+  late final AnimationController _intro;
+  late final AnimationController _sheen;
+  late final Animation<double> _fade;
+  late final Animation<double> _scale;
+  late final Animation<double> _lift;
+
+  @override
+  void initState() {
+    super.initState();
+    _intro = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..forward();
+    _sheen = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    )..repeat();
+    _fade = CurvedAnimation(parent: _intro, curve: Curves.easeOutCubic);
+    _scale = Tween<double>(
+      begin: .86,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _intro, curve: Curves.easeOutBack));
+    _lift = Tween<double>(
+      begin: 32,
+      end: 0,
+    ).animate(CurvedAnimation(parent: _intro, curve: Curves.easeOutCubic));
+  }
+
+  @override
+  void dispose() {
+    _intro.dispose();
+    _sheen.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final leftWinner = winnerSide == 1;
-    final rightWinner = winnerSide == -1;
+    final leftWinner = widget.winnerSide == 1;
+    final rightWinner = widget.winnerSide == -1;
+    final hasWinner = leftWinner || rightWinner;
+    final accent =
+        leftWinner
+            ? const [Color(0xFFFF5C8A), Color(0xFFFFA63D)]
+            : rightWinner
+            ? const [Color(0xFF5AB3FF), Color(0xFF8A63E8)]
+            : const [Color(0xFFFFC76B), Color(0xFFFF6A6A)];
+    final badgeLabel = hasWinner ? 'BATTLE RESULT' : 'PK MODE';
+    final normalizedWinnerName = widget.winnerName?.trim();
+    final winnerName =
+        normalizedWinnerName != null && normalizedWinnerName.isNotEmpty
+            ? normalizedWinnerName
+            : null;
+    final winnerAvatarUrl = widget.winnerAvatarUrl?.trim();
+    final blastAlignment =
+        leftWinner
+            ? Alignment.centerLeft
+            : rightWinner
+            ? Alignment.centerRight
+            : Alignment.center;
+
     return Positioned.fill(
-      child: IgnorePointer(
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: Row(
-                children: [
-                  Expanded(
+      child: AnimatedBuilder(
+        animation: Listenable.merge([_intro, _sheen]),
+        builder: (context, _) {
+          final sheenX = (_sheen.value * 2.2) - .6;
+          return Opacity(
+            opacity: _fade.value,
+            child: Stack(
+              children: [
+                  Positioned.fill(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
                           colors: [
-                            const Color(0xCCFF5C8A).withOpacity(leftWinner ? .38 : .08),
-                            Colors.transparent,
+                            Colors.black.withOpacity(.14),
+                            Colors.black.withOpacity(.54),
+                            Colors.black.withOpacity(.82),
                           ],
                         ),
-                        boxShadow: [
-                          if (leftWinner)
-                            BoxShadow(
-                              color: const Color(0x66FF8A62).withOpacity(.26),
-                              blurRadius: 24,
-                              spreadRadius: 2,
-                            ),
-                        ],
-                      ),
-                      child: ColoredBox(
-                        color: Colors.black.withOpacity(rightWinner ? .36 : .14),
                       ),
                     ),
                   ),
-                  Expanded(
+                  Positioned.fill(
+                    child: BackdropFilter(
+                      filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
+                  Positioned.fill(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
+                        gradient: RadialGradient(
+                          center: blastAlignment,
+                          radius: .9,
                           colors: [
+                            accent.first.withOpacity(.34),
+                            accent.last.withOpacity(.16),
                             Colors.transparent,
-                            const Color(0xCC5AB3FF).withOpacity(rightWinner ? .38 : .08),
                           ],
                         ),
-                        boxShadow: [
-                          if (rightWinner)
-                            BoxShadow(
-                              color: const Color(0x665AB3FF).withOpacity(.26),
-                              blurRadius: 24,
-                              spreadRadius: 2,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: -40,
+                    left: leftWinner ? -10 : null,
+                    right: rightWinner ? -10 : null,
+                    child: Transform.rotate(
+                      angle: leftWinner ? -.32 : .32,
+                      child: Container(
+                        width: 190,
+                        height: 190,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              accent.first.withOpacity(.28),
+                              accent.last.withOpacity(.08),
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
+                                colors: [
+                                  const Color(0xCCFF5C8A).withOpacity(leftWinner ? .44 : .10),
+                                  Colors.transparent,
+                                ],
+                              ),
                             ),
-                        ],
+                          ),
+                        ),
+                        Expanded(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
+                                colors: [
+                                  Colors.transparent,
+                                  const Color(0xCC5AB3FF).withOpacity(rightWinner ? .44 : .10),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: Center(
+                      child: Transform.translate(
+                        offset: Offset(0, _lift.value),
+                        child: Transform.scale(
+                          scale: _scale.value,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 340),
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Container(
+                                  margin: const EdgeInsets.symmetric(horizontal: 18),
+                                  padding: const EdgeInsets.fromLTRB(22, 26, 22, 24),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(28),
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        const Color(0xFF131826).withOpacity(.95),
+                                        const Color(0xFF0A0D16).withOpacity(.92),
+                                      ],
+                                    ),
+                                    border: Border.all(
+                                      color: Colors.white.withOpacity(.10),
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: accent.first.withOpacity(.24),
+                                        blurRadius: 44,
+                                        spreadRadius: 4,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(999),
+                                          gradient: LinearGradient(colors: accent),
+                                        ),
+                                        child: Text(
+                                          badgeLabel,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: 1.1,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 18),
+                                      ShaderMask(
+                                        shaderCallback:
+                                            (bounds) => LinearGradient(
+                                              colors: [
+                                                Colors.white,
+                                                Color.lerp(
+                                                      accent.first,
+                                                      Colors.white,
+                                                      .12,
+                                                    ) ??
+                                                    Colors.white,
+                                                accent.last,
+                                              ],
+                                            ).createShader(bounds),
+                                        child: Text(
+                                          widget.title,
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 30,
+                                            letterSpacing: 1.35,
+                                            height: 1,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Text(
+                                        widget.subtitle,
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(.80),
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 13.5,
+                                          height: 1.35,
+                                        ),
+                                      ),
+                                      if (winnerName != null) ...[
+                                        const SizedBox(height: 18),
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Container(
+                                              width: 58,
+                                              height: 58,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                gradient: LinearGradient(colors: accent),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: accent.first.withOpacity(.42),
+                                                    blurRadius: 22,
+                                                    spreadRadius: 2,
+                                                  ),
+                                                ],
+                                              ),
+                                              padding: const EdgeInsets.all(2.5),
+                                              child: DecoratedBox(
+                                                decoration: const BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  color: Color(0xFF111521),
+                                                ),
+                                                child: ClipOval(
+                                                  child:
+                                                      winnerAvatarUrl != null &&
+                                                              winnerAvatarUrl.isNotEmpty
+                                                          ? Image.network(
+                                                            winnerAvatarUrl,
+                                                            fit: BoxFit.cover,
+                                                            errorBuilder:
+                                                                (_, __, ___) => _WinnerAvatarFallback(
+                                                                  name: winnerName,
+                                                                  accent: accent,
+                                                                ),
+                                                          )
+                                                          : _WinnerAvatarFallback(
+                                                            name: winnerName,
+                                                            accent: accent,
+                                                          ),
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Flexible(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(
+                                                    'Winner',
+                                                    style: TextStyle(
+                                                      color: Colors.white.withOpacity(.64),
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.w800,
+                                                      letterSpacing: .9,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    winnerName,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 18,
+                                                      fontWeight: FontWeight.w900,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                      if (widget.topSupporters.isNotEmpty) ...[
+                                        const SizedBox(height: 18),
+                                        Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: Text(
+                                            'Top gifters',
+                                            style: TextStyle(
+                                              color: Colors.white.withOpacity(.68),
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w800,
+                                              letterSpacing: .7,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 10),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 8,
+                                          alignment: WrapAlignment.center,
+                                          children: widget.topSupporters
+                                              .take(3)
+                                              .map(
+                                                (supporter) => _WinnerSupporterChip(
+                                                  supporter: supporter,
+                                                  accent: accent,
+                                                  onTap:
+                                                      widget.onSupporterTap == null
+                                                          ? null
+                                                          : () => widget.onSupporterTap!(supporter),
+                                                ),
+                                              )
+                                              .toList(),
+                                        ),
+                                      ],
+                                      const SizedBox(height: 18),
+                                      Stack(
+                                        children: [
+                                          Container(
+                                            width: 128,
+                                            height: 5,
+                                            decoration: BoxDecoration(
+                                              borderRadius: BorderRadius.circular(999),
+                                              gradient: LinearGradient(colors: accent),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: accent.first.withOpacity(.44),
+                                                  blurRadius: 20,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          Positioned.fill(
+                                            child: FractionalTranslation(
+                                              translation: Offset(sheenX, 0),
+                                              child: Align(
+                                                alignment: Alignment.centerLeft,
+                                                child: Container(
+                                                  width: 42,
+                                                  decoration: BoxDecoration(
+                                                    borderRadius: BorderRadius.circular(999),
+                                                    gradient: LinearGradient(
+                                                      colors: [
+                                                        Colors.white.withOpacity(0),
+                                                        Colors.white.withOpacity(.85),
+                                                        Colors.white.withOpacity(0),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Positioned(
+                                  top: 10,
+                                  left: 42,
+                                  child: _CinematicOrb(
+                                    color: accent.first,
+                                    size: 12,
+                                    offsetSeed: _sheen.value,
+                                  ),
+                                ),
+                                Positioned(
+                                  top: 28,
+                                  right: 50,
+                                  child: _CinematicOrb(
+                                    color: accent.last,
+                                    size: 10,
+                                    offsetSeed: _sheen.value + .35,
+                                  ),
+                                ),
+                                Positioned(
+                                  bottom: 20,
+                                  left: 58,
+                                  child: _CinematicOrb(
+                                    color: accent.last,
+                                    size: 8,
+                                    offsetSeed: _sheen.value + .62,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
-                      child: ColoredBox(
-                        color: Colors.black.withOpacity(leftWinner ? .36 : .14),
-                      ),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _WinnerAvatarFallback extends StatelessWidget {
+  const _WinnerAvatarFallback({
+    required this.name,
+    required this.accent,
+  });
+
+  final String name;
+  final List<Color> accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = name.isNotEmpty ? name.characters.first.toUpperCase() : '?';
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(colors: accent),
+      ),
+      child: Center(
+        child: Text(
+          initial,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 24,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class PkWinnerSupporter {
+  const PkWinnerSupporter({
+    required this.userId,
+    required this.name,
+    required this.coins,
+    this.avatarUrl,
+  });
+
+  final int userId;
+  final String name;
+  final int coins;
+  final String? avatarUrl;
+}
+
+class _WinnerSupporterChip extends StatelessWidget {
+  const _WinnerSupporterChip({
+    required this.supporter,
+    required this.accent,
+    this.onTap,
+  });
+
+  final PkWinnerSupporter supporter;
+  final List<Color> accent;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            color: Colors.white.withOpacity(.06),
+            border: Border.all(color: Colors.white.withOpacity(.10)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 30,
+                height: 30,
+                child: ClipOval(
+                  child:
+                      supporter.avatarUrl != null &&
+                              supporter.avatarUrl!.trim().isNotEmpty
+                          ? Image.network(
+                            supporter.avatarUrl!.trim(),
+                            fit: BoxFit.cover,
+                            errorBuilder:
+                                (_, __, ___) => _WinnerAvatarFallback(
+                                  name: supporter.name,
+                                  accent: accent,
+                                ),
+                          )
+                          : _WinnerAvatarFallback(
+                            name: supporter.name,
+                            accent: accent,
+                          ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    supporter.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  Text(
+                    '${supporter.coins} coins',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: accent.first.withOpacity(.90),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ],
               ),
-            ),
-            Positioned.fill(
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 26,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      subtitle,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(.82),
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
-                    ),
-                    if (leftWinner || rightWinner) ...[
-                      const SizedBox(height: 14),
-                      Container(
-                        width: 96,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(999),
-                          gradient: LinearGradient(
-                            colors:
-                                leftWinner
-                                    ? const [Color(0xFFFF5C8A), Color(0xFFFFA63D)]
-                                    : const [Color(0xFF5AB3FF), Color(0xFF8A63E8)],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CinematicOrb extends StatelessWidget {
+  const _CinematicOrb({
+    required this.color,
+    required this.size,
+    required this.offsetSeed,
+  });
+
+  final Color color;
+  final double size;
+  final double offsetSeed;
+
+  @override
+  Widget build(BuildContext context) {
+    final bob = math.sin(offsetSeed * math.pi * 2) * 8;
+    return Transform.translate(
+      offset: Offset(0, bob),
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color.withOpacity(.92),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(.55),
+              blurRadius: 18,
+              spreadRadius: 2,
             ),
           ],
         ),
@@ -1480,10 +2007,18 @@ class _PkIntroText extends StatelessWidget {
   const _PkIntroText({
     required this.animation,
     required this.leadSide,
+    required this.ownLabel,
+    required this.opponentLabel,
+    this.ownAvatarUrl,
+    this.opponentAvatarUrl,
   });
 
   final Animation<double> animation;
   final int leadSide;
+  final String ownLabel;
+  final String opponentLabel;
+  final String? ownAvatarUrl;
+  final String? opponentAvatarUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -1504,28 +2039,135 @@ class _PkIntroText extends StatelessWidget {
             offset: Offset(0, (1 - eased) * 22),
             child: Transform.scale(
               scale: .62 + (eased * .58),
-              child: ShaderMask(
-                shaderCallback: (bounds) => LinearGradient(colors: colors).createShader(bounds),
-                child: Text(
-                  'PK',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 2.8,
-                    fontSize: 34,
-                    shadows: [
-                      Shadow(
-                        color: colors.first.withOpacity(.28),
-                        blurRadius: 16,
-                      ),
-                    ],
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _PkIntroHostChip(
+                    name: ownLabel,
+                    avatarUrl: ownAvatarUrl,
+                    accent: colors.first,
+                    alignment: CrossAxisAlignment.end,
                   ),
-                ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: Container(
+                      width: 54,
+                      height: 54,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(colors: colors),
+                        boxShadow: [
+                          BoxShadow(
+                            color: colors.first.withOpacity(.28),
+                            blurRadius: 18,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.flash_on_rounded,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+                    ),
+                  ),
+                  _PkIntroHostChip(
+                    name: opponentLabel,
+                    avatarUrl: opponentAvatarUrl,
+                    accent: colors.last,
+                    alignment: CrossAxisAlignment.start,
+                  ),
+                ],
               ),
             ),
           ),
         );
       },
+    );
+  }
+}
+
+class _PkIntroHostChip extends StatelessWidget {
+  const _PkIntroHostChip({
+    required this.name,
+    required this.accent,
+    required this.alignment,
+    this.avatarUrl,
+  });
+
+  final String name;
+  final String? avatarUrl;
+  final Color accent;
+  final CrossAxisAlignment alignment;
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmed = avatarUrl?.trim();
+    final initial = name.trim().isNotEmpty ? name.trim().characters.first.toUpperCase() : '?';
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: alignment,
+      children: [
+        Container(
+          width: 74,
+          height: 74,
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withOpacity(.18),
+                accent.withOpacity(.38),
+              ],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: accent.withOpacity(.28),
+                blurRadius: 20,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: CircleAvatar(
+            backgroundColor: const Color(0xFF101522),
+            backgroundImage:
+                trimmed != null && trimmed.isNotEmpty ? NetworkImage(trimmed) : null,
+            child:
+                trimmed == null || trimmed.isEmpty
+                    ? Text(
+                      initial,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 26,
+                      ),
+                    )
+                    : null,
+          ),
+        ),
+        const SizedBox(height: 10),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 108),
+          child: Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: alignment == CrossAxisAlignment.end ? TextAlign.right : TextAlign.left,
+            style: TextStyle(
+              color: Colors.white.withOpacity(.94),
+              fontWeight: FontWeight.w800,
+              fontSize: 13.5,
+              shadows: [
+                Shadow(
+                  color: accent.withOpacity(.28),
+                  blurRadius: 14,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
