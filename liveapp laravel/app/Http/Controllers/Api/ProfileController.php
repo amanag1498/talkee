@@ -61,7 +61,7 @@ class ProfileController extends Controller
     public function avatar(Request $request)
     {
         $data = $request->validate([
-            'avatar' => 'required|image|max:4096',
+            'avatar' => 'required|image|mimes:jpg,jpeg,png,webp|max:4096',
         ]);
 
         $user = $this->profiles->updateAvatar($request->user(), $data['avatar']);

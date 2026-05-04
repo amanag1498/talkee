@@ -1,6 +1,7 @@
 class LiveRoomModel {
   final String roomId;
   final String? title;
+  final String? hostName;
   final String roomType;
   final String status; // live|scheduled|ended
   final DateTime? scheduledAt;
@@ -32,6 +33,7 @@ class LiveRoomModel {
     required this.status,
     this.roomType = 'video',
     this.title,
+    this.hostName,
     this.scheduledAt,
     this.startedAt,
     this.endedAt,
@@ -78,6 +80,12 @@ class LiveRoomModel {
         .trim();
     final status = (room['status'] ?? data['status'] ?? root['status'] ?? 'live').toString();
     final title = (room['title'] ?? data['title'] ?? root['title'])?.toString();
+    final hostName = (room['host_name'] ??
+            data['host_name'] ??
+            root['host_name'] ??
+            (room['meta'] is Map ? (room['meta'] as Map)['host_name'] : null) ??
+            (data['meta'] is Map ? (data['meta'] as Map)['host_name'] : null))
+        ?.toString();
 
     int toInt(dynamic v) {
       if (v is int) return v;
@@ -88,6 +96,7 @@ class LiveRoomModel {
     return LiveRoomModel(
       roomId: roomId,
       title: title,
+      hostName: hostName,
       roomType: (room['room_type'] ?? data['room_type'] ?? root['room_type'] ?? 'video').toString(),
       status: status,
       scheduledAt: room['scheduled_at'] != null ? DateTime.tryParse(room['scheduled_at']) : null,

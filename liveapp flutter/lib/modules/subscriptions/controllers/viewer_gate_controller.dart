@@ -2,6 +2,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:liveapp/services/api_client.dart';
+import '../../wallet/widgets/recharge_bottom_sheet.dart';
 
 import '../models/subscription_plan_dto.dart';
 import '../services/subscriptions_api.dart';
@@ -95,6 +96,14 @@ class ViewerGateController extends GetxController {
     } catch (e, st) {
       _log('ERROR: $e');
       _log(st.toString());
+      final message = e.toString().replaceFirst('Exception: ', '');
+      if (isInsufficientCoinsErrorMessage(message)) {
+        await showRechargeWalletSheet(
+          reasonTitle: 'Not enough coins',
+          reasonMessage:
+              'You need more coins to buy a subscription. Recharge your wallet and try again.',
+        );
+      }
       Get.snackbar('Subscription', e.toString(),
           snackPosition: SnackPosition.BOTTOM);
     } finally {

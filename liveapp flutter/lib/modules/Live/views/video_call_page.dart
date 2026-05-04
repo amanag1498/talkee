@@ -33,6 +33,7 @@ import '../../../services/app_settings_service.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/live_rooms_ws_service.dart';
 import '../../profile/widgets/public_profile_card_sheet.dart';
+import '../../wallet/widgets/recharge_bottom_sheet.dart';
 import '../dev/live_room_dev_fixtures.dart';
 import '../models/live_gift_item.dart';
 import '../models/live_pk_battle_model.dart';
@@ -889,28 +890,42 @@ class _VideoCallPageState extends State<VideoCallPage>
     }
     _flipBusy = true;
     try {
-      _frontFacing = !_frontFacing;
+      final nextFrontFacing = !_frontFacing;
       final room = _room;
       final lp = room?.localParticipant;
       if (lp == null) return;
 
       if (!lp.isCameraEnabled()) {
-        if (mounted) setState(() {}); // mirror update
+        if (mounted) {
+          setState(() => _frontFacing = nextFrontFacing);
+        }
         return;
       }
 
-      final pos = _frontFacing ? CameraPosition.front : CameraPosition.back;
+      final pos = nextFrontFacing ? CameraPosition.front : CameraPosition.back;
+      final track = room != null ? _localCameraTrack(room) : null;
 
-      await lp.setCameraEnabled(false);
-      await Future.delayed(const Duration(milliseconds: 150));
-      await lp.setCameraEnabled(
-        true,
-        cameraCaptureOptions: CameraCaptureOptions(cameraPosition: pos),
-      );
+      if (track != null) {
+        await track.setCameraPosition(pos);
+      } else {
+        await lp.setCameraEnabled(
+          true,
+          cameraCaptureOptions: CameraCaptureOptions(cameraPosition: pos),
+        );
+        if (room != null) {
+          await _waitForLocalTrack(room, timeoutMs: 750);
+        }
+      }
 
-      await _waitForLocalTrack(room!, timeoutMs: 750);
-      await _attachLocalPreview(room);
-      if (mounted) setState(() => _camOn = true);
+      if (room != null) {
+        await _attachLocalPreview(room);
+      }
+      if (mounted) {
+        setState(() {
+          _frontFacing = nextFrontFacing;
+          _camOn = true;
+        });
+      }
     } finally {
       _flipBusy = false;
     }
@@ -1199,21 +1214,161 @@ class _VideoCallPageState extends State<VideoCallPage>
   }
 
   String get _hostDisplayName {
+    final roomHostName = widget.room.hostName?.trim();
+    if (roomHostName?.isNotEmpty == true) {
+      return roomHostName!;
+    }
+    final stageName = widget.room.meta?['host_name']?.toString().trim();
+    if (stageName?.isNotEmpty == true) {
+      return stageName!;
+    }
     final fallback =
         widget.room.title?.trim().isNotEmpty == true
             ? widget.room.title!.trim()
             : 'Talkee Host';
     if (_isHost) {
-      return Get.find<AuthService>().currentUser?.name ?? fallback;
+      final currentUser = Get.find<AuthService>().currentUser;
+      final hostStageName = currentUser?.hostProfile?.stageName?.trim();
+      if (hostStageName?.isNotEmpty == true) {
+        return hostStageName!;
+      }
+      final currentUserName = currentUser?.name.trim();
+      if (currentUserName?.isNotEmpty == true) {
+        return currentUserName!;
+      }
+      return fallback;
     }
     final room = _room;
     if (room == null) return fallback;
     for (final participant in room.remoteParticipants.values) {
       if (participant.identity.startsWith('host-')) {
+        final metadata = _participantMetadata(participant);
+        final metadataStageName = metadata['stage_name']?.toString().trim();
+        if (metadataStageName?.isNotEmpty == true) {
+          return metadataStageName!;
+        }
+        final metadataName = metadata['name']?.toString().trim();
+        if (metadataName?.isNotEmpty == true) {
+          return metadataName!;
+        }
         return participant.name.isNotEmpty ? participant.name : fallback;
       }
     }
     return fallback;
+  }
+
+  String? get _hostAvatarUrl {
+    if (_isHost) {
+      final currentUserAvatar =
+          Get.find<AuthService>().currentUser?.avatarUrl?.trim();
+      if (currentUserAvatar?.isNotEmpty == true) {
+        return currentUserAvatar;
+      }
+    }
+    final room = _room;
+    if (room != null) {
+      for (final participant in room.remoteParticipants.values) {
+        if (participant.identity.startsWith('host-')) {
+          final metadata = _participantMetadata(participant);
+          final metadataAvatar =
+              metadata['avatar_url']?.toString().trim().isNotEmpty == true
+                  ? metadata['avatar_url'].toString().trim()
+                  : metadata['avatar']?.toString().trim();
+          if (metadataAvatar?.isNotEmpty == true) {
+            return metadataAvatar;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  int? get _hostUserId {
+    if (_isHost) {
+      return Get.find<AuthService>().currentUser?.id;
+    }
+    final metaUserId = _safeInt(widget.room.meta?['host_user_id']);
+    if (metaUserId != null && metaUserId > 0) {
+      return metaUserId;
+    }
+    final room = _room;
+    if (room != null) {
+      for (final participant in room.remoteParticipants.values) {
+        if (participant.identity.startsWith('host-')) {
+          final metadata = _participantMetadata(participant);
+          final participantUserId = _safeInt(metadata['user_id']);
+          if (participantUserId != null && participantUserId > 0) {
+            return participantUserId;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  String get _hostThemeKey {
+    if (_isHost) {
+      return Get.find<AppSettingsService>().activePremiumThemeVariant;
+    }
+    final room = _room;
+    if (room != null) {
+      for (final participant in room.remoteParticipants.values) {
+        if (participant.identity.startsWith('host-')) {
+          return _participantThemeKey(participant);
+        }
+      }
+    }
+    return 'midnight';
+  }
+
+  bool get _hostIsVip {
+    if (_isHost) {
+      final roles = Get.find<AuthService>().currentUser?.roles ?? const <String>[];
+      return roles.any(
+        (role) => role.toLowerCase() == 'vip' || role.toLowerCase() == 'premium',
+      );
+    }
+    final room = _room;
+    if (room != null) {
+      for (final participant in room.remoteParticipants.values) {
+        if (participant.identity.startsWith('host-')) {
+          return _participantIsVip(participant);
+        }
+      }
+    }
+    return false;
+  }
+
+  int? get _hostLevel {
+    if (_isHost) {
+      return Get.find<AuthService>().currentUser?.level;
+    }
+    final room = _room;
+    if (room != null) {
+      for (final participant in room.remoteParticipants.values) {
+        if (participant.identity.startsWith('host-')) {
+          final metadata = _participantMetadata(participant);
+          return _safeInt(metadata['level']);
+        }
+      }
+    }
+    return null;
+  }
+
+  Future<void> _openHostProfileFromPill() async {
+    final hostUserId = _hostUserId;
+    if (hostUserId == null || hostUserId <= 0) return;
+    await _showParticipantProfileCard(
+      userId: hostUserId,
+      name: _hostDisplayName,
+      subtitle: 'Host',
+      themeKey: _hostThemeKey,
+      isVip: _hostIsVip,
+      isHost: true,
+      speaking: _canPublishMedia ? _localSpeaking : false,
+      level: _hostLevel,
+      avatarUrl: _hostAvatarUrl,
+    );
   }
 
   String? get _viewerStatusText {
@@ -1501,6 +1656,10 @@ class _VideoCallPageState extends State<VideoCallPage>
               icon: _camOn ? Icons.videocam_rounded : Icons.videocam_off_rounded,
               onTap: _toggleCam,
               active: _camOn,
+            ),
+            _FooterActionItem(
+              icon: Icons.cameraswitch_rounded,
+              onTap: _flipCamera,
             ),
             _FooterActionItem(
               icon: Icons.groups_rounded,
@@ -2217,6 +2376,244 @@ class _VideoCallPageState extends State<VideoCallPage>
       return a.name.toLowerCase().compareTo(b.name.toLowerCase());
     });
     return participants;
+  }
+
+  Future<void> _showViewerListSheet() async {
+    final participants = _hostModerationParticipants();
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    tokens.cardGradient.first.withOpacity(.98),
+                    tokens.cardGradient.last.withOpacity(.94),
+                    tokens.backgroundGradient.last.withOpacity(.96),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: tokens.borderColor.withOpacity(.32)),
+                boxShadow: [
+                  BoxShadow(
+                    color: tokens.glowColor.withOpacity(.16),
+                    blurRadius: 26,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: tokens.borderColor.withOpacity(.42),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Participants',
+                    style: TextStyle(
+                      color: tokens.textPrimary,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 18,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${participants.length} active participant${participants.length == 1 ? '' : 's'} visible here',
+                    style: TextStyle(
+                      color: tokens.textSecondary.withOpacity(.88),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  if (participants.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        'No participants visible yet.',
+                        style: TextStyle(
+                          color: tokens.textSecondary.withOpacity(.74),
+                        ),
+                      ),
+                    )
+                  else
+                    Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: participants.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (_, i) {
+                          final participant = participants[i];
+                          final frameTokens = getPremiumThemeTokens(
+                            participant.themeKey,
+                          );
+                          return Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () {
+                                Navigator.of(context).pop();
+                                _showParticipantProfileCard(
+                                  userId: participant.userId,
+                                  name: participant.name,
+                                  subtitle: participant.subtitle,
+                                  themeKey: participant.themeKey,
+                                  isVip: participant.isVip,
+                                  isHost: participant.isHost,
+                                  speaking: participant.speaking,
+                                  level: participant.level,
+                                  avatarUrl: participant.avatarUrl,
+                                );
+                              },
+                              borderRadius: BorderRadius.circular(18),
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: tokens.glassColor.withOpacity(.08),
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color: tokens.borderColor.withOpacity(.20),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    ThemedRoomFrame(
+                                      themeKey: participant.themeKey,
+                                      isHost: participant.isHost,
+                                      isVip: participant.isVip,
+                                      isSpeaking: participant.speaking,
+                                      borderRadius: 16,
+                                      size: 46,
+                                      enableAnimation: false,
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(16),
+                                        child:
+                                            participant.avatarUrl?.trim().isNotEmpty ==
+                                                    true
+                                                ? Image.network(
+                                                    participant.avatarUrl!.trim(),
+                                                    fit: BoxFit.cover,
+                                                    errorBuilder: (_, __, ___) {
+                                                      return Container(
+                                                        decoration: BoxDecoration(
+                                                          gradient: LinearGradient(
+                                                            colors:
+                                                                frameTokens
+                                                                    .primaryButtonGradient,
+                                                          ),
+                                                        ),
+                                                        alignment: Alignment.center,
+                                                        child: Text(
+                                                          participant.name.isNotEmpty
+                                                              ? participant.name
+                                                                  .characters.first
+                                                                  .toUpperCase()
+                                                              : '?',
+                                                          style: TextStyle(
+                                                            color:
+                                                                frameTokens
+                                                                    .textPrimary,
+                                                            fontWeight:
+                                                                FontWeight.w900,
+                                                          ),
+                                                        ),
+                                                      );
+                                                    },
+                                                  )
+                                                : Container(
+                                                    decoration: BoxDecoration(
+                                                      gradient: LinearGradient(
+                                                        colors:
+                                                            frameTokens
+                                                                .primaryButtonGradient,
+                                                      ),
+                                                    ),
+                                                    alignment: Alignment.center,
+                                                    child: Text(
+                                                      participant.name.isNotEmpty
+                                                          ? participant.name
+                                                              .characters.first
+                                                              .toUpperCase()
+                                                          : '?',
+                                                      style: TextStyle(
+                                                        color: frameTokens
+                                                            .textPrimary,
+                                                        fontWeight:
+                                                            FontWeight.w900,
+                                                      ),
+                                                    ),
+                                                  ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            participant.name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: tokens.textPrimary,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            participant.subtitle,
+                                            style: TextStyle(
+                                              color: tokens.textSecondary
+                                                  .withOpacity(.84),
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(
+                                      Icons.chevron_right_rounded,
+                                      color: tokens.textSecondary.withOpacity(
+                                        .74,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _bindSeatEvents() {
@@ -2977,7 +3374,15 @@ class _VideoCallPageState extends State<VideoCallPage>
       setState(() => _giftError = null);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _giftError = e.toString().replaceFirst('Exception: ', ''));
+      final message = e.toString().replaceFirst('Exception: ', '');
+      setState(() => _giftError = message);
+      if (isInsufficientCoinsErrorMessage(message)) {
+        await showRechargeWalletSheet(
+          reasonTitle: 'Not enough coins',
+          reasonMessage:
+              'You need more coins to send gifts in this room. Recharge your wallet and try again.',
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => _giftBusy = false);
@@ -3865,7 +4270,9 @@ class _VideoCallPageState extends State<VideoCallPage>
       final currentUser = Get.find<AuthService>().currentUser;
       final trimmedCurrentUserName = currentUser?.name.trim() ?? '';
       final localDisplayName =
-          trimmedCurrentUserName.isNotEmpty
+          _isHost
+              ? _hostDisplayName
+              : trimmedCurrentUserName.isNotEmpty
               ? trimmedCurrentUserName
               : (_isHost ? _hostDisplayName : 'You');
       final localThemeKey =
@@ -3926,13 +4333,17 @@ class _VideoCallPageState extends State<VideoCallPage>
 
     for (final participant in room.remoteParticipants.values) {
       final track = _firstRemoteVideo(participant, excludeScreenshare: true);
-      final name =
-          participant.name.isNotEmpty ? participant.name : participant.identity;
       final metadata = _participantMetadata(participant);
       final userId = _safeInt(metadata['user_id']);
       final role = metadata['role']?.toString().toLowerCase().trim() ?? '';
       final isHost =
           participant.identity.startsWith('host-') || metadata['is_host'] == true;
+      final name =
+          isHost
+              ? _hostDisplayName
+              : (participant.name.isNotEmpty
+                  ? participant.name
+                  : participant.identity);
       final isVip = _participantIsVip(participant);
       final isSpeaking = room.activeSpeakers.any(
         (speaker) => speaker.identity == participant.identity,
@@ -4166,7 +4577,7 @@ class _VideoCallPageState extends State<VideoCallPage>
                   children: [
                     Row(
                       children: [
-                        Flexible(
+                        Expanded(
                           child: ConstrainedBox(
                             constraints: BoxConstraints(
                               maxWidth:
@@ -4176,8 +4587,11 @@ class _VideoCallPageState extends State<VideoCallPage>
                             ),
                             child: _LiveRoomInfoPill(
                               hostName: _hostDisplayName,
+                              hostAvatarUrl: _hostAvatarUrl,
                               liveLabel: _timerText,
                               participantCount: _viewerCount,
+                              onHostTap: _openHostProfileFromPill,
+                              onViewerTap: _showViewerListSheet,
                             ),
                           ),
                         ),
@@ -4200,6 +4614,8 @@ class _VideoCallPageState extends State<VideoCallPage>
                       _FloatingTickerBanner(
                         icon: Icons.redeem_rounded,
                         message: _recentGiftMessage!,
+                        onDismiss:
+                            () => setState(() => _recentGiftMessage = null),
                       ),
                     ] else if (_viewerStatusText != null && !_canModerate) ...[
                       SizedBox(height: isCompactDevice ? 8 : 10),
@@ -4216,6 +4632,7 @@ class _VideoCallPageState extends State<VideoCallPage>
                                     _requestStatus == 'removed'
                                 ? Colors.orangeAccent
                                 : const Color(0xFF7B50C5),
+                        onDismiss: () => setState(() => _requestStatus = null),
                       ),
                     ],
                   ],
@@ -5923,13 +6340,19 @@ class _DevPkMiniButton extends StatelessWidget {
 
 class _LiveRoomInfoPill extends StatelessWidget {
   final String hostName;
+  final String? hostAvatarUrl;
   final String liveLabel;
   final int participantCount;
+  final VoidCallback? onHostTap;
+  final VoidCallback? onViewerTap;
 
   const _LiveRoomInfoPill({
     required this.hostName,
+    this.hostAvatarUrl,
     required this.liveLabel,
     required this.participantCount,
+    this.onHostTap,
+    this.onViewerTap,
   });
 
   @override
@@ -5939,61 +6362,352 @@ class _LiveRoomInfoPill extends StatelessWidget {
     );
     final width = MediaQuery.sizeOf(context).width;
     final compact = width < 390;
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 9 : 10,
-        vertical: compact ? 6.5 : 7,
-      ),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        gradient: LinearGradient(
-          colors: [
-            tokens.glassColor.withOpacity(.22),
-            tokens.cardGradient.last.withOpacity(.16),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        border: Border.all(color: tokens.borderColor.withOpacity(.26)),
-        boxShadow: [
-          BoxShadow(
-            color: tokens.glowColor.withOpacity(.12),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          _LiveDot(),
-          SizedBox(width: compact ? 5 : 6),
-          Flexible(
-            child: Text(
-              hostName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: tokens.textPrimary,
-                fontWeight: FontWeight.w900,
-                fontSize: compact ? 11.8 : 12.2,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onHostTap,
+              borderRadius: BorderRadius.circular(24),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: BackdropFilter(
+                  filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                  child: Container(
+                    padding: EdgeInsets.fromLTRB(
+                      compact ? 10 : 11,
+                      compact ? 8 : 9,
+                      compact ? 12 : 13,
+                      compact ? 8 : 9,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(24),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Colors.white.withOpacity(.14),
+                          tokens.glassColor.withOpacity(.18),
+                          Colors.black.withOpacity(.14),
+                        ],
+                      ),
+                      border: Border.all(color: Colors.white.withOpacity(.12)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: tokens.glowColor.withOpacity(.14),
+                          blurRadius: 18,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            _LiveRoomPillAvatar(
+                              name: hostName,
+                              avatarUrl: hostAvatarUrl,
+                              compact: compact,
+                              tint: tokens.glowColor,
+                            ),
+                            Positioned(
+                              right: -1,
+                              bottom: -1,
+                              child: Container(
+                                width: compact ? 12 : 13,
+                                height: compact ? 12 : 13,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFF355D),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(.9),
+                                    width: 1.4,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFFFF355D).withOpacity(
+                                        .34,
+                                      ),
+                                      blurRadius: 8,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(width: compact ? 10 : 12),
+                        Flexible(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                hostName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(.97),
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: compact ? 11.6 : 12.3,
+                                  letterSpacing: .05,
+                                ),
+                              ),
+                              SizedBox(height: compact ? 4 : 5),
+                              _LiveHudSubPill(
+                                icon: Icons.schedule_rounded,
+                                label: liveLabel,
+                                compact: compact,
+                                tint: const Color(0xFFFF6B8A),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
-          SizedBox(width: compact ? 5 : 6),
-          _MiniInfoDivider(color: tokens.borderColor.withOpacity(.26)),
-          SizedBox(width: compact ? 5 : 6),
-          _InlineMetaText(label: liveLabel),
-          SizedBox(width: compact ? 5 : 6),
-          _MiniInfoDivider(color: tokens.borderColor.withOpacity(.26)),
-          SizedBox(width: compact ? 5 : 6),
-          _InlineMetaText(label: '$participantCount'),
-          SizedBox(width: compact ? 3 : 4),
-          Icon(
-            Icons.people_alt_rounded,
-            size: compact ? 12.5 : 13,
-            color: tokens.textSecondary.withOpacity(.82),
+        ),
+        SizedBox(width: compact ? 7 : 8),
+        _LiveHudMetricPill(
+          icon: Icons.visibility_rounded,
+          label: '$participantCount',
+          compact: compact,
+          tint: const Color(0xFFFFC857),
+          onTap: onViewerTap,
+        ),
+      ],
+    );
+  }
+}
+
+class _LiveRoomPillAvatar extends StatelessWidget {
+  const _LiveRoomPillAvatar({
+    required this.name,
+    required this.avatarUrl,
+    required this.compact,
+    required this.tint,
+  });
+
+  final String name;
+  final String? avatarUrl;
+  final bool compact;
+  final Color tint;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = compact ? 38.0 : 42.0;
+    final initial = name.trim().isNotEmpty
+        ? name.trim().characters.first.toUpperCase()
+        : 'H';
+    return Container(
+      width: size,
+      height: size,
+      padding: const EdgeInsets.all(1.4),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withOpacity(.72),
+            tint.withOpacity(.52),
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: tint.withOpacity(.24),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
           ),
         ],
+      ),
+      child: ClipOval(
+        child: avatarUrl?.trim().isNotEmpty == true
+            ? Image.network(
+                avatarUrl!.trim(),
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _LiveRoomPillAvatarFallback(
+                  initial: initial,
+                  tint: tint,
+                ),
+              )
+            : _LiveRoomPillAvatarFallback(initial: initial, tint: tint),
+      ),
+    );
+  }
+}
+
+class _LiveRoomPillAvatarFallback extends StatelessWidget {
+  const _LiveRoomPillAvatarFallback({
+    required this.initial,
+    required this.tint,
+  });
+
+  final String initial;
+  final Color tint;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            tint.withOpacity(.94),
+            tint.withOpacity(.54),
+          ],
+        ),
+      ),
+      child: Center(
+        child: Text(
+          initial,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w900,
+            fontSize: 15,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LiveHudSubPill extends StatelessWidget {
+  const _LiveHudSubPill({
+    required this.icon,
+    required this.label,
+    required this.compact,
+    required this.tint,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool compact;
+  final Color tint;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 9,
+        vertical: compact ? 4 : 4.5,
+      ),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: Colors.black.withOpacity(.18),
+        border: Border.all(color: Colors.white.withOpacity(.08)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: compact ? 11.5 : 12,
+            color: tint.withOpacity(.96),
+          ),
+          SizedBox(width: compact ? 4 : 5),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white.withOpacity(.90),
+                fontSize: compact ? 9.8 : 10.2,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LiveHudMetricPill extends StatelessWidget {
+  const _LiveHudMetricPill({
+    required this.icon,
+    required this.label,
+    required this.compact,
+    required this.tint,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool compact;
+  final Color tint;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minWidth: compact ? 70 : 78),
+          child: Ink(
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 10 : 11,
+              vertical: compact ? 8 : 9,
+            ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.black.withOpacity(.24),
+                  tint.withOpacity(.16),
+                ],
+              ),
+              border: Border.all(color: Colors.white.withOpacity(.10)),
+              boxShadow: [
+                BoxShadow(
+                  color: tint.withOpacity(.14),
+                  blurRadius: 12,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      icon,
+                      size: compact ? 13 : 14,
+                      color: tint.withOpacity(.94),
+                    ),
+                    SizedBox(width: compact ? 5 : 6),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(.96),
+                        fontSize: compact ? 11.2 : 11.8,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -6069,12 +6783,14 @@ class _FloatingTickerBanner extends StatelessWidget {
   final IconData icon;
   final String message;
   final Color accent;
+  final VoidCallback? onDismiss;
 
   const _FloatingTickerBanner({
     super.key,
     required this.icon,
     required this.message,
     this.accent = Colors.pinkAccent,
+    this.onDismiss,
   });
 
   @override
@@ -6160,10 +6876,20 @@ class _FloatingTickerBanner extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          Icon(
-            Icons.chevron_right_rounded,
-            color: tokens.textSecondary.withOpacity(.84),
-            size: 18,
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onDismiss,
+              borderRadius: BorderRadius.circular(999),
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Icon(
+                  Icons.close_rounded,
+                  color: tokens.textSecondary.withOpacity(.84),
+                  size: 18,
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -6841,115 +7567,122 @@ class _HostModerationSheet extends StatelessWidget {
                     style: TextStyle(color: tokens.textSecondary.withOpacity(.74)),
                   )
                 else
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: speakers.map((row) {
-                      final userId = int.tryParse('${row['user_id'] ?? ''}') ?? 0;
-                      final name = (row['name'] ?? 'Speaker').toString();
-                      final themeKey = normalizePremiumThemeVariant(
-                        row['active_theme_key']?.toString() ?? 'midnight',
-                      );
-                      final frameTokens = getPremiumThemeTokens(themeKey);
-                      final isVip = row['is_vip'] == true;
-                      return Container(
-                        width: 126,
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: tokens.chipColor.withOpacity(.14),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: tokens.borderColor.withOpacity(.16),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
+                  SizedBox(
+                    height: 146,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: speakers.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 10),
+                      itemBuilder: (context, index) {
+                        final row = speakers[index];
+                        final userId = int.tryParse('${row['user_id'] ?? ''}') ?? 0;
+                        final name = (row['name'] ?? 'Speaker').toString();
+                        final themeKey = normalizePremiumThemeVariant(
+                          row['active_theme_key']?.toString() ?? 'midnight',
+                        );
+                        final frameTokens = getPremiumThemeTokens(themeKey);
+                        final isVip = row['is_vip'] == true;
+                        return SizedBox(
+                          width: 132,
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: tokens.chipColor.withOpacity(.14),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: tokens.borderColor.withOpacity(.16),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                ThemedRoomFrame(
-                                  themeKey: themeKey,
-                                  isHost: false,
-                                  isVip: isVip,
-                                  isSpeaking: false,
-                                  borderRadius: 16,
-                                  size: 42,
-                                  enableAnimation: false,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(16),
-                                      gradient: LinearGradient(
-                                        colors: frameTokens.primaryButtonGradient,
-                                      ),
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        name.isNotEmpty
-                                            ? name.characters.first.toUpperCase()
-                                            : '?',
-                                        style: TextStyle(
-                                          color: frameTokens.textPrimary,
-                                          fontWeight: FontWeight.w900,
+                                Row(
+                                  children: [
+                                    ThemedRoomFrame(
+                                      themeKey: themeKey,
+                                      isHost: false,
+                                      isVip: isVip,
+                                      isSpeaking: false,
+                                      borderRadius: 16,
+                                      size: 42,
+                                      enableAnimation: false,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(16),
+                                          gradient: LinearGradient(
+                                            colors: frameTokens.primaryButtonGradient,
+                                          ),
+                                        ),
+                                        child: Center(
+                                          child: Text(
+                                            name.isNotEmpty
+                                                ? name.characters.first.toUpperCase()
+                                                : '?',
+                                            style: TextStyle(
+                                              color: frameTokens.textPrimary,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ),
+                                    const Spacer(),
+                                    if (isVip)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 3,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: frameTokens.primaryButtonGradient.first
+                                              .withOpacity(.24),
+                                          borderRadius: BorderRadius.circular(999),
+                                        ),
+                                        child: const Text(
+                                          'VIP',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: tokens.textPrimary,
+                                    fontWeight: FontWeight.w800,
                                   ),
                                 ),
                                 const Spacer(),
-                                if (isVip)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 3,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: frameTokens.primaryButtonGradient.first
-                                          .withOpacity(.24),
-                                      borderRadius: BorderRadius.circular(999),
-                                    ),
-                                    child: const Text(
-                                      'VIP',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w900,
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton(
+                                    onPressed:
+                                        busy || userId == 0
+                                            ? null
+                                            : () => onRemoveSpeaker(userId),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: tokens.textPrimary,
+                                      side: BorderSide(
+                                        color: tokens.dangerColor.withOpacity(.34),
                                       ),
+                                      padding: const EdgeInsets.symmetric(vertical: 10),
                                     ),
+                                    child: const Text('Remove'),
                                   ),
+                                ),
                               ],
                             ),
-                            const SizedBox(height: 10),
-                            Text(
-                              name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: tokens.textPrimary,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton(
-                                onPressed:
-                                    busy || userId == 0
-                                        ? null
-                                        : () => onRemoveSpeaker(userId),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: tokens.textPrimary,
-                                  side: BorderSide(
-                                    color: tokens.dangerColor.withOpacity(.34),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(vertical: 10),
-                                ),
-                                child: const Text('Remove'),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
+                          ),
+                        );
+                      },
+                    ),
                   ),
               ],
             ),
@@ -7420,6 +8153,14 @@ class _GlassPad extends StatelessWidget {
 }
 
 class _LiveDot extends StatefulWidget {
+  final Color color;
+  final Color glowColor;
+
+  const _LiveDot({
+    this.color = Colors.redAccent,
+    this.glowColor = Colors.redAccent,
+  });
+
   @override
   State<_LiveDot> createState() => _LiveDotState();
 }
@@ -7449,7 +8190,7 @@ class _LiveDotState extends State<_LiveDot>
             width: 14,
             height: 14,
             decoration: BoxDecoration(
-              color: Colors.redAccent.withOpacity(.6),
+              color: widget.glowColor.withOpacity(.6),
               shape: BoxShape.circle,
             ),
           ),
@@ -7457,8 +8198,8 @@ class _LiveDotState extends State<_LiveDot>
         Container(
           width: 8,
           height: 8,
-          decoration: const BoxDecoration(
-            color: Colors.redAccent,
+          decoration: BoxDecoration(
+            color: widget.color,
             shape: BoxShape.circle,
           ),
         ),

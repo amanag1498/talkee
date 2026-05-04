@@ -223,6 +223,7 @@ class _SettingsPageState extends State<SettingsPage>
                           ? 'USER'
                           : effectiveRoles.join(' • ').toUpperCase();
                   return _AccountCard(
+                    userId: profile?.id ?? user?.id,
                     name: effectiveName,
                     roleLabel: roleLabel,
                     avatarUrl: avatarUrl,
@@ -296,25 +297,11 @@ class _SettingsPageState extends State<SettingsPage>
                 child: _SettingsSection(
                   title: 'Activity',
                   subtitle: 'History and transaction records',
-                  children: [
-                    _PremiumSettingTile(
-                      icon: Icons.history_rounded,
-                      title: 'Call History',
-                      subtitle: 'Review recent audio and video calls',
-                      onTap: () => Get.toNamed(Routes.callHistory),
-                    ),
-                    _PremiumSettingTile(
-                      icon: Icons.account_balance_wallet_rounded,
-                      title: 'Recharge History',
-                      subtitle: 'View recharge orders and wallet top-ups',
-                      meta: _rechargeMeta,
-                      onTap: () => Get.toNamed(Routes.walletHistory),
-                    ),
-                    _PremiumSettingTile(
-                      icon: Icons.sports_kabaddi_rounded,
-                      title: 'Mock PK Room',
-                      subtitle: 'Open the mocked PK battle preview room',
-                      onTap: () => Get.toNamed(Routes.devLiveVideoPk),
+                  children: const [
+                    _PremiumEmptyState(
+                      title: 'Activity shortcuts hidden',
+                      message:
+                          'Call history, recharge history, and Mock PK Room are currently hidden from this screen.',
                     ),
                   ],
                 ),
@@ -661,6 +648,7 @@ class _ThemeVariantOptionTile extends StatelessWidget {
 }
 
 class _AccountCard extends StatelessWidget {
+  final int? userId;
   final String name;
   final String roleLabel;
   final String? avatarUrl;
@@ -676,6 +664,7 @@ class _AccountCard extends StatelessWidget {
   final List<_HeroAction> actions;
 
   const _AccountCard({
+    this.userId,
     required this.name,
     required this.roleLabel,
     required this.avatarUrl,
@@ -755,6 +744,17 @@ class _AccountCard extends StatelessWidget {
                               fontSize: 21,
                             ),
                           ),
+                          if (userId != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'User ID: $userId',
+                              style: TextStyle(
+                                color: tokens.textSecondary.withOpacity(.88),
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12.4,
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 4),
                           Wrap(
                             spacing: 8,

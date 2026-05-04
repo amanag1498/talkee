@@ -8,7 +8,7 @@
 
 
     <application
-        android:label="liveapp"
+        android:label="Talkee"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true"

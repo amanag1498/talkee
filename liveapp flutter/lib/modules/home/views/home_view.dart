@@ -67,6 +67,7 @@ class _HomeShell extends StatefulWidget {
 class _HomeShellState extends State<_HomeShell> {
   final _page = PageController();
   int _index = 0;
+  bool _handlingExitPrompt = false;
 
   PremiumThemeTokens _tokens() {
     final settings = Get.find<AppSettingsService>();
@@ -99,74 +100,207 @@ class _HomeShellState extends State<_HomeShell> {
         });
       }
 
-      return Scaffold(
-        extendBody: true,
-        extendBodyBehindAppBar: true,
-        backgroundColor: tokens.backgroundGradient.first,
-        appBar: _GlassAppBar(
-          userName: widget.userName,
-          currentIndex: safeIndex,
-          onLogout: widget.onLogout,
-          onGoLive: widget.onGoLive,
-        ),
-        body: Stack(
-          children: [
-            Positioned.fill(child: AnimatedBackground(controller: bgCtl)),
-            Positioned.fill(
-              top: kToolbarHeight + mq.padding.top,
-              bottom: 0,
-              child: PageView(
-                controller: _page,
-                physics: const BouncingScrollPhysics(),
-                onPageChanged: (i) {
-                  if (i != _index) Haptics.selection();
-                  setState(() => _index = i);
-                },
-                children: tabs.map((tab) => tab.page).toList(growable: false),
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) async {
+          if (didPop || _handlingExitPrompt) return;
+          _handlingExitPrompt = true;
+          try {
+            final shouldExit = await _showExitPrompt(context);
+            if (shouldExit == true) {
+              await SystemNavigator.pop();
+            }
+          } finally {
+            _handlingExitPrompt = false;
+          }
+        },
+        child: Scaffold(
+          extendBody: true,
+          extendBodyBehindAppBar: true,
+          backgroundColor: tokens.backgroundGradient.first,
+          appBar: _GlassAppBar(
+            userName: widget.userName,
+            currentIndex: safeIndex,
+            onLogout: widget.onLogout,
+            onGoLive: widget.onGoLive,
+          ),
+          body: Stack(
+            children: [
+              Positioned.fill(child: AnimatedBackground(controller: bgCtl)),
+              Positioned.fill(
+                top: kToolbarHeight + mq.padding.top,
+                bottom: 0,
+                child: PageView(
+                  controller: _page,
+                  physics: const BouncingScrollPhysics(),
+                  onPageChanged: (i) {
+                    if (i != _index) Haptics.selection();
+                    setState(() => _index = i);
+                  },
+                  children: tabs.map((tab) => tab.page).toList(growable: false),
+                ),
               ),
-            ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: mq.padding.bottom + 6,
-              child: Obx(() {
-                final canLive =
-                    Get.find<LiveEligibilityService>().canGoLive.value;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  child: CapsuleOrbNavBar(
-                    items: tabs
-                        .map(
-                          (tab) =>
-                              GlassTabItem(icon: tab.icon, label: tab.label),
-                        )
-                        .toList(growable: false),
-                    currentIndex: safeIndex,
-                    onChanged: (i) {
-                      if (i != _index) HapticFeedback.selectionClick();
-                      setState(() => _index = i);
-                      _page.animateToPage(
-                        i,
-                        duration: const Duration(milliseconds: 420),
-                        curve: Curves.easeOutCubic,
-                      );
-                    },
-                    showGoLive: appSettings.anyLiveCreationEnabled,
-                    activeAccent: tokens.primaryButtonGradient.first,
-                    inactiveIcon: tokens.textSecondary.withValues(alpha: .86),
-                    goLiveColor: tokens.dangerColor,
-                    onGoLive:
-                        canLive && appSettings.anyLiveCreationEnabled
-                            ? widget.onGoLive
-                            : null,
-                  ),
-                );
-              }),
-            ),
-          ],
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: mq.padding.bottom + 6,
+                child: Obx(() {
+                  final canLive =
+                      Get.find<LiveEligibilityService>().canGoLive.value;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: CapsuleOrbNavBar(
+                      items: tabs
+                          .map(
+                            (tab) =>
+                                GlassTabItem(icon: tab.icon, label: tab.label),
+                          )
+                          .toList(growable: false),
+                      currentIndex: safeIndex,
+                      onChanged: (i) {
+                        if (i != _index) HapticFeedback.selectionClick();
+                        setState(() => _index = i);
+                        _page.animateToPage(
+                          i,
+                          duration: const Duration(milliseconds: 420),
+                          curve: Curves.easeOutCubic,
+                        );
+                      },
+                      showGoLive: appSettings.anyLiveCreationEnabled,
+                      activeAccent: tokens.primaryButtonGradient.first,
+                      inactiveIcon: tokens.textSecondary.withValues(alpha: .86),
+                      goLiveColor: tokens.dangerColor,
+                      onGoLive:
+                          canLive && appSettings.anyLiveCreationEnabled
+                              ? widget.onGoLive
+                              : null,
+                    ),
+                  );
+                }),
+              ),
+            ],
+          ),
         ),
       );
     });
+  }
+
+  Future<bool?> _showExitPrompt(BuildContext context) {
+    final tokens = _tokens();
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 22),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(30),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      tokens.cardGradient.first.withOpacity(.96),
+                      tokens.cardGradient.last.withOpacity(.92),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(
+                    color: tokens.borderColor.withOpacity(.9),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: tokens.glowColor.withOpacity(.18),
+                      blurRadius: 28,
+                      offset: const Offset(0, 18),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(18),
+                        gradient: LinearGradient(
+                          colors: tokens.primaryButtonGradient,
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.exit_to_app_rounded,
+                        color: tokens.textPrimary,
+                        size: 26,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Exit Talkee?',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: tokens.textPrimary,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'You are on the main screen. Do you want to close the app now?',
+                      style: TextStyle(
+                        color: tokens.textSecondary.withOpacity(.92),
+                        fontWeight: FontWeight.w600,
+                        height: 1.45,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: tokens.textPrimary,
+                              side: BorderSide(
+                                color: tokens.borderColor.withOpacity(.9),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                            ),
+                            child: const Text('Stay'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () => Navigator.of(context).pop(true),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: tokens.dangerColor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                            ),
+                            child: const Text('Exit'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   List<_HomeTabSpec> _buildTabs(AppSettingsService settings, int currentIndex) {

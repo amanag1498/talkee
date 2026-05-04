@@ -14,6 +14,7 @@ import '../../../services/auth_service.dart';
 import '../../../services/app_settings_service.dart';
 import '../../../services/call_service.dart';
 import '../../../services/call_socket_service.dart';
+import '../../wallet/widgets/recharge_bottom_sheet.dart';
 import '../views/call_ui.dart';
 
 class AppCallController extends GetxController with WidgetsBindingObserver {
@@ -303,6 +304,13 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
     } catch (e) {
       final message = _extractMessage(e);
       await Haptics.error();
+      if (isInsufficientCoinsErrorMessage(message)) {
+        await showRechargeWalletSheet(
+          reasonTitle: 'Not enough coins',
+          reasonMessage:
+              'You need more coins to start this call. Recharge your wallet and try again.',
+        );
+      }
       _showMessage(message);
     } finally {
       busy.value = false;

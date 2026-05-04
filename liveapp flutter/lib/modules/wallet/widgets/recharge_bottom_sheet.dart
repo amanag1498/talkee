@@ -10,6 +10,45 @@ import '../models/payment_order_dto.dart';
 import '../models/wallet_summary_dto.dart';
 import '../services/wallet_api.dart';
 
+bool isInsufficientCoinsErrorMessage(String message) {
+  final raw = message.trim();
+  final normalized = raw.toLowerCase();
+  return raw.contains('INSUFFICIENT_FUNDS') ||
+      normalized.contains('not enough coins') ||
+      normalized.contains('insufficient balance') ||
+      normalized.contains('insufficient funds');
+}
+
+Future<void> showRechargeWalletSheet({
+  String? reasonTitle,
+  String? reasonMessage,
+}) async {
+  if (!Get.find<AppSettingsService>().walletRechargeEnabled) {
+    final fallback =
+        reasonMessage ?? 'Wallet recharge is currently unavailable.';
+    Get.snackbar(
+      reasonTitle ?? 'Not enough coins',
+      fallback,
+      snackPosition: SnackPosition.BOTTOM,
+    );
+    return;
+  }
+
+  if (reasonMessage != null && reasonMessage.trim().isNotEmpty) {
+    Get.snackbar(
+      reasonTitle ?? 'Not enough coins',
+      reasonMessage.trim(),
+      snackPosition: SnackPosition.BOTTOM,
+      duration: const Duration(seconds: 2),
+    );
+  }
+
+  await Get.bottomSheet<void>(
+    const RechargeBottomSheet(),
+    isScrollControlled: true,
+  );
+}
+
 class RechargeBottomSheet extends StatefulWidget {
   const RechargeBottomSheet({super.key});
 

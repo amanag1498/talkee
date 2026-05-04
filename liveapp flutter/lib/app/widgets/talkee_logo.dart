@@ -26,6 +26,109 @@ class TalkeeLogo extends StatefulWidget {
   State<TalkeeLogo> createState() => _TalkeeLogoState();
 }
 
+class TalkeeLauncherIcon extends StatelessWidget {
+  final double size;
+  final double padding;
+  final String themeKey;
+
+  const TalkeeLauncherIcon({
+    super.key,
+    this.size = 1024,
+    this.padding = 176,
+    this.themeKey = 'midnight',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: size,
+      child: CustomPaint(
+        painter: TalkeeLauncherIconPainter(
+          themeKey: themeKey,
+          padding: padding,
+        ),
+        isComplex: true,
+      ),
+    );
+  }
+}
+
+class TalkeeLauncherIconPainter extends CustomPainter {
+  final String themeKey;
+  final double padding;
+
+  const TalkeeLauncherIconPainter({
+    this.themeKey = 'midnight',
+    this.padding = 176,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final tokens = getPremiumThemeTokens(themeKey);
+    final rect = Offset.zero & size;
+    final gradientColors = <Color>[
+      tokens.primaryButtonGradient.first,
+      tokens.primaryButtonGradient.last,
+    ];
+
+    final backgroundPaint = Paint()
+      ..isAntiAlias = true
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          const Color(0xFF060814),
+          tokens.backgroundGradient.first.withOpacity(.94),
+          tokens.backgroundGradient.last.withOpacity(.98),
+        ],
+      ).createShader(rect);
+    canvas.drawRect(rect, backgroundPaint);
+
+    final radialPaint = Paint()
+      ..isAntiAlias = true
+      ..shader = RadialGradient(
+        center: const Alignment(-.48, -.52),
+        radius: 1.08,
+        colors: [
+          gradientColors.first.withOpacity(.34),
+          Colors.transparent,
+        ],
+      ).createShader(rect);
+    canvas.drawRect(rect, radialPaint);
+
+    final washPaint = Paint()
+      ..isAntiAlias = true
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Colors.white.withOpacity(.08),
+          Colors.transparent,
+          Colors.black.withOpacity(.16),
+        ],
+      ).createShader(rect);
+    canvas.drawRect(rect, washPaint);
+
+    final badgeSize = math.max(0.0, size.shortestSide - (padding * 2));
+    final left = (size.width - badgeSize) / 2;
+    final top = (size.height - badgeSize) / 2;
+    canvas.save();
+    canvas.translate(left, top);
+    TalkeePainter(
+      pulseT: .82,
+      angle: -math.pi / 6,
+      sweepT: .34,
+      neonT: .58,
+      gradientColors: gradientColors,
+    ).paint(canvas, Size.square(badgeSize));
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant TalkeeLauncherIconPainter old) =>
+      old.themeKey != themeKey || old.padding != padding;
+}
+
 class _TalkeeLogoState extends State<TalkeeLogo> with TickerProviderStateMixin {
   late final AnimationController _pulse;   // live dot
   late final AnimationController _rotate;  // satellites
@@ -127,7 +230,7 @@ class _TalkeeLogoState extends State<TalkeeLogo> with TickerProviderStateMixin {
                 transform: m,
                 child: CustomPaint(
                   size: Size.square(s),
-                  painter: _TalkeePainter(
+                  painter: TalkeePainter(
                     pulseT: _pulse.value,
                     angle: _rotate.value * 2 * math.pi,
                     sweepT: _sweep.value,
@@ -199,14 +302,14 @@ class _TalkeeLogoState extends State<TalkeeLogo> with TickerProviderStateMixin {
   }
 }
 
-class _TalkeePainter extends CustomPainter {
+class TalkeePainter extends CustomPainter {
   final double pulseT; // 0..1
   final double angle;  // radians
   final double sweepT; // 0..1
   final double neonT;  // 0..1
   final List<Color> gradientColors;
 
-  const _TalkeePainter({
+  const TalkeePainter({
     required this.pulseT,
     required this.angle,
     required this.sweepT,
@@ -321,7 +424,7 @@ class _TalkeePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _TalkeePainter old) =>
+  bool shouldRepaint(covariant TalkeePainter old) =>
       old.pulseT != pulseT ||
       old.angle != angle ||
       old.sweepT != sweepT ||

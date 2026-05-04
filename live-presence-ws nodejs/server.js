@@ -31,6 +31,7 @@ const WS_VERIFY_CACHE_TTL_MS = Number(process.env.WS_VERIFY_CACHE_TTL_MS || 3000
 const ROOM_CHAT_MAX_LENGTH = Number(process.env.ROOM_CHAT_MAX_LENGTH || 250);
 const ROOM_CHAT_WINDOW_MS = Number(process.env.ROOM_CHAT_WINDOW_MS || 8000);
 const ROOM_CHAT_MAX_PER_WINDOW = Number(process.env.ROOM_CHAT_MAX_PER_WINDOW || 5);
+const ROOMS_LEAVE_GRACE_MS = Number(process.env.ROOMS_LEAVE_GRACE_MS || 45000);
 const WS_INTERNAL_KEY = process.env.WS_INTERNAL_KEY || '';
 
 const app = express();
@@ -41,6 +42,7 @@ const io     = new Server(server, { cors: { origin: '*', methods: ['GET','POST']
 const redis = new Redis(REDIS_URL); // data
 const sub   = new Redis(REDIS_URL); // pub/sub
 const api   = axios.create({ baseURL: API_BASE, timeout: 5000 });
+const pendingRoomLeaveTimers = new Map();
 
 const nowISO = () => new Date().toISOString();
 
@@ -557,6 +559,62 @@ async function syncSocketPresenceWithLaravel(token, status) {
   } catch (e) {
     console.error('[presence][ERR]', nowISO(), `sync socket_status=${status} failed:`, e.message);
   }
+}
+
+function roomLeaveTimerKey(userId, roomId) {
+  return `${Number(userId || 0)}:${String(roomId || '')}`;
+}
+
+function cancelPendingRoomLeave(userId, roomId) {
+  const key = roomLeaveTimerKey(userId, roomId);
+  const timer = pendingRoomLeaveTimers.get(key);
+  if (timer) {
+    clearTimeout(timer);
+    pendingRoomLeaveTimers.delete(key);
+  }
+}
+
+async function syncRoomLeaveWithLaravel(token, roomId) {
+  if (!token || !roomId) {
+    return;
+  }
+  try {
+    await api.post(`/live/rooms/${roomId}/leave`, {}, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...internalApiHeaders(),
+      },
+    });
+    console.log('[rooms][SYNC]', nowISO(), JSON.stringify({
+      action: 'leave_synced',
+      room_id: roomId,
+    }));
+  } catch (e) {
+    console.error('[rooms][ERR]', nowISO(), `sync leave room=${roomId} failed:`, e.message);
+  }
+}
+
+function schedulePendingRoomLeave({ userId, roomId, token, reason }) {
+  if (!userId || !roomId || !token) {
+    return;
+  }
+  cancelPendingRoomLeave(userId, roomId);
+  const key = roomLeaveTimerKey(userId, roomId);
+  const timer = setTimeout(async () => {
+    pendingRoomLeaveTimers.delete(key);
+    if (countSocketsInNs(userId, '/rooms') > 0) {
+      return;
+    }
+    await syncRoomLeaveWithLaravel(token, roomId);
+  }, ROOMS_LEAVE_GRACE_MS);
+  pendingRoomLeaveTimers.set(key, timer);
+  console.log('[rooms][SYNC]', nowISO(), JSON.stringify({
+    action: 'leave_scheduled',
+    room_id: roomId,
+    user_id: Number(userId || 0),
+    grace_ms: ROOMS_LEAVE_GRACE_MS,
+    reason: reason || 'disconnect',
+  }));
 }
 
 function disconnectNamespace(namespace, reason, payload) {
@@ -1585,6 +1643,7 @@ roomsNs.on('connection', (socket) => {
     await clearModerationTimeline(room_id, socket.user?.id);
     socket.join(room);
     joinedRoomIds.add(String(room_id));
+    cancelPendingRoomLeave(uid, room_id);
     console.log('[rooms][DBG]', nowISO(), `participant joined room=${room_id} user=${uid} sid=${socket.id} audience=${socketsInRoom(room)}`);
     socket.to(room).emit('room:user_joined', {
       room_id: String(room_id),
@@ -1617,6 +1676,7 @@ roomsNs.on('connection', (socket) => {
     const room = `room:${room_id}`;
     socket.leave(room);
     joinedRoomIds.delete(String(room_id));
+    cancelPendingRoomLeave(uid, room_id);
     console.log('[rooms][API ]', nowISO(), `rooms:leave user=${uid} <- ${room} audience=${socketsInRoom(room)}`);
     await publishRoomAudience(room_id);
   });
@@ -1805,6 +1865,12 @@ roomsNs.on('connection', (socket) => {
 
   socket.on('disconnect', async (reason) => {
     for (const roomId of joinedRoomIds) {
+      schedulePendingRoomLeave({
+        userId: uid,
+        roomId,
+        token: socket.authToken,
+        reason,
+      });
       await publishRoomAudience(roomId);
     }
     removeSocketMap(socket);

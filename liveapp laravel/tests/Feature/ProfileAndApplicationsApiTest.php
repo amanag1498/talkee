@@ -10,6 +10,8 @@ use App\Models\HostRequest;
 use App\Models\User;
 use App\Models\Wallet;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -82,5 +84,76 @@ class ProfileAndApplicationsApiTest extends TestCase
             'Missing company profile.',
             collect($apps)->firstWhere('type', 'agency')['review_notes'] ?? null
         );
+    }
+
+    public function test_avatar_upload_updates_profile_avatar(): void
+    {
+        Storage::fake('public');
+
+        $user = User::factory()->create();
+        $user->assignRole('user');
+        Sanctum::actingAs($user);
+
+        $response = $this->post('/api/profile/avatar', [
+            'avatar' => UploadedFile::fake()->image('avatar.jpg', 1200, 1200),
+        ], [
+            'Accept' => 'application/json',
+        ])->assertOk();
+
+        $user->refresh();
+        $rawAvatar = (string) $user->getRawOriginal('avatar_url');
+
+        $this->assertStringStartsWith('avatars/avatar_', $rawAvatar);
+        Storage::disk('public')->assertExists($rawAvatar);
+        $this->assertNotEmpty($response->json('data.avatar_url'));
+    }
+
+    public function test_avatar_upload_deletes_previous_local_avatar_file(): void
+    {
+        Storage::fake('public');
+
+        $user = User::factory()->create([
+            'avatar_url' => 'avatars/old_avatar.jpg',
+        ]);
+        $user->assignRole('user');
+        Storage::disk('public')->put('avatars/old_avatar.jpg', 'old-avatar');
+
+        Sanctum::actingAs($user);
+
+        $this->post('/api/profile/avatar', [
+            'avatar' => UploadedFile::fake()->image('new-avatar.jpg', 1200, 1200),
+        ], [
+            'Accept' => 'application/json',
+        ])->assertOk();
+
+        $user->refresh();
+        $rawAvatar = (string) $user->getRawOriginal('avatar_url');
+
+        Storage::disk('public')->assertMissing('avatars/old_avatar.jpg');
+        Storage::disk('public')->assertExists($rawAvatar);
+    }
+
+    public function test_avatar_upload_does_not_treat_external_avatar_as_local_file(): void
+    {
+        Storage::fake('public');
+
+        $user = User::factory()->create([
+            'avatar_url' => 'https://cdn.example.com/default-avatar.png',
+        ]);
+        $user->assignRole('user');
+
+        Sanctum::actingAs($user);
+
+        $this->post('/api/profile/avatar', [
+            'avatar' => UploadedFile::fake()->image('remote-replace.jpg', 1200, 1200),
+        ], [
+            'Accept' => 'application/json',
+        ])->assertOk();
+
+        $user->refresh();
+        $rawAvatar = (string) $user->getRawOriginal('avatar_url');
+
+        $this->assertStringStartsWith('avatars/avatar_', $rawAvatar);
+        Storage::disk('public')->assertExists($rawAvatar);
     }
 }

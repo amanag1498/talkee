@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import '../../../app/theme/brand.dart';
 import '../../../app/widgets/haptics.dart';
 import '../../../services/app_settings_service.dart';
+import '../../wallet/widgets/recharge_bottom_sheet.dart';
 import '../models/entry_pack_dto.dart';
 import '../models/user_entry_pack_dto.dart';
 import '../services/entry_pack_api.dart';
@@ -142,36 +143,11 @@ class _EntryPackCatalogPageState extends State<EntryPackCatalogPage> {
       if (!mounted) return;
       Haptics.error();
       final message = e.toString().replaceFirst('Exception: ', '');
-      if (message.contains('INSUFFICIENT_FUNDS') ||
-          message.toLowerCase().contains('not enough coins')) {
-        final tokens = _entryCatalogTokens();
-        await Get.dialog<void>(
-          AlertDialog(
-            backgroundColor: tokens.cardGradient.last,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(22),
-            ),
-            title: Text(
-              'Not enough coins',
-              style: TextStyle(
-                color: tokens.textPrimary,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            content: Text(
+      if (isInsufficientCoinsErrorMessage(message)) {
+        await showRechargeWalletSheet(
+          reasonTitle: 'Not enough coins',
+          reasonMessage:
               'You need more coins to unlock ${pack.name}. Recharge your wallet and try again.',
-              style: TextStyle(
-                color: tokens.textSecondary.withOpacity(.82),
-                height: 1.4,
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Get.back<void>(),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
         );
       } else {
         Get.snackbar(

@@ -13,6 +13,7 @@ import '../../../services/auth_service.dart';
 import '../../../services/live_rooms_ws_service.dart';
 import '../../profile/controllers/host_follow_controller.dart';
 import '../../profile/widgets/public_profile_card_sheet.dart';
+import '../../wallet/widgets/recharge_bottom_sheet.dart';
 import '../models/live_gift_item.dart';
 import '../models/live_pk_battle_model.dart';
 import '../models/live_room_chat_message.dart';
@@ -469,6 +470,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
       if (event['room_id']?.toString() != widget.room.roomId) return;
       final name = event['event']?.toString() ?? '';
       final userId = (event['user_id'] as num?)?.toInt();
+      final requestId = (event['request_id'] as num?)?.toInt();
 
       if (mounted) {
         setState(() {
@@ -481,6 +483,36 @@ class _AudioRoomPageState extends State<AudioRoomPage>
               _participantCount;
           _maxSpeakers =
               (event['max_speakers'] as num?)?.toInt() ?? _maxSpeakers;
+          if (requestId != null) {
+            if (name == 'seat:request_created') {
+              final exists = _pendingRequests.any(
+                (row) => (row['request_id'] as num?)?.toInt() == requestId,
+              );
+              if (!exists) {
+                _pendingRequests = [
+                  ..._pendingRequests,
+                  <String, dynamic>{
+                    'request_id': requestId,
+                    'id': requestId,
+                    'user_id': userId,
+                    'status': 'pending',
+                    'user': <String, dynamic>{
+                      'id': userId,
+                      'name': 'Listener',
+                    },
+                  },
+                ];
+              }
+            } else if (name == 'seat:request_accepted' ||
+                name == 'seat:request_rejected' ||
+                name == 'seat:request_cancelled') {
+              _pendingRequests = _pendingRequests
+                  .where(
+                    (row) => (row['request_id'] as num?)?.toInt() != requestId,
+                  )
+                  .toList();
+            }
+          }
         });
       }
 
@@ -1247,7 +1279,12 @@ class _AudioRoomPageState extends State<AudioRoomPage>
 
   Future<void> _acceptRequest(int requestId) async {
     if (_seatActionBusy) return;
-    setState(() => _seatActionBusy = true);
+    setState(() {
+      _seatActionBusy = true;
+      _pendingRequests = _pendingRequests
+          .where((row) => (row['request_id'] as num?)?.toInt() != requestId)
+          .toList();
+    });
     try {
       await widget.live.acceptSpeakerRequest(widget.room.roomId, requestId);
       await _refreshSeatSnapshot();
@@ -1261,7 +1298,12 @@ class _AudioRoomPageState extends State<AudioRoomPage>
 
   Future<void> _rejectRequest(int requestId) async {
     if (_seatActionBusy) return;
-    setState(() => _seatActionBusy = true);
+    setState(() {
+      _seatActionBusy = true;
+      _pendingRequests = _pendingRequests
+          .where((row) => (row['request_id'] as num?)?.toInt() != requestId)
+          .toList();
+    });
     try {
       await widget.live.rejectSpeakerRequest(widget.room.roomId, requestId);
       await _refreshSeatSnapshot();
@@ -1301,7 +1343,16 @@ class _AudioRoomPageState extends State<AudioRoomPage>
       );
       Haptics.light();
     } catch (e) {
-      if (mounted) setState(() => _giftError = e.toString());
+      if (!mounted) return;
+      final message = e.toString().replaceFirst('Exception: ', '');
+      setState(() => _giftError = message);
+      if (isInsufficientCoinsErrorMessage(message)) {
+        await showRechargeWalletSheet(
+          reasonTitle: 'Not enough coins',
+          reasonMessage:
+              'You need more coins to send gifts in this room. Recharge your wallet and try again.',
+        );
+      }
     } finally {
       if (mounted) setState(() => _giftBusy = false);
     }
@@ -3053,7 +3104,10 @@ class _AudioRoomPageState extends State<AudioRoomPage>
                           padding: EdgeInsets.only(
                             top: isCompactDevice ? 6 : 8,
                           ),
-                          child: _StateBanner(status: _requestStatus!),
+                          child: _StateBanner(
+                            status: _requestStatus!,
+                            onDismiss: () => setState(() => _requestStatus = null),
+                          ),
                         ),
                       if (_seatError != null || _giftError != null)
                         Padding(
@@ -3588,25 +3642,6 @@ class _AudioParticipantsStage extends StatelessWidget {
           onProfileTap: entry.onProfileTap,
           onMute: entry.onMute,
           onRemove: entry.onRemove,
-        ),
-      ),
-      ...listenerEntries.map(
-        (entry) => _StageGridItem(
-          key: entry.key,
-          name: entry.isMe ? 'You' : entry.label,
-          roleLabel: 'Listener',
-          highlighted: entry.isMe,
-          speaking: entry.speaking,
-          muted: false,
-          isSpeaker: false,
-          isHost: false,
-          isMe: entry.isMe,
-          themeKey: entry.themeKey,
-          isVip: entry.isVip,
-          userId: entry.userId,
-          avatarUrl: entry.avatarUrl,
-          level: entry.level,
-          onProfileTap: entry.onProfileTap,
         ),
       ),
     ];
@@ -5328,8 +5363,12 @@ class _EmptyCard extends StatelessWidget {
 }
 
 class _StateBanner extends StatelessWidget {
-  const _StateBanner({required this.status});
+  const _StateBanner({
+    required this.status,
+    this.onDismiss,
+  });
   final String status;
+  final VoidCallback? onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -5360,6 +5399,21 @@ class _StateBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(label, style: const TextStyle(color: Colors.white)),
+          ),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onDismiss,
+              borderRadius: BorderRadius.circular(999),
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(
+                  Icons.close_rounded,
+                  color: Colors.white70,
+                  size: 18,
+                ),
+              ),
+            ),
           ),
         ],
       ),

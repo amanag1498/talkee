@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../../app/theme/brand.dart';
 import '../../../services/api_client.dart';
 import '../../../services/app_settings_service.dart';
+import '../../wallet/widgets/recharge_bottom_sheet.dart';
 import '../models/subscription_plan_dto.dart';
 import '../models/user_subscription_dto.dart';
 import '../services/subscriptions_api.dart';
@@ -120,6 +121,13 @@ class _SubscriptionsPageState extends State<SubscriptionsPage>
       if (!mounted) return;
       final message = e.toString().replaceFirst('Exception: ', '');
       setState(() => _error = message);
+      if (isInsufficientCoinsErrorMessage(message)) {
+        await showRechargeWalletSheet(
+          reasonTitle: 'Not enough coins',
+          reasonMessage:
+              'You need more coins to buy ${plan.name}. Recharge your wallet and try again.',
+        );
+      }
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));

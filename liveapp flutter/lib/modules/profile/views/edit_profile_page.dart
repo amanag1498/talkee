@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -5,7 +7,7 @@ import '../../../app/utils/avatar_url.dart';
 import '../../../app/widgets/haptics.dart';
 import '../../../services/api_client.dart';
 import '../controllers/profile_controller.dart';
-import 'avatar_capture_page.dart';
+import '../services/avatar_image_picker_service.dart';
 
 class EditProfilePage extends StatefulWidget {
   const EditProfilePage({super.key});
@@ -22,7 +24,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
   late final TextEditingController _countryCtl;
   late final TextEditingController _cityCtl;
   late final TextEditingController _bioCtl;
+  final _avatarPicker = AvatarImagePickerService();
   ProfileController get controller => Get.find<ProfileController>();
+  String? _localAvatarPath;
+  bool _isPickingAvatar = false;
 
   @override
   void initState() {
@@ -48,17 +53,51 @@ class _EditProfilePageState extends State<EditProfilePage> {
   }
 
   Future<void> _pickAvatar() async {
+    if (_isPickingAvatar || controller.isUploadingAvatar.value) return;
     Haptics.light();
-    final path = await Get.to<String>(() => const AvatarCapturePage());
-    if (path == null || path.isEmpty) return;
-    final ok = await controller.uploadAvatar(path);
-    if (!mounted) return;
-    if (ok) {
-      Haptics.success();
-      Get.snackbar('Profile updated', 'Avatar updated successfully.', snackPosition: SnackPosition.BOTTOM);
-    } else {
+    setState(() => _isPickingAvatar = true);
+    try {
+      final path = await _avatarPicker.pickAndOptimizeFromGallery();
+      if (!mounted || path == null || path.isEmpty) return;
+      setState(() => _localAvatarPath = path);
+      final ok = await controller.uploadAvatar(path);
+      if (!mounted) return;
+      if (ok) {
+        Haptics.success();
+        setState(() => _localAvatarPath = null);
+        Get.snackbar(
+          'Profile updated',
+          'Avatar updated successfully.',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      } else {
+        Haptics.error();
+        Get.snackbar(
+          'Avatar upload failed',
+          controller.error.value ?? 'Please try again.',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      }
+    } on AvatarImagePickerException catch (e) {
+      if (!mounted) return;
       Haptics.error();
-      Get.snackbar('Avatar upload failed', controller.error.value ?? 'Please try again.', snackPosition: SnackPosition.BOTTOM);
+      Get.snackbar(
+        'Image not supported',
+        e.message,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Haptics.error();
+      Get.snackbar(
+        'Avatar upload failed',
+        e.toString().replaceFirst('Exception: ', ''),
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isPickingAvatar = false);
+      }
     }
   }
 
@@ -92,6 +131,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
       body: Obx(() {
         final profile = controller.profile.value;
         final isHost = profile?.isHost == true && profile?.hostProfile != null;
+        final remoteAvatarUrl = resolveAvatarUrl(api, profile?.avatarUrl);
+        final isAvatarBusy = _isPickingAvatar || controller.isUploadingAvatar.value;
+        final ImageProvider<Object>? avatarImage =
+            _localAvatarPath != null
+                ? FileImage(File(_localAvatarPath!))
+                : (remoteAvatarUrl != null ? NetworkImage(remoteAvatarUrl) : null);
         return Form(
           key: _formKey,
           child: ListView(
@@ -100,26 +145,71 @@ class _EditProfilePageState extends State<EditProfilePage> {
               Center(
                 child: Column(
                   children: [
-                    CircleAvatar(
-                      radius: 42,
-                      backgroundImage: resolveAvatarUrl(api, profile?.avatarUrl) != null
-                          ? NetworkImage(resolveAvatarUrl(api, profile?.avatarUrl)!)
-                          : null,
-                      child: (profile?.avatarUrl == null || (profile?.avatarUrl?.isEmpty ?? true))
-                          ? Text(((profile?.name ?? 'U').isEmpty ? 'U' : (profile?.name ?? 'U').substring(0, 1)).toUpperCase())
-                          : null,
+                    GestureDetector(
+                      onTap: isAvatarBusy ? null : _pickAvatar,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          CircleAvatar(
+                            radius: 42,
+                            backgroundImage: avatarImage,
+                            child: (_localAvatarPath == null &&
+                                    (profile?.avatarUrl == null ||
+                                        (profile?.avatarUrl?.isEmpty ?? true)))
+                                ? Text(
+                                    ((profile?.name ?? 'U').isEmpty
+                                            ? 'U'
+                                            : (profile?.name ?? 'U').substring(0, 1))
+                                        .toUpperCase(),
+                                  )
+                                : null,
+                          ),
+                          Positioned(
+                            right: 0,
+                            bottom: 0,
+                            child: Container(
+                              width: 30,
+                              height: 30,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primary,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 2),
+                              ),
+                              child: isAvatarBusy
+                                  ? const Padding(
+                                      padding: EdgeInsets.all(6),
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.photo_library_rounded,
+                                      size: 16,
+                                      color: Colors.white,
+                                    ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 10),
                     TextButton.icon(
-                      onPressed: controller.isUploadingAvatar.value ? null : _pickAvatar,
-                      icon: controller.isUploadingAvatar.value
+                      onPressed: isAvatarBusy ? null : _pickAvatar,
+                      icon: isAvatarBusy
                           ? const SizedBox(
                               width: 16,
                               height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Icon(Icons.photo_camera_back_rounded),
-                      label: const Text('Change avatar'),
+                          : const Icon(Icons.photo_library_rounded),
+                      label: Text(
+                        controller.isUploadingAvatar.value
+                            ? 'Uploading avatar...'
+                            : _isPickingAvatar
+                            ? 'Preparing image...'
+                            : 'Choose from gallery',
+                      ),
                     ),
                   ],
                 ),

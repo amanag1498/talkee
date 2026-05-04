@@ -55,6 +55,10 @@ dependencies:
   liquid_glass_renderer: ^0.1.1-dev.21
   google_fonts: ^6.3.0
   flutter_svg: ^2.0.10+1
+  image_picker: ^1.1.2
+  flutter_image_compress: ^2.4.0
+  path_provider: ^2.1.5
+  path: ^1.9.1
   # your existing: get, dio, etc.
 
 

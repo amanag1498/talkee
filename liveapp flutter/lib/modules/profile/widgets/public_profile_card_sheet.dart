@@ -348,6 +348,7 @@ class _PublicProfileCardSheetState extends State<_PublicProfileCardSheet> {
                               _ProfileCardError(message: _error!, onRetry: _load)
                             else ...[
                               _ProfileHero(
+                                userId: profile?.id ?? widget.userId,
                                 tokens: tokens,
                                 frameThemeKey: resolvedThemeKey,
                                 frameTokens: frameTokens,
@@ -438,6 +439,7 @@ class _PublicProfileCardSheetState extends State<_PublicProfileCardSheet> {
 
 class _ProfileHero extends StatelessWidget {
   const _ProfileHero({
+    required this.userId,
     required this.tokens,
     required this.frameThemeKey,
     required this.frameTokens,
@@ -451,6 +453,7 @@ class _ProfileHero extends StatelessWidget {
     this.joinedLabel,
   });
 
+  final int userId;
   final PremiumThemeTokens tokens;
   final String frameThemeKey;
   final PremiumThemeTokens frameTokens;
@@ -517,6 +520,18 @@ class _ProfileHero extends StatelessWidget {
                   fontSize: 12.2,
                   fontWeight: FontWeight.w700,
                   letterSpacing: .24,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                'User ID #$userId',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: tokens.textSecondary.withOpacity(.72),
+                  fontSize: 11.4,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: .16,
                 ),
               ),
               const SizedBox(height: 8),

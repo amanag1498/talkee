@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\UserSubscription;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class ProfileService
 {
@@ -174,11 +176,51 @@ class ProfileService
 
     public function updateAvatar(User $user, UploadedFile $file): User
     {
-        $stored = $file->store("avatars/{$user->id}", 'public');
+        $previous = (string) $user->getRawOriginal('avatar_url');
+        $previousLocalPath = $this->normalizeLocalAvatarPath($previous);
+        $extension = strtolower((string) ($file->extension() ?: 'jpg'));
+        $filename = sprintf(
+            'avatar_%s_%s.%s',
+            $user->id,
+            Str::uuid()->toString(),
+            $extension
+        );
+        $stored = $file->storeAs('avatars', $filename, 'public');
+
         $user->forceFill([
             'avatar_url' => $stored,
         ])->save();
 
+        if (
+            $previousLocalPath &&
+            $previousLocalPath !== $stored &&
+            Storage::disk('public')->exists($previousLocalPath)
+        ) {
+            Storage::disk('public')->delete($previousLocalPath);
+        }
+
         return $user->fresh(['host', 'wallet']);
+    }
+
+    private function normalizeLocalAvatarPath(?string $value): ?string
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+
+        if (Str::startsWith($value, ['http://', 'https://'])) {
+            return null;
+        }
+
+        if (Str::startsWith($value, '/storage/avatars/')) {
+            return ltrim(Str::after($value, '/storage/'), '/');
+        }
+
+        if (Str::startsWith($value, 'avatars/')) {
+            return $value;
+        }
+
+        return null;
     }
 }
