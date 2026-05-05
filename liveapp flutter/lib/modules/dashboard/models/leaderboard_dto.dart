@@ -74,6 +74,7 @@ class LeaderboardUserItemDto {
   final int id;
   final String name;
   final String? avatar;
+  final String? profileFrame;
   final int? level;
   final int lifetimeSpendCoins;
   final int giftCoins;
@@ -94,6 +95,7 @@ class LeaderboardUserItemDto {
     required this.totalCoins,
     required this.rank,
     this.avatar,
+    this.profileFrame,
     this.level,
   });
 
@@ -102,6 +104,7 @@ class LeaderboardUserItemDto {
       id: (json['id'] as num?)?.toInt() ?? 0,
       name: (json['name'] ?? '').toString(),
       avatar: json['avatar']?.toString(),
+      profileFrame: json['profile_frame']?.toString(),
       level: (json['level'] as num?)?.toInt(),
       lifetimeSpendCoins: (json['lifetime_spend_coins'] as num?)?.toInt() ?? 0,
       giftCoins: (json['gift_coins'] as num?)?.toInt() ?? 0,
@@ -119,6 +122,7 @@ class LeaderboardHostItemDto {
   final int hostUserId;
   final String name;
   final String? avatar;
+  final String? profileFrame;
   final int? agencyId;
   final int giftCoins;
   final int callCoins;
@@ -134,6 +138,7 @@ class LeaderboardHostItemDto {
     required this.totalCoins,
     required this.rank,
     this.avatar,
+    this.profileFrame,
     this.agencyId,
   });
 
@@ -143,6 +148,7 @@ class LeaderboardHostItemDto {
       hostUserId: (json['host_user_id'] as num?)?.toInt() ?? 0,
       name: (json['name'] ?? '').toString(),
       avatar: json['avatar']?.toString(),
+      profileFrame: json['profile_frame']?.toString(),
       agencyId: (json['agency_id'] as num?)?.toInt(),
       giftCoins: (json['gift_coins'] as num?)?.toInt() ?? 0,
       callCoins: (json['call_coins'] as num?)?.toInt() ?? 0,

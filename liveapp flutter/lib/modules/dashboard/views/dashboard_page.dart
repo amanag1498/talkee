@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
+import '../../../app/widgets/framed_avatar.dart';
 import '../../../app/theme/brand.dart';
 import '../../../app/utils/avatar_url.dart';
 import '../../../services/api_client.dart';
@@ -179,6 +180,7 @@ class _DashboardPageState extends State<DashboardPage>
           return _SpotlightEntry(
             rank: item.rank,
             avatarUrl: resolveAvatarUrl(api, item.avatar),
+            frameUrl: item.profileFrame,
             title: item.name,
             subtitle: subtitle.isEmpty ? 'User' : subtitle,
             value: _period == _BoardPeriod.weekly
@@ -198,6 +200,7 @@ class _DashboardPageState extends State<DashboardPage>
               (item) => _SpotlightEntry(
                 rank: item.rank,
                 avatarUrl: resolveAvatarUrl(api, item.avatar),
+                frameUrl: item.profileFrame,
                 title: item.name,
                 subtitle:
                     'Gift ${_compact(item.giftCoins)} • Call ${_compact(item.callCoins)}',
@@ -1203,6 +1206,7 @@ class _FocusedLeaderboard extends StatelessWidget {
                 return _LeaderboardRow(
                   rank: entry.rank,
                   avatarUrl: entry.avatarUrl,
+                  frameUrl: entry.frameUrl,
                   title: entry.title,
                   subtitle: entry.subtitle,
                   value: entry.value,
@@ -1371,6 +1375,7 @@ class _StageLane extends StatelessWidget {
                   ),
                 _EntryAvatar(
                   avatarUrl: entry!.avatarUrl,
+                  frameUrl: entry!.frameUrl,
                   fallbackIcon: entry!.fallbackIcon,
                   radius: champion ? 24 : 20,
                 ),
@@ -1463,6 +1468,7 @@ class _UserLeaderboardList extends StatelessWidget {
                 (item) => _SpotlightEntry(
                   rank: item.rank,
                   avatarUrl: resolveAvatarUrl(api, item.avatar),
+                  frameUrl: item.profileFrame,
                   title: item.name,
                   subtitle: weekly
                       ? [
@@ -1490,6 +1496,7 @@ class _UserLeaderboardList extends StatelessWidget {
           return _LeaderboardRow(
             rank: item.rank,
             avatarUrl: resolveAvatarUrl(api, item.avatar),
+            frameUrl: item.profileFrame,
             title: item.name,
             subtitle: weekly
                 ? (weeklyBreakdown.isNotEmpty
@@ -1531,6 +1538,7 @@ class _HostLeaderboardList extends StatelessWidget {
                 (item) => _SpotlightEntry(
                   rank: item.rank,
                   avatarUrl: resolveAvatarUrl(api, item.avatar),
+                  frameUrl: item.profileFrame,
                   title: item.name,
                   subtitle: 'Gift ${_compact(item.giftCoins)} • Call ${_compact(item.callCoins)}',
                   value: item.totalCoins,
@@ -1544,6 +1552,7 @@ class _HostLeaderboardList extends StatelessWidget {
           return _LeaderboardRow(
             rank: item.rank,
             avatarUrl: resolveAvatarUrl(api, item.avatar),
+            frameUrl: item.profileFrame,
             title: item.name,
             subtitle: 'Gift ${_compact(item.giftCoins)} • Call ${_compact(item.callCoins)}',
             value: item.totalCoins,
@@ -1591,6 +1600,7 @@ class _AgencyLeaderboardList extends StatelessWidget {
           return _LeaderboardRow(
             rank: item.rank,
             avatarUrl: null,
+            frameUrl: null,
             title: item.name,
             subtitle: 'Gift ${_compact(item.giftCoins)} • Call ${_compact(item.callCoins)}',
             value: item.totalCoins,
@@ -1611,6 +1621,7 @@ class _SpotlightEntry {
     required this.value,
     required this.valueLabel,
     this.avatarUrl,
+    this.frameUrl,
     this.fallbackIcon = Icons.person_rounded,
   });
 
@@ -1620,6 +1631,7 @@ class _SpotlightEntry {
   final int value;
   final String valueLabel;
   final String? avatarUrl;
+  final String? frameUrl;
   final IconData fallbackIcon;
 }
 
@@ -1738,6 +1750,7 @@ class _SpotlightCard extends StatelessWidget {
                 const SizedBox(width: 10),
                 _EntryAvatar(
                   avatarUrl: entry.avatarUrl,
+                  frameUrl: entry.frameUrl,
                   fallbackIcon: entry.fallbackIcon,
                   radius: 18,
                 ),
@@ -1786,6 +1799,7 @@ class _SpotlightCard extends StatelessWidget {
                     const Spacer(),
                     _EntryAvatar(
                       avatarUrl: entry.avatarUrl,
+                      frameUrl: entry.frameUrl,
                       fallbackIcon: entry.fallbackIcon,
                       radius: 19,
                     ),
@@ -1859,23 +1873,25 @@ class _RankBadge extends StatelessWidget {
 class _EntryAvatar extends StatelessWidget {
   const _EntryAvatar({
     required this.avatarUrl,
+    required this.frameUrl,
     required this.fallbackIcon,
     required this.radius,
   });
 
   final String? avatarUrl;
+  final String? frameUrl;
   final IconData fallbackIcon;
   final double radius;
 
   @override
   Widget build(BuildContext context) {
-    return CircleAvatar(
-      radius: radius,
+    return FramedAvatar(
+      size: radius * 2,
+      label: avatarUrl?.trim().isNotEmpty == true ? '' : _initialFromFallback(fallbackIcon),
+      avatarUrl: avatarUrl,
+      frameUrl: frameUrl,
       backgroundColor: Colors.white.withOpacity(.12),
-      backgroundImage: _safeNetworkImage(avatarUrl),
-      child: _safeNetworkImage(avatarUrl) == null
-          ? Icon(fallbackIcon, color: Colors.white70, size: radius)
-          : null,
+      avatarInset: 0.05,
     );
   }
 }
@@ -2059,6 +2075,7 @@ class _ChampionIdentity extends StatelessWidget {
           children: [
             _EntryAvatar(
               avatarUrl: entry.avatarUrl,
+              frameUrl: entry.frameUrl,
               fallbackIcon: entry.fallbackIcon,
               radius: 28,
             ),
@@ -2137,6 +2154,7 @@ class _LeaderboardRow extends StatelessWidget {
   const _LeaderboardRow({
     required this.rank,
     required this.avatarUrl,
+    required this.frameUrl,
     required this.title,
     required this.subtitle,
     required this.value,
@@ -2146,6 +2164,7 @@ class _LeaderboardRow extends StatelessWidget {
 
   final int rank;
   final String? avatarUrl;
+  final String? frameUrl;
   final String title;
   final String subtitle;
   final int value;
@@ -2189,20 +2208,16 @@ class _LeaderboardRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          Container(
+          SizedBox(
             width: 46,
             height: 46,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withOpacity(.08)),
-            ),
-            child: CircleAvatar(
-              radius: 22,
+            child: FramedAvatar(
+              size: 46,
+              label: avatarUrl?.trim().isNotEmpty == true ? '' : _initialFromFallback(fallbackIcon),
+              avatarUrl: avatarUrl,
+              frameUrl: frameUrl,
               backgroundColor: Colors.white.withOpacity(.1),
-              backgroundImage: _safeNetworkImage(avatarUrl),
-              child: _safeNetworkImage(avatarUrl) == null
-                  ? Icon(fallbackIcon, color: Colors.white70, size: 20)
-                  : null,
+              avatarInset: 0.05,
             ),
           ),
           const SizedBox(width: 12),
@@ -2306,12 +2321,11 @@ class _EmptyLeaderboard extends StatelessWidget {
 
 String _compact(int value) => NumberFormat.compact().format(value);
 
-ImageProvider? _safeNetworkImage(String? url) {
-  final trimmed = url?.trim() ?? '';
-  if (trimmed.isEmpty) {
-    return null;
+String _initialFromFallback(IconData fallbackIcon) {
+  if (fallbackIcon == Icons.apartment_rounded) {
+    return 'A';
   }
-  return NetworkImage(trimmed);
+  return '?';
 }
 
 DateTime _istNow() => DateTime.now().toUtc().add(const Duration(hours: 5, minutes: 30));

@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import '../theme/brand.dart';
+import '../../services/app_settings_service.dart';
 
 class EqualizerBars extends StatefulWidget {
   final int barCount;
@@ -29,6 +31,12 @@ class _EqualizerBarsState extends State<EqualizerBars> with TickerProviderStateM
   Widget build(BuildContext context) {
     const baseHeight = 10.0;
     const maxHeight = 46.0;
+    final tokens =
+        Get.isRegistered<AppSettingsService>()
+            ? getPremiumThemeTokens(
+              Get.find<AppSettingsService>().activePremiumThemeVariant,
+            )
+            : getPremiumThemeTokens('midnight');
 
     return SizedBox(
       height: 56,
@@ -48,14 +56,17 @@ class _EqualizerBarsState extends State<EqualizerBars> with TickerProviderStateM
                 margin: const EdgeInsets.symmetric(horizontal: 4),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(6),
-                  gradient: const LinearGradient(
+                  gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
-                    colors: [kTalkeePrimary, Color(0xFF3E2374)],
+                    colors: [
+                      tokens.primaryButtonGradient.last,
+                      tokens.primaryButtonGradient.first,
+                    ],
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: kTalkeePrimary.withOpacity(.35),
+                      color: tokens.glowColor.withOpacity(.35),
                       blurRadius: 12,
                       spreadRadius: 1,
                       offset: const Offset(0, 4),

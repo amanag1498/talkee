@@ -7,6 +7,7 @@ use App\Models\CallSession;
 use App\Models\LeaderboardDailyStat;
 use App\Models\LiveRoomGiftEarningLedger;
 use App\Models\User;
+use App\Models\UserProfileFrame;
 use App\Models\WalletTransaction;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -364,11 +365,16 @@ class LeaderboardService
                     ->limit($limit)
                     ->get();
 
-                return $this->withRanks($rows, function ($row, int $rank): array {
+                $frameByUserId = $this->equippedFrameUrlsForUsers(
+                    $rows->pluck('id')->map(fn ($id) => (int) $id)->all()
+                );
+
+                return $this->withRanks($rows, function ($row, int $rank) use ($frameByUserId): array {
                     return [
                         'id' => (int) $row->id,
                         'name' => (string) $row->name,
                         'avatar' => $row->avatar_url,
+                        'profile_frame' => $frameByUserId[(int) $row->id] ?? null,
                         'level' => $row->level !== null ? (int) $row->level : null,
                         'lifetime_spend_coins' => (int) ($row->lifetime_spend_coins ?? 0),
                         'rank' => $rank,
@@ -412,11 +418,16 @@ class LeaderboardService
                     ->limit($limit)
                     ->get();
 
-                return $this->withRanks($rows, function ($row, int $rank): array {
+                $frameByUserId = $this->equippedFrameUrlsForUsers(
+                    $rows->pluck('id')->map(fn ($id) => (int) $id)->all()
+                );
+
+                return $this->withRanks($rows, function ($row, int $rank) use ($frameByUserId): array {
                     return [
                         'id' => (int) $row->id,
                         'name' => (string) $row->name,
                         'avatar' => $row->avatar_url,
+                        'profile_frame' => $frameByUserId[(int) $row->id] ?? null,
                         'level' => $row->level !== null ? (int) $row->level : null,
                         'gift_coins' => (int) ($row->gift_coins ?? 0),
                         'call_coins' => (int) ($row->call_coins ?? 0),
@@ -469,12 +480,17 @@ class LeaderboardService
                     ->limit($limit)
                     ->get();
 
-                return $this->withRanks($rows, function ($row, int $rank): array {
+                $frameByUserId = $this->equippedFrameUrlsForUsers(
+                    $rows->pluck('host_user_id')->map(fn ($id) => (int) $id)->all()
+                );
+
+                return $this->withRanks($rows, function ($row, int $rank) use ($frameByUserId): array {
                     return [
                         'host_id' => (int) $row->host_id,
                         'host_user_id' => (int) $row->host_user_id,
                         'name' => (string) $row->display_name,
                         'avatar' => $row->avatar_url,
+                        'profile_frame' => $frameByUserId[(int) $row->host_user_id] ?? null,
                         'agency_id' => $row->agency_id !== null ? (int) $row->agency_id : null,
                         'gift_coins' => (int) ($row->gift_coins ?? 0),
                         'call_coins' => (int) ($row->call_coins ?? 0),
@@ -740,6 +756,33 @@ class LeaderboardService
         }
 
         return array_values($merged);
+    }
+
+    private function equippedFrameUrlsForUsers(array $userIds): array
+    {
+        $userIds = array_values(array_filter(array_map('intval', $userIds)));
+        if ($userIds === []) {
+            return [];
+        }
+
+        return UserProfileFrame::query()
+            ->with('profileFrame')
+            ->whereIn('user_id', $userIds)
+            ->where('is_equipped', true)
+            ->orderByDesc('id')
+            ->get()
+            ->filter(function (UserProfileFrame $ownership): bool {
+                if ($ownership->expires_at !== null && $ownership->expires_at->isPast()) {
+                    return false;
+                }
+
+                return (bool) $ownership->profileFrame?->is_active;
+            })
+            ->unique('user_id')
+            ->mapWithKeys(fn (UserProfileFrame $ownership) => [
+                (int) $ownership->user_id => $ownership->profileFrame?->asset_url,
+            ])
+            ->all();
     }
 
     private function leaderboardTableReady(): bool

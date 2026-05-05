@@ -49,7 +49,7 @@ const nowISO = () => new Date().toISOString();
 function publicApiOriginForSocket(socket) {
   const configured = String(process.env.PUBLIC_API_BASE_URL || '').trim();
   if (configured) {
-    return configured.replace(/\/+$/, '');
+    return configured.replace(/\/+$/, '').replace(/\/api$/, '');
   }
 
   const hostHeader = String(

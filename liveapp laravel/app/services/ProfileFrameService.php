@@ -292,6 +292,10 @@ class ProfileFrameService
     private function laterExpiry(?Carbon $current, ?Carbon $incoming): ?Carbon
     {
         if ($incoming === null) {
+            if ($current !== null && $current->isPast()) {
+                return null;
+            }
+
             return $current;
         }
 

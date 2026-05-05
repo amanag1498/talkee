@@ -193,4 +193,39 @@ class ProfileFrameApiTest extends TestCase
         ]);
         $this->assertDatabaseCount('wallet_transactions', 0);
     }
+
+    public function test_admin_regrant_revives_expired_profile_frame_without_new_expiry(): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole('user');
+        $frame = ProfileFrame::query()->where('slug', 'crimson-heart-halo')->firstOrFail();
+
+        UserProfileFrame::query()->create([
+            'user_id' => $user->id,
+            'profile_frame_id' => $frame->id,
+            'source' => 'event_reward',
+            'granted_at' => now()->subDays(10),
+            'expires_at' => now()->subDay(),
+            'is_equipped' => false,
+        ]);
+
+        app(\App\Services\ProfileFrameService::class)->grant(
+            $user,
+            $frame,
+            'admin_grant',
+            null,
+            false,
+        );
+
+        Sanctum::actingAs($user);
+
+        $this->getJson('/api/profile/frames')
+            ->assertOk()
+            ->assertJsonFragment([
+                'slug' => 'crimson-heart-halo',
+                'owned' => true,
+                'is_expired' => false,
+                'source' => 'admin_grant',
+            ]);
+    }
 }

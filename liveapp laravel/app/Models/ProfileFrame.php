@@ -83,12 +83,16 @@ class ProfileFrame extends Model
     private function publicMediaUrl(string $path): string
     {
         $normalizedPath = '/'.ltrim($path, '/');
+        if (Str::startsWith($normalizedPath, '/api/media/profile-frame/')) {
+            $normalizedPath = Str::replaceFirst('/api/media/profile-frame/', '/media/profile-frame/', $normalizedPath);
+        }
+
         $request = request();
 
         if ($request) {
             $publicOrigin = trim((string) $request->header('X-Public-Origin', ''));
             if ($publicOrigin !== '') {
-                return rtrim($publicOrigin, '/').$normalizedPath;
+                return $this->normalizedPublicOrigin($publicOrigin).$normalizedPath;
             }
 
             return rtrim($request->getSchemeAndHttpHost(), '/').$normalizedPath;
@@ -115,5 +119,16 @@ class ProfileFrame extends Model
         }
 
         return $this->publicMediaUrl($path);
+    }
+
+    private function normalizedPublicOrigin(string $origin): string
+    {
+        $trimmed = rtrim(trim($origin), '/');
+
+        if (Str::endsWith($trimmed, '/api')) {
+            return substr($trimmed, 0, -4);
+        }
+
+        return $trimmed;
     }
 }

@@ -156,28 +156,34 @@
               </div>
             </div>
           </div>
-          <form method="post" action="{{ route('admin.users.profile-frames.store', $user) }}" class="row g-2 mb-3">
+          <form method="post" action="{{ route('admin.users.profile-frames.store', $user) }}" class="row g-3 mb-3">
             @csrf
-            <div class="col-md-5">
+            <div class="col-12">
+              <label class="form-label small text-muted mb-1">Frame</label>
               <select name="profile_frame_id" class="form-select" required>
                 @foreach($availableProfileFrames as $frame)
                   <option value="{{ $frame->id }}">{{ $frame->name }} · {{ strtoupper($frame->rarity) }} · {{ $frame->unlock_type }}</option>
                 @endforeach
               </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-6">
+              <label class="form-label small text-muted mb-1">Expires At</label>
               <input type="datetime-local" name="expires_at" class="form-control">
             </div>
-            <div class="col-md-2 d-flex align-items-center">
-              <div class="form-check">
+            <div class="col-md-6">
+              <label class="form-label small text-muted mb-1 d-block">Options</label>
+              <div class="form-check mt-2">
                 <input class="form-check-input" type="checkbox" name="auto_equip" value="1" id="auto_equip_frame" checked>
                 <label class="form-check-label" for="auto_equip_frame">Auto equip</label>
               </div>
             </div>
-            <div class="col-md-2 d-grid">
+            <div class="col-12">
+              <label class="form-label small text-muted mb-1">Reason</label>
+              <input type="text" name="reason" class="form-control" placeholder="Reason">
+            </div>
+            <div class="col-12 d-grid">
               <button class="btn btn-primary">Assign Frame</button>
             </div>
-            <div class="col-12"><input type="text" name="reason" class="form-control" placeholder="Reason"></div>
           </form>
           <div class="table-responsive">
             <table class="table table-sm align-middle mb-0">
