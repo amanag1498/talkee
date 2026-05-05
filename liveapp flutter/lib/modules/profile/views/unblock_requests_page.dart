@@ -3,6 +3,8 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
 import '../../../app/theme/brand.dart';
+import '../../../app/utils/profile_frame_payload.dart';
+import '../../../app/widgets/framed_avatar.dart';
 import '../../../services/app_settings_service.dart';
 import '../../Live/services/live_service.dart';
 
@@ -236,27 +238,15 @@ class _UnblockRequestsPageState extends State<UnblockRequestsPage> {
                                 children: [
                                   Row(
                                     children: [
-                                      CircleAvatar(
-                                        radius: 22,
-                                        backgroundColor:
-                                            tokens.primaryButtonGradient.first,
-                                        backgroundImage: avatarUrl != null &&
-                                                avatarUrl.trim().isNotEmpty
-                                            ? NetworkImage(avatarUrl.trim())
-                                            : null,
-                                        child: avatarUrl == null ||
-                                                avatarUrl.trim().isEmpty
-                                            ? Text(
-                                                _blockedUserName(row)
-                                                    .characters
-                                                    .first
-                                                    .toUpperCase(),
-                                                style: TextStyle(
-                                                  color: tokens.textPrimary,
-                                                  fontWeight: FontWeight.w900,
-                                                ),
-                                              )
-                                            : null,
+                                      SizedBox(
+                                        width: 44,
+                                        height: 44,
+                                        child: FramedAvatar(
+                                          avatarUrl: avatarUrl,
+                                          frameUrl: profileFrameAssetUrlFromPayload(blockedUser),
+                                          label: _blockedUserName(row),
+                                          size: 44,
+                                        ),
                                       ),
                                       const SizedBox(width: 12),
                                       Expanded(

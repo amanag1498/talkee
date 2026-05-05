@@ -31,6 +31,7 @@ use App\Http\Controllers\Admin\CallReportController as AdminCallReportController
 use App\Http\Controllers\Admin\HostFollowerReportController as AdminHostFollowerReportController;
 use App\Http\Controllers\Admin\UserLevelAdminController;
 use App\Http\Controllers\Admin\EntryPackAdminController;
+use App\Http\Controllers\Admin\ProfileFrameAdminController;
 use App\Http\Controllers\Admin\LiveRoomPkBattleAdminController;
 use App\Http\Controllers\Admin\ModerationController as AdminModerationController;
 use App\Http\Controllers\MediaController;
@@ -50,6 +51,15 @@ Route::view('/', 'welcome')->name('home');
 Route::get('/media/avatar/{path}', [MediaController::class, 'avatar'])
     ->where('path', '.*')
     ->name('media.avatar');
+Route::get('/media/gift/{path}', [MediaController::class, 'gift'])
+    ->where('path', '.*')
+    ->name('media.gift');
+Route::get('/media/entry-pack/{path}', [MediaController::class, 'entryPack'])
+    ->where('path', '.*')
+    ->name('media.entry-pack');
+Route::get('/media/profile-frame/{path}', [MediaController::class, 'profileFrame'])
+    ->where('path', '.*')
+    ->name('media.profile-frame');
 Route::post('/auth/firebase/login', [FirebaseAuthController::class, 'login'])->name('auth.firebase.login');
 Route::post('/logout', [FirebaseAuthController::class, 'logout'])->middleware('auth')->name('logout');
 
@@ -106,6 +116,8 @@ Route::middleware(['auth','not_blocked','role:admin'])->prefix('admin')->name('a
         Route::post('/users/{user}/subscriptions', [UserAdminController::class, 'grantSubscription'])->name('users.subscriptions.store');
         Route::post('/users/{user}/subscriptions/{user_subscription}/cancel', [UserAdminController::class, 'cancelSubscription'])->name('users.subscriptions.cancel');
         Route::post('/users/{user}/entry-packs', [UserAdminController::class, 'assignEntryPack'])->name('users.entry-packs.store');
+        Route::post('/users/{user}/profile-frames', [UserAdminController::class, 'assignProfileFrame'])->name('users.profile-frames.store');
+        Route::delete('/users/{user}/profile-frames/{userProfileFrame}', [UserAdminController::class, 'revokeProfileFrame'])->name('users.profile-frames.destroy');
         Route::post('/users/{user}/level', [UserAdminController::class, 'setLevel'])->name('users.level.set');
         Route::get('/notifications', [AdminUserNotificationController::class,'index'])->name('notifications.index');   // Recent list
         Route::get('/notifications/compose', [AdminUserNotificationController::class,'compose'])->name('notifications.compose');
@@ -163,6 +175,8 @@ Route::middleware(['auth','not_blocked','role:admin'])->prefix('admin')->name('a
   Route::get('reports/leaderboards', [AdminLeaderboardReportController::class, 'index'])->name('reports.leaderboards');
   Route::get('reports/leaderboards/export', [AdminLeaderboardReportController::class, 'export'])->name('reports.leaderboards.export');
   Route::resource('levels', UserLevelAdminController::class)->except(['show']);
+  Route::post('profile-frames/awards/run', [ProfileFrameAdminController::class, 'runAwards'])->name('profile-frames.awards.run');
+  Route::resource('profile-frames', ProfileFrameAdminController::class)->except(['show']);
   Route::get('reports/agencies', [AdminAgencyReportController::class, 'index'])->name('reports.agencies');
   Route::get('reports/agencies/{agency}', [AdminAgencyReportController::class, 'show'])->name('reports.agencies.show');
   Route::get('agency-payout-reports', [AdminAgencyPayoutReportController::class, 'index'])->name('agency-payout-reports.index');

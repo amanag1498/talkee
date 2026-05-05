@@ -12,14 +12,17 @@ use App\Models\LiveRoomGift;
 use App\Models\LiveRoomParticipant;
 use App\Models\LiveRoomPkBattle;
 use App\Models\PaymentOrder;
+use App\Models\ProfileFrame;
 use App\Models\SubscriptionPlan;
 use App\Models\User;
 use App\Models\UserEntryPack;
 use App\Models\UserLevel;
 use App\Models\UserLevelHistory;
+use App\Models\UserProfileFrame;
 use App\Models\UserSubscription;
 use App\Models\WalletTransaction;
 use App\Services\AdminAuditService;
+use App\Services\ProfileFrameService;
 use App\Services\UserLevelService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -31,6 +34,7 @@ class UserAdminController extends Controller
 {
     public function __construct(
         private UserLevelService $levels,
+        private ProfileFrameService $profileFrames,
         private AdminAuditService $audits,
     ) {
     }
@@ -67,6 +71,7 @@ class UserAdminController extends Controller
             'levelHistories.newLevel',
             'entryPacks.entryPack',
             'hostFollows.host',
+            'profileFrameOwnerships.profileFrame',
         ]);
 
         $walletTransactions = WalletTransaction::query()
@@ -164,6 +169,17 @@ class UserAdminController extends Controller
             ->orderBy('sort_order')
             ->orderBy('level')
             ->get();
+        $availableProfileFrames = ProfileFrame::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+        $profileFrameHistory = $user->profileFrameOwnerships
+            ->sortByDesc('id')
+            ->take(20)
+            ->values();
+        $equippedProfileFrame = $profileFrameHistory
+            ->first(fn (UserProfileFrame $ownership) => $ownership->is_equipped && $ownership->profileFrame?->is_active);
 
         $auditTrail = AdminActionAudit::query()
             ->with(['admin', 'targetUser'])
@@ -199,6 +215,9 @@ class UserAdminController extends Controller
             'availablePlans',
             'availableEntryPacks',
             'availableLevels',
+            'availableProfileFrames',
+            'profileFrameHistory',
+            'equippedProfileFrame',
             'auditTrail',
             'overviewStats',
         ));
@@ -478,5 +497,79 @@ public function deviceUnblock(User $user)
         );
 
         return back()->with('ok', 'User level updated.');
+    }
+
+    public function assignProfileFrame(Request $request, User $user)
+    {
+        $data = $request->validate([
+            'profile_frame_id' => 'required|exists:profile_frames,id',
+            'expires_at' => 'nullable|date|after:now',
+            'auto_equip' => 'nullable|boolean',
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        $frame = ProfileFrame::query()->findOrFail($data['profile_frame_id']);
+        $expiresAt = !empty($data['expires_at']) ? Carbon::parse($data['expires_at']) : null;
+        $autoEquip = $request->boolean('auto_equip');
+
+        $ownership = $this->profileFrames->grant(
+            $user,
+            $frame,
+            'admin_grant',
+            $expiresAt,
+            $autoEquip,
+        );
+
+        $this->audits->log(
+            area: 'profile_frames',
+            action: 'user_profile_frame_granted',
+            admin: $request->user(),
+            targetUser: $user,
+            entity: $ownership,
+            before: null,
+            after: $ownership->fresh(['profileFrame'])->toArray(),
+            reason: $data['reason'] ?? null,
+            meta: [
+                'profile_frame_id' => $frame->id,
+                'auto_equip' => $autoEquip,
+                'expires_at' => optional($expiresAt)->toIso8601String(),
+            ],
+        );
+
+        $this->profileFrames->notifyUnlocked(
+            $user,
+            $ownership,
+            'Profile frame granted',
+            $autoEquip
+                ? $frame->name.' was granted by admin and equipped on your profile.'
+                : $frame->name.' was granted by admin and added to your profile frame inventory.',
+        );
+
+        return back()->with('ok', 'Profile frame assigned.');
+    }
+
+    public function revokeProfileFrame(Request $request, User $user, UserProfileFrame $userProfileFrame)
+    {
+        abort_unless((int) $userProfileFrame->user_id === (int) $user->id, 404);
+
+        $before = $userProfileFrame->fresh(['profileFrame'])->toArray();
+        $frameName = $userProfileFrame->profileFrame?->name ?? 'Profile frame';
+        $userProfileFrame->delete();
+
+        $this->audits->log(
+            area: 'profile_frames',
+            action: 'user_profile_frame_revoked',
+            admin: $request->user(),
+            targetUser: $user,
+            entity: $user,
+            before: $before,
+            after: null,
+            reason: $request->input('reason'),
+            meta: [
+                'profile_frame_id' => data_get($before, 'profile_frame.id') ?: data_get($before, 'profile_frame_id'),
+            ],
+        );
+
+        return back()->with('ok', $frameName.' revoked.');
     }
 }

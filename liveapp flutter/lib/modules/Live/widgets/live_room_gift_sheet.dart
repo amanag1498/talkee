@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../app/widgets/remote_media_art.dart';
 import '../../../services/app_settings_service.dart';
 import '../../../app/theme/brand.dart';
 import '../models/live_gift_item.dart';
@@ -160,16 +161,19 @@ class _LiveRoomGiftSheetState extends State<LiveRoomGiftSheet> {
                                           gift.giftUrl!.isNotEmpty
                                       ? ClipRRect(
                                         borderRadius: BorderRadius.circular(12),
-                                        child: Image.network(
-                                          gift.giftUrl!,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) {
-                                            return const Icon(
+                                        child: RemoteMediaArt(
+                                          url: gift.giftUrl!,
+                                          explicitType: gift.giftType,
+                                          width: double.infinity,
+                                          height: double.infinity,
+                                          fit: BoxFit.contain,
+                                          fallback: const Center(
+                                            child: Icon(
                                               Icons.card_giftcard_rounded,
                                               color: Colors.white70,
                                               size: 30,
-                                            );
-                                          },
+                                            ),
+                                          ),
                                         ),
                                       )
                                       : const Icon(

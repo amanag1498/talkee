@@ -15,7 +15,10 @@ use Illuminate\Support\Facades\Redis;
 
 class LiveRoomStateService
 {
-    public function __construct(private LiveRoomPkService $pk)
+    public function __construct(
+        private LiveRoomPkService $pk,
+        private ProfileFrameService $frames,
+    )
     {
     }
 
@@ -203,6 +206,7 @@ class LiveRoomStateService
             'host_profile_id' => $host ? (int) $host->id : null,
             'host_name' => optional($host)->stage_name ?: optional($hostUser)->name,
             'thumbnail' => optional($hostUser)->avatar_url,
+            'host_profile_frame' => $hostUser ? $this->frames->equippedFramePayload($hostUser) : null,
             'capacity' => (int) data_get($room->meta, 'capacity', 0),
             'max_speakers' => max(1, (int) ($room->max_speakers ?? $this->configuredMaxSpeakers($room))),
             'max_participants' => max(1, (int) ($room->max_participants ?? $this->configuredMaxParticipants($room))),

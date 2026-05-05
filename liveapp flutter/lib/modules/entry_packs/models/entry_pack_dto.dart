@@ -1,8 +1,11 @@
+import '../../../app/models/remote_media_kind.dart';
+
 class EntryPackDto {
   final int id;
   final String name;
   final int priceCoins;
   final String? svgUrl;
+  final String? assetType;
   final String animationStyle;
   final int priority;
   final int durationMs;
@@ -23,6 +26,7 @@ class EntryPackDto {
     required this.owned,
     required this.active,
     this.svgUrl,
+    this.assetType,
   });
 
   factory EntryPackDto.fromJson(Map<String, dynamic> json) {
@@ -37,6 +41,7 @@ class EntryPackDto {
       name: (json['name'] ?? 'Entry Pack').toString(),
       priceCoins: toInt(json['price_coins'], 0),
       svgUrl: json['svg_url']?.toString(),
+      assetType: json['asset_type']?.toString(),
       animationStyle: (json['animation_style'] ?? 'banner').toString(),
       priority: toInt(json['priority'], 1),
       durationMs: toInt(json['duration_ms'], 3000),
@@ -56,6 +61,7 @@ class EntryPackDto {
       name: name,
       priceCoins: priceCoins,
       svgUrl: svgUrl,
+      assetType: assetType,
       animationStyle: animationStyle,
       priority: priority,
       durationMs: durationMs,
@@ -65,4 +71,7 @@ class EntryPackDto {
       active: active ?? this.active,
     );
   }
+
+  RemoteMediaKind get mediaKind =>
+      detectRemoteMediaKind(explicitType: assetType, url: svgUrl);
 }

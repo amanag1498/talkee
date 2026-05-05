@@ -7,6 +7,7 @@ import 'package:liveapp/modules/subscriptions/controllers/viewer_gate_controller
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../app/theme/brand.dart';
+import '../../../../app/widgets/framed_avatar.dart';
 import '../../../../services/app_settings_service.dart';
 import '../../Live/services/live_service.dart';
 import '../../banners/models/banner_item.dart';
@@ -961,7 +962,11 @@ class _CompactVideoRoomTile extends StatelessWidget {
               bottom: 10,
               child: Row(
                 children: [
-                  _CompactAvatar(name: hostName, imageUrl: room.thumbnail),
+                  _CompactAvatar(
+                    name: hostName,
+                    imageUrl: room.thumbnail,
+                    frameUrl: room.hostProfileFrameUrl,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -986,29 +991,29 @@ class _CompactVideoRoomTile extends StatelessWidget {
 }
 
 class _CompactAvatar extends StatelessWidget {
-  const _CompactAvatar({required this.name, required this.imageUrl});
+  const _CompactAvatar({
+    required this.name,
+    required this.imageUrl,
+    this.frameUrl,
+  });
 
   final String name;
   final String? imageUrl;
+  final String? frameUrl;
 
   @override
   Widget build(BuildContext context) {
     final first = name.isEmpty ? 'H' : name.characters.first.toUpperCase();
-    return CircleAvatar(
-      radius: 14,
-      backgroundColor: Colors.white.withOpacity(.18),
-      backgroundImage:
-          imageUrl != null && imageUrl!.isNotEmpty ? NetworkImage(imageUrl!) : null,
-      child: imageUrl == null || imageUrl!.isEmpty
-          ? Text(
-              first,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                fontSize: 13,
-              ),
-            )
-          : null,
+    return SizedBox(
+      width: 28,
+      height: 28,
+      child: FramedAvatar(
+        avatarUrl: imageUrl,
+        frameUrl: frameUrl,
+        label: first,
+        size: 28,
+        backgroundColor: Colors.white.withOpacity(.18),
+      ),
     );
   }
 }

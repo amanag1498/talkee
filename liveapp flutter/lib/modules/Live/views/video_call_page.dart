@@ -28,7 +28,9 @@ import '../../banners/models/banner_item.dart';
 import '../../banners/services/banner_service.dart';
 import '../../../app/theme/brand.dart';
 import '../../../app/routes/app_routes.dart';
+import '../../../app/utils/profile_frame_payload.dart';
 import '../../../app/widgets/haptics.dart';
+import '../../../app/widgets/framed_avatar.dart';
 import '../../../services/app_settings_service.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/live_rooms_ws_service.dart';
@@ -755,10 +757,10 @@ class _VideoCallPageState extends State<VideoCallPage>
     }
   }
 
-  Future<void> _attachLocalPreview(Room room) async {
+  Future<void> _attachLocalPreview(Room room, {bool force = false}) async {
     final t = _localCameraTrack(room);
     if (t == null) return;
-    if (_boundTrack == t && _renderer.srcObject != null) return;
+    if (!force && _boundTrack == t && _renderer.srcObject != null) return;
     _boundTrack = t;
 
     try {
@@ -918,7 +920,7 @@ class _VideoCallPageState extends State<VideoCallPage>
       }
 
       if (room != null) {
-        await _attachLocalPreview(room);
+        await _attachLocalPreview(room, force: true);
       }
       if (mounted) {
         setState(() {
@@ -1072,6 +1074,7 @@ class _VideoCallPageState extends State<VideoCallPage>
       userId: userId,
       name: name,
       avatarUrl: event['avatar_url']?.toString(),
+      frameUrl: profileFrameAssetUrlFromPayload(event),
       themeKey:
           event['active_theme_key']?.toString().trim().isNotEmpty == true
               ? event['active_theme_key'].toString().trim()
@@ -1106,6 +1109,7 @@ class _VideoCallPageState extends State<VideoCallPage>
       avatarUrl: currentUser.avatarUrl?.trim().isNotEmpty == true
           ? currentUser.avatarUrl!.trim()
           : null,
+      frameUrl: currentUser.profileFrame?.assetUrl,
       themeKey: Get.find<AppSettingsService>().activePremiumThemeVariant,
       isHost: _isHost,
       isVip: currentUser.roles.any(
@@ -1131,6 +1135,7 @@ class _VideoCallPageState extends State<VideoCallPage>
       name: name,
       avatarUrl:
           metadata['avatar_url']?.toString() ?? metadata['avatar']?.toString(),
+      frameUrl: profileFrameAssetUrlFromPayload(metadata),
       themeKey:
           metadata['active_theme_key']?.toString().trim().isNotEmpty == true
               ? metadata['active_theme_key'].toString().trim()
@@ -1281,6 +1286,29 @@ class _VideoCallPageState extends State<VideoCallPage>
       }
     }
     return null;
+  }
+
+  String? get _hostProfileFrameUrl {
+    if (_isHost) {
+      final currentUserFrame =
+          Get.find<AuthService>().currentUser?.profileFrame?.assetUrl?.trim();
+      if (currentUserFrame?.isNotEmpty == true) {
+        return currentUserFrame;
+      }
+    }
+    final room = _room;
+    if (room != null) {
+      for (final participant in room.remoteParticipants.values) {
+        if (participant.identity.startsWith('host-')) {
+          final metadata = _participantMetadata(participant);
+          final metadataFrame = profileFrameAssetUrlFromPayload(metadata)?.trim();
+          if (metadataFrame?.isNotEmpty == true) {
+            return metadataFrame;
+          }
+        }
+      }
+    }
+    return profileFrameAssetUrlFromPayload(widget.room.meta?['host_profile_frame']);
   }
 
   int? get _hostUserId {
@@ -1638,7 +1666,7 @@ class _VideoCallPageState extends State<VideoCallPage>
 
   List<Widget> _buildChatTrailingActions() {
     final actions = <Widget>[];
-    final showGiftInChatFooter = !_isHost;
+    final showGiftInChatFooter = true;
 
     if (_isHost) {
       actions.add(
@@ -1666,6 +1694,12 @@ class _VideoCallPageState extends State<VideoCallPage>
               onTap: _showHostModerationSheet,
               badgeCount: _pendingRequests.length,
               accent: const Color(0xFF5D8BFF),
+            ),
+            _FooterActionItem(
+              icon:
+                  _giftBusy ? Icons.hourglass_top_rounded : Icons.redeem_rounded,
+              onTap: _giftBusy ? null : _openGiftSheet,
+              accent: const Color(0xFFFF8BC2),
             ),
             if (_pkCapable)
               _FooterActionItem(
@@ -2366,6 +2400,7 @@ class _VideoCallPageState extends State<VideoCallPage>
           level: _safeInt(metadata['level']),
           avatarUrl:
               metadata['avatar_url']?.toString() ?? metadata['avatar']?.toString(),
+          frameUrl: profileFrameAssetUrlFromPayload(metadata),
         ),
       );
     }
@@ -3334,7 +3369,7 @@ class _VideoCallPageState extends State<VideoCallPage>
       setState(() => _giftError = 'Gifts are currently unavailable.');
       return;
     }
-    if (_giftBusy || _isHost) return;
+    if (_giftBusy) return;
     setState(() {
       _giftError = null;
     });
@@ -4588,6 +4623,7 @@ class _VideoCallPageState extends State<VideoCallPage>
                             child: _LiveRoomInfoPill(
                               hostName: _hostDisplayName,
                               hostAvatarUrl: _hostAvatarUrl,
+                              hostFrameUrl: _hostProfileFrameUrl,
                               liveLabel: _timerText,
                               participantCount: _viewerCount,
                               onHostTap: _openHostProfileFromPill,
@@ -4819,6 +4855,7 @@ class _HostModerationParticipant {
   final bool speaking;
   final int? level;
   final String? avatarUrl;
+  final String? frameUrl;
 
   const _HostModerationParticipant({
     required this.userId,
@@ -4830,6 +4867,7 @@ class _HostModerationParticipant {
     required this.speaking,
     this.level,
     this.avatarUrl,
+    this.frameUrl,
   });
 }
 
@@ -6339,21 +6377,23 @@ class _DevPkMiniButton extends StatelessWidget {
 }
 
 class _LiveRoomInfoPill extends StatelessWidget {
-  final String hostName;
-  final String? hostAvatarUrl;
-  final String liveLabel;
-  final int participantCount;
-  final VoidCallback? onHostTap;
-  final VoidCallback? onViewerTap;
-
   const _LiveRoomInfoPill({
     required this.hostName,
     this.hostAvatarUrl,
+    this.hostFrameUrl,
     required this.liveLabel,
     required this.participantCount,
     this.onHostTap,
     this.onViewerTap,
   });
+
+  final String hostName;
+  final String? hostAvatarUrl;
+  final String? hostFrameUrl;
+  final String liveLabel;
+  final int participantCount;
+  final VoidCallback? onHostTap;
+  final VoidCallback? onViewerTap;
 
   @override
   Widget build(BuildContext context) {
@@ -6411,6 +6451,7 @@ class _LiveRoomInfoPill extends StatelessWidget {
                             _LiveRoomPillAvatar(
                               name: hostName,
                               avatarUrl: hostAvatarUrl,
+                              frameUrl: hostFrameUrl,
                               compact: compact,
                               tint: tokens.glowColor,
                             ),
@@ -6492,12 +6533,14 @@ class _LiveRoomPillAvatar extends StatelessWidget {
   const _LiveRoomPillAvatar({
     required this.name,
     required this.avatarUrl,
+    required this.frameUrl,
     required this.compact,
     required this.tint,
   });
 
   final String name;
   final String? avatarUrl;
+  final String? frameUrl;
   final bool compact;
   final Color tint;
 
@@ -6507,39 +6550,17 @@ class _LiveRoomPillAvatar extends StatelessWidget {
     final initial = name.trim().isNotEmpty
         ? name.trim().characters.first.toUpperCase()
         : 'H';
-    return Container(
+    return SizedBox(
       width: size,
       height: size,
-      padding: const EdgeInsets.all(1.4),
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withOpacity(.72),
-            tint.withOpacity(.52),
-          ],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: tint.withOpacity(.24),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: ClipOval(
-        child: avatarUrl?.trim().isNotEmpty == true
-            ? Image.network(
-                avatarUrl!.trim(),
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _LiveRoomPillAvatarFallback(
-                  initial: initial,
-                  tint: tint,
-                ),
-              )
-            : _LiveRoomPillAvatarFallback(initial: initial, tint: tint),
+      child: FramedAvatar(
+        avatarUrl: avatarUrl?.trim(),
+        frameUrl: frameUrl?.trim(),
+        size: size,
+        label: initial,
+        backgroundColor: Colors.transparent,
+        avatarInset: 0.08,
+        frameScale: 1.18,
       ),
     );
   }
@@ -7436,33 +7457,15 @@ class _HostModerationSheet extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                   child: Row(
                     children: [
-                      ThemedRoomFrame(
-                        themeKey: participant.themeKey,
-                        isHost: participant.isHost,
-                        isVip: participant.isVip,
-                        isSpeaking: participant.speaking,
-                        borderRadius: 16,
-                        size: 44,
-                        enableAnimation: false,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            gradient: LinearGradient(
-                              colors: frameTokens.primaryButtonGradient,
-                            ),
-                          ),
-                          child: Center(
-                            child: Text(
-                              participant.name.isNotEmpty
-                                  ? participant.name.characters.first
-                                      .toUpperCase()
-                                  : '?',
-                              style: TextStyle(
-                                color: frameTokens.textPrimary,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
+                      SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: FramedAvatar(
+                          avatarUrl: participant.avatarUrl,
+                          frameUrl: participant.frameUrl,
+                          label: participant.name,
+                          size: 44,
+                          backgroundColor: frameTokens.primaryButtonGradient.first,
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -7598,32 +7601,17 @@ class _HostModerationSheet extends StatelessWidget {
                               children: [
                                 Row(
                                   children: [
-                                    ThemedRoomFrame(
-                                      themeKey: themeKey,
-                                      isHost: false,
-                                      isVip: isVip,
-                                      isSpeaking: false,
-                                      borderRadius: 16,
-                                      size: 42,
-                                      enableAnimation: false,
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(16),
-                                          gradient: LinearGradient(
-                                            colors: frameTokens.primaryButtonGradient,
-                                          ),
-                                        ),
-                                        child: Center(
-                                          child: Text(
-                                            name.isNotEmpty
-                                                ? name.characters.first.toUpperCase()
-                                                : '?',
-                                            style: TextStyle(
-                                              color: frameTokens.textPrimary,
-                                              fontWeight: FontWeight.w900,
-                                            ),
-                                          ),
-                                        ),
+                                    SizedBox(
+                                      width: 42,
+                                      height: 42,
+                                      child: FramedAvatar(
+                                        avatarUrl:
+                                            row['avatar_url']?.toString() ??
+                                            row['avatar']?.toString(),
+                                        frameUrl: profileFrameAssetUrlFromPayload(row),
+                                        label: name,
+                                        size: 42,
+                                        backgroundColor: frameTokens.primaryButtonGradient.first,
                                       ),
                                     ),
                                     const Spacer(),
@@ -7724,23 +7712,15 @@ class _HostModerationSheet extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
+                    SizedBox(
                       width: 44,
                       height: 44,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: tokens.primaryButtonGradient,
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Center(
-                        child: Text(
-                          name.isNotEmpty ? name.characters.first.toUpperCase() : '?',
-                          style: TextStyle(
-                            color: tokens.textPrimary,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
+                      child: FramedAvatar(
+                        avatarUrl: user['avatar_url']?.toString(),
+                        frameUrl: profileFrameAssetUrlFromPayload(user),
+                        label: name,
+                        size: 44,
+                        backgroundColor: tokens.primaryButtonGradient.first,
                       ),
                     ),
                     const SizedBox(width: 12),

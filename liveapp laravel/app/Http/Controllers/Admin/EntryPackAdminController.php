@@ -8,6 +8,10 @@ use App\Models\UserEntryPack;
 use App\Services\AdminAuditService;
 use App\Services\EntryPackService;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class EntryPackAdminController extends Controller
 {
@@ -61,7 +65,7 @@ class EntryPackAdminController extends Controller
     public function update(Request $request, EntryPack $entry_pack)
     {
         $before = $entry_pack->toArray();
-        $entry_pack->update($this->validated($request));
+        $entry_pack->update($this->validated($request, $entry_pack));
         $this->audits->log('entry_packs', 'entry_pack_updated', $request->user(), null, $entry_pack, $before, $entry_pack->fresh()->toArray(), $request->input('reason'));
 
         return redirect()->route('admin.entry-packs.index')->with('ok', 'Entry pack updated.');
@@ -70,6 +74,7 @@ class EntryPackAdminController extends Controller
     public function destroy(EntryPack $entry_pack)
     {
         $before = $entry_pack->toArray();
+        $this->deleteLocalAsset((string) $entry_pack->getRawOriginal('svg_url'));
         $entry_pack->delete();
         $this->audits->log('entry_packs', 'entry_pack_deleted', request()->user(), null, $entry_pack, $before, null, request('reason'));
 
@@ -134,19 +139,33 @@ class EntryPackAdminController extends Controller
         return redirect()->route('admin.entry-packs.reports')->with('ok', 'User entry pack updated.');
     }
 
-    private function validated(Request $request): array
+    private function validated(Request $request, ?EntryPack $existing = null): array
     {
+        $this->assertUploadReady($request, 'asset_file');
+
         $data = $request->validate([
             'name' => 'required|string|max:120',
             'price_coins' => 'required|integer|min:0',
-            'svg_url' => 'nullable|string|max:2048',
             'animation_style' => 'required|in:banner,center,fullscreen',
             'priority' => 'nullable|integer|min:1|max:9999',
             'duration_ms' => 'nullable|integer|min:2000|max:4000',
             'duration_days' => 'nullable|integer|min:1|max:3650',
             'sort_order' => 'nullable|integer|min:0|max:100000',
             'is_active' => 'nullable|boolean',
+            'asset_file' => ($existing ? 'nullable' : 'required').'|file|max:102400',
+        ], [
+            'asset_file.required' => 'Please choose an SVG or SVGA file.',
+            'asset_file.max' => 'The asset file must be 100 MB or smaller.',
+            'asset_file.uploaded' => 'The asset file could not be uploaded. Check PHP upload_max_filesize, post_max_size, and nginx client_max_body_size.',
         ]);
+        $assetFile = $request->file('asset_file');
+        if ($assetFile) {
+            $this->assertSupportedEntryAsset($assetFile);
+            $data['svg_url'] = $this->storeEntryAsset($assetFile);
+            if ($existing) {
+                $this->deleteLocalAsset((string) $existing->getRawOriginal('svg_url'));
+            }
+        }
 
         $data['priority'] = (int) ($data['priority'] ?? 1);
         $data['duration_ms'] = (int) ($data['duration_ms'] ?? 3000);
@@ -155,5 +174,73 @@ class EntryPackAdminController extends Controller
         $data['is_active'] = $request->boolean('is_active');
 
         return $data;
+    }
+
+    private function assertSupportedEntryAsset(?UploadedFile $file): void
+    {
+        if (!$file) {
+            return;
+        }
+
+        $extension = strtolower($file->getClientOriginalExtension());
+        if (!in_array($extension, ['svg', 'svga'], true)) {
+            throw ValidationException::withMessages([
+                'asset_file' => 'Entry asset must be an SVG or SVGA file.',
+            ]);
+        }
+    }
+
+    private function assertUploadReady(Request $request, string $field): void
+    {
+        $fileMeta = $_FILES[$field] ?? null;
+        if (!is_array($fileMeta)) {
+            return;
+        }
+
+        $error = $fileMeta['error'] ?? null;
+        if (!is_int($error) || $error === UPLOAD_ERR_OK || $error === UPLOAD_ERR_NO_FILE) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            $field => $this->uploadErrorMessage($error),
+        ]);
+    }
+
+    private function uploadErrorMessage(int $error): string
+    {
+        return match ($error) {
+            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'The asset file is too large for the server upload limit. Increase PHP upload_max_filesize and post_max_size, and increase nginx client_max_body_size.',
+            UPLOAD_ERR_PARTIAL => 'The asset file upload was interrupted. Please try again.',
+            UPLOAD_ERR_NO_TMP_DIR => 'The server temporary upload directory is missing.',
+            UPLOAD_ERR_CANT_WRITE => 'The server could not write the uploaded asset to disk.',
+            UPLOAD_ERR_EXTENSION => 'A server extension stopped the asset upload.',
+            default => 'The asset file could not be uploaded. Please try again.',
+        };
+    }
+
+    private function storeEntryAsset(UploadedFile $file): string
+    {
+        return $file->storeAs(
+            'entry-packs',
+            Str::uuid()->toString().'.'.strtolower($file->getClientOriginalExtension()),
+            'public',
+        );
+    }
+
+    private function deleteLocalAsset(?string $value): void
+    {
+        $raw = trim((string) $value);
+        if ($raw === '' || Str::startsWith($raw, ['http://', 'https://'])) {
+            return;
+        }
+
+        $path = Str::startsWith($raw, '/storage/')
+            ? ltrim(Str::after($raw, '/storage/'), '/')
+            : ltrim($raw, '/');
+
+        if ($path !== '' && Storage::disk('public')->exists($path)) {
+            Storage::disk('public')->delete($path);
+        }
     }
 }

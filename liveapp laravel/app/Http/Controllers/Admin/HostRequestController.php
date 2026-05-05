@@ -5,12 +5,17 @@ use App\Http\Controllers\Controller;
 use App\Models\Host;
 use App\Models\HostRequest;
 use App\Services\NotifyUser;
+use App\Services\ProfileFrameService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 
 class HostRequestController extends Controller
 {
+  public function __construct(
+    private readonly ProfileFrameService $profileFrames,
+  ) {}
+
   public function index(){
     $requests = HostRequest::with('user')->latest()->paginate(20);
     return view('admin.host_requests.index', compact('requests'));
@@ -71,6 +76,13 @@ class HostRequestController extends Controller
       $host_request->update([
         'status'=>'approved','review_notes'=>$request->notes,'reviewed_by'=>$request->user()->id,'reviewed_at'=>now()
       ]);
+      $frameOwnership = $this->profileFrames->grantBySlug(
+        $u,
+        'host-sovereign-crest',
+        'host_reward',
+        null,
+        true,
+      );
       // 🔔 LIVE push to user (no persistence yet)
     try {
       Redis::publish('users:notify', json_encode([
@@ -94,6 +106,12 @@ class HostRequestController extends Controller
                     'persist' => true,
                 ]);
             } catch (\Throwable $e) {}
+    $this->profileFrames->notifyUnlocked(
+      $u,
+      $frameOwnership,
+      'Host reward unlocked',
+      'Host Sovereign Crest has been unlocked and equipped on your profile.',
+    );
     });
 
     return redirect()->route('admin.host-requests.index')->with('ok','Approved.');

@@ -1,12 +1,12 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/brand.dart';
+import '../../../app/widgets/remote_media_art.dart';
 import '../../../app/widgets/haptics.dart';
 import '../../../services/app_settings_service.dart';
 import '../../wallet/widgets/recharge_bottom_sheet.dart';
@@ -372,7 +372,11 @@ class _EntryHeroPanel extends StatelessWidget {
         children: [
           Row(
             children: [
-              _EntryPackArt(svgUrl: pack?.svgUrl, size: 56),
+              _EntryPackArt(
+                svgUrl: pack?.svgUrl,
+                assetType: pack?.assetType,
+                size: 56,
+              ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -494,7 +498,7 @@ class _EntryPackCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _EntryPackArt(svgUrl: pack.svgUrl),
+          _EntryPackArt(svgUrl: pack.svgUrl, assetType: pack.assetType),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
@@ -637,9 +641,14 @@ class _OwnedEntryPackCard extends StatelessWidget {
 }
 
 class _EntryPackArt extends StatelessWidget {
-  const _EntryPackArt({this.svgUrl, this.size = 60});
+  const _EntryPackArt({
+    this.svgUrl,
+    this.assetType,
+    this.size = 60,
+  });
 
   final String? svgUrl;
+  final String? assetType;
   final double size;
 
   @override
@@ -655,19 +664,16 @@ class _EntryPackArt extends StatelessWidget {
       alignment: Alignment.center,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        child:
-            svgUrl != null && svgUrl!.isNotEmpty
-                ? SvgPicture.network(
-                  svgUrl!,
-                  width: size * .6,
-                  height: size * .6,
-                  placeholderBuilder:
-                      (_) => Icon(
-                        Icons.auto_awesome_rounded,
-                        color: tokens.textPrimary,
-                      ),
-                    )
-                : Icon(Icons.auto_awesome_rounded, color: tokens.textPrimary),
+        child: RemoteMediaArt(
+          url: svgUrl,
+          explicitType: assetType,
+          width: size * .6,
+          height: size * .6,
+          fallback: Icon(
+            Icons.auto_awesome_rounded,
+            color: tokens.textPrimary,
+          ),
+        ),
       ),
     );
   }

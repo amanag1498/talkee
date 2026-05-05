@@ -1,14 +1,22 @@
 class AppUrls {
+//   static const String apiHost = String.fromEnvironment(
+//     'APP_API_HOST',
+//     defaultValue: '187.127.162.27',
+//   );
+//   static const String socketHost = String.fromEnvironment(
+//     'APP_SOCKET_HOST',
+//     defaultValue: '187.127.162.30',
+//   );
   static const String apiHost = String.fromEnvironment(
     'APP_API_HOST',
-    defaultValue: '187.127.162.27',
+    defaultValue: '192.168.29.41',
   );
   static const String socketHost = String.fromEnvironment(
     'APP_SOCKET_HOST',
-    defaultValue: '187.127.162.30',
+    defaultValue: '192.168.29.41',
   );
   static const int apiPort =
-      int.fromEnvironment('APP_API_PORT', defaultValue: 80);
+      int.fromEnvironment('APP_API_PORT', defaultValue: 8000);
   static const int wsPort =
       int.fromEnvironment('APP_WS_PORT', defaultValue: 3001);
   static const String scheme =

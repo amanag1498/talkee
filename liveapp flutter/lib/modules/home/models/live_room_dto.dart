@@ -12,6 +12,7 @@ class LiveRoomModel {
   final int maxSpeakers;
   final int maxParticipants;
   final String? thumbnail;    // avatar_url from server
+  final String? hostProfileFrameUrl;
   final int participantCount;
   final int viewerCount;
   final int listenerCount;
@@ -41,6 +42,7 @@ class LiveRoomModel {
     this.maxSpeakers = 4,
     this.maxParticipants = 50,
     this.thumbnail,
+    this.hostProfileFrameUrl,
     this.participantCount = 0,
     this.viewerCount = 0,
     this.listenerCount = 0,
@@ -111,6 +113,10 @@ class LiveRoomModel {
     final followerCount = j['follower_count'] == null
         ? 0
         : (int.tryParse(j['follower_count'].toString()) ?? 0);
+    final hostProfileFrameUrl =
+        j['host_profile_frame'] is Map
+            ? (Map<String, dynamic>.from(j['host_profile_frame'] as Map)['asset_url']?.toString())
+            : null;
 
     final rawThumb = j['thumbnail']?.toString();
     final thumb = _normalizeThumb(rawThumb);
@@ -140,6 +146,7 @@ class LiveRoomModel {
       maxSpeakers: maxSpeakers,
       maxParticipants: maxParticipants,
       thumbnail: thumb,
+      hostProfileFrameUrl: hostProfileFrameUrl,
       participantCount: participantCount,
       viewerCount: viewerCount,
       listenerCount: listenerCount,
@@ -171,6 +178,7 @@ class LiveRoomModel {
     'max_speakers': maxSpeakers,
     'max_participants': maxParticipants,
     'thumbnail': thumbnail,
+    'host_profile_frame_url': hostProfileFrameUrl,
     'participant_count': participantCount,
     'viewer_count': viewerCount,
     'listener_count': listenerCount,

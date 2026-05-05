@@ -5,12 +5,17 @@ use App\Http\Controllers\Controller;
 use App\Models\Agency;
 use App\Models\AgencyRequest;
 use App\Services\NotifyUser;
+use App\Services\ProfileFrameService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 
 class AgencyRequestController extends Controller
 {
+    public function __construct(
+        private readonly ProfileFrameService $profileFrames,
+    ) {}
+
     public function index(){
         $requests = AgencyRequest::with('user')->latest()->paginate(20);
         return view('admin.agency_requests.index', compact('requests'));
@@ -84,6 +89,13 @@ class AgencyRequestController extends Controller
                 'reviewed_by'  => $request->user()->id,
                 'reviewed_at'  => now(),
             ]);
+            $frameOwnership = $this->profileFrames->grantBySlug(
+                $u,
+                'lion-king-crest',
+                'agency_reward',
+                null,
+                true,
+            );
 
             // 🔔 LIVE push to user (same channel as Host)
             try {
@@ -117,6 +129,12 @@ class AgencyRequestController extends Controller
                     'persist' => true,
                 ]);
             } catch (\Throwable $e) {}
+            $this->profileFrames->notifyUnlocked(
+                $u,
+                $frameOwnership,
+                'Agency reward unlocked',
+                'Lion King Crest has been unlocked and equipped on your profile.',
+            );
 
         });
 

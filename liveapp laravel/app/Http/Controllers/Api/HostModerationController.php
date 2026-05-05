@@ -8,11 +8,15 @@ use App\Models\ModerationAction;
 use App\Models\UnblockRequest;
 use App\Models\User;
 use App\Services\ModerationService;
+use App\Services\ProfileFrameService;
 use Illuminate\Http\Request;
 
 class HostModerationController extends Controller
 {
-    public function __construct(private ModerationService $moderation)
+    public function __construct(
+        private ModerationService $moderation,
+        private ProfileFrameService $frames,
+    )
     {
     }
 
@@ -30,6 +34,7 @@ class HostModerationController extends Controller
                     'user_id' => (int) $row->blocked_user_id,
                     'name' => (string) ($row->blockedUser?->name ?? 'User'),
                     'avatar' => $row->blockedUser?->avatar_url,
+                    'profile_frame' => $row->blockedUser ? $this->frames->equippedFramePayload($row->blockedUser) : null,
                     'level' => $row->blockedUser?->level?->level,
                     'is_vip' => $row->blockedUser?->hasAnyRole(['vip', 'premium']) ?? false,
                     'blocked_at' => optional($row->created_at)->toIso8601String(),
@@ -124,7 +129,30 @@ class HostModerationController extends Controller
 
         return response()->json([
             'ok' => true,
-            'data' => $rows->items(),
+            'data' => collect($rows->items())->map(function ($row) {
+                return [
+                    'id' => (int) $row->id,
+                    'status' => (string) ($row->status ?? 'pending'),
+                    'message' => $row->message,
+                    'created_at' => optional($row->created_at)->toIso8601String(),
+                    'updated_at' => optional($row->updated_at)->toIso8601String(),
+                    'reviewed_at' => optional($row->reviewed_at)->toIso8601String(),
+                    'blocked_user' => $row->blockedUser ? [
+                        'id' => (int) $row->blockedUser->id,
+                        'name' => (string) ($row->blockedUser->name ?? 'User'),
+                        'avatar_url' => $row->blockedUser->avatar_url,
+                        'profile_frame' => $this->frames->equippedFramePayload($row->blockedUser),
+                        'level' => $row->blockedUser?->level?->level,
+                        'is_vip' => $row->blockedUser?->hasAnyRole(['vip', 'premium']) ?? false,
+                    ] : null,
+                    'requester' => $row->requester ? [
+                        'id' => (int) $row->requester->id,
+                        'name' => (string) ($row->requester->name ?? 'User'),
+                        'avatar_url' => $row->requester->avatar_url,
+                        'profile_frame' => $this->frames->equippedFramePayload($row->requester),
+                    ] : null,
+                ];
+            })->values(),
             'meta' => [
                 'current_page' => $rows->currentPage(),
                 'per_page' => $rows->perPage(),

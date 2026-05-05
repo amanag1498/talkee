@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/brand.dart';
 import '../../../app/utils/avatar_url.dart';
+import '../../../app/widgets/framed_avatar.dart';
 import '../../../app/widgets/haptics.dart';
 import '../../../services/api_client.dart';
 import '../../../services/app_settings_service.dart';
@@ -160,6 +161,7 @@ class _ProfilePageState extends State<ProfilePage>
                     child: _ProfileHeaderCard(
                       profile: profile,
                       avatarUrl: avatar,
+                      profileFrameUrl: profile.profileFrame?.assetUrl,
                       roleLabels: roleLabels,
                       location: location.isEmpty ? null : location,
                       about: about,
@@ -231,9 +233,18 @@ class _ProfilePageState extends State<ProfilePage>
                     ),
                   ),
                   const SizedBox(height: 16),
+                  _AnimatedEntrance(
+                    index: 2,
+                    child: _ProfileFramesCard(
+                      controller: controller,
+                      profile: profile,
+                      avatarUrl: avatar,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   if (agency != null)
                     _AnimatedEntrance(
-                      index: 2,
+                      index: 3,
                       child: _GlassSection(
                         title: 'Agency Details',
                         subtitle:
@@ -712,9 +723,380 @@ enum _HostReportRange {
   final String label;
 }
 
+class _ProfileFramesCard extends StatelessWidget {
+  const _ProfileFramesCard({
+    required this.controller,
+    required this.profile,
+    required this.avatarUrl,
+  });
+
+  final ProfileController controller;
+  final ProfileDto profile;
+  final String? avatarUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = _profileTokens();
+    return Obx(() {
+      final items = controller.frames;
+      final equipped =
+          controller.profile.value?.profileFrame ?? profile.profileFrame;
+      final hasEquippedFrame = (equipped?.assetUrl ?? '').trim().isNotEmpty;
+
+      return _GlassSection(
+        title: 'Profile Frames',
+        subtitle: 'Equip a cosmetic frame over your avatar',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 86,
+                  height: 86,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(30),
+                    gradient: hasEquippedFrame
+                        ? null
+                        : LinearGradient(colors: tokens.primaryButtonGradient),
+                    color: hasEquippedFrame ? Colors.transparent : null,
+                  ),
+                  child: FramedAvatar(
+                    size: 86,
+                    label: profile.name,
+                    avatarUrl: avatarUrl,
+                    frameUrl: equipped?.assetUrl,
+                    backgroundColor: tokens.cardGradient.first,
+                    avatarInset: 0.05,
+                    borderRadius: 28,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        equipped?.name ?? 'No frame equipped',
+                        style: TextStyle(
+                          color: tokens.textPrimary,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        equipped == null
+                            ? 'Choose one from your active frame catalog.'
+                            : '${equipped.rarity.toUpperCase()} · ${equipped.category}',
+                        style: TextStyle(
+                          color: tokens.textSecondary.withOpacity(.88),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      FilledButton.icon(
+                        onPressed: () => _showProfileFramePicker(context),
+                        icon: const Icon(Icons.photo_filter_rounded),
+                        label: Text(items.isEmpty ? 'Load Frames' : 'Manage Frames'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (items.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              SizedBox(
+                height: 104,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: items.length > 6 ? 6 : items.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 10),
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () => _showProfileFramePicker(context),
+                      child: Ink(
+                        width: 92,
+                        decoration: BoxDecoration(
+                          color: tokens.glassColor.withOpacity(.14),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: item.isEquipped
+                                ? tokens.glowColor.withOpacity(.78)
+                                : tokens.borderColor.withOpacity(.18),
+                            width: item.isEquipped ? 1.6 : 1,
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Column(
+                            children: [
+                              Expanded(
+                                child: FramedAvatar(
+                                  size: 60,
+                                  label: profile.name,
+                                  avatarUrl: avatarUrl,
+                                  frameUrl: item.thumbnailUrl ?? item.assetUrl,
+                                  backgroundColor: tokens.cardGradient.first,
+                                  avatarInset: 0.05,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                item.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: tokens.textPrimary,
+                                  fontSize: 10.8,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    });
+  }
+
+  Future<void> _showProfileFramePicker(BuildContext context) async {
+    final tokens = _profileTokens();
+    if (controller.frames.isEmpty && !controller.isLoadingFrames.value) {
+      await controller.loadFrames();
+    }
+
+    if (!context.mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Obx(() {
+          final items = controller.frames;
+          final busyId = controller.equippingFrameId.value;
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 18),
+              child: Container(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(sheetContext).size.height * 0.82,
+                ),
+                decoration: BoxDecoration(
+                  color: tokens.cardGradient.last.withOpacity(.98),
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: tokens.borderColor.withOpacity(.20)),
+                ),
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Choose Profile Frame',
+                                  style: TextStyle(
+                                    color: tokens.textPrimary,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Only frames unlocked on your account appear here.',
+                                  style: TextStyle(
+                                    color: tokens.textSecondary.withOpacity(.82),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(sheetContext).pop(),
+                            icon: Icon(Icons.close_rounded, color: tokens.textPrimary),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: controller.isLoadingFrames.value && items.isEmpty
+                          ? const Center(child: CircularProgressIndicator())
+                          : items.isEmpty
+                              ? Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 28),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.workspace_premium_rounded,
+                                          size: 44,
+                                          color: tokens.textSecondary.withOpacity(.8),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          'No unlocked frames yet',
+                                          style: TextStyle(
+                                            color: tokens.textPrimary,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          'Unlock frames from level rewards, host or agency rewards, leaderboard wins, or admin grants.',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            color: tokens.textSecondary.withOpacity(.82),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                          : GridView.builder(
+                              padding: const EdgeInsets.all(16),
+                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                mainAxisSpacing: 12,
+                                crossAxisSpacing: 12,
+                                childAspectRatio: 0.72,
+                              ),
+                              itemCount: items.length,
+                              itemBuilder: (context, index) {
+                                final item = items[index];
+                                final currentFrameUrl = item.thumbnailUrl ?? item.assetUrl;
+                                final isBusy = busyId == item.id;
+                                final enabled = item.canEquip && !item.isExpired;
+                                return Container(
+                                  decoration: BoxDecoration(
+                                    color: tokens.glassColor.withOpacity(.12),
+                                    borderRadius: BorderRadius.circular(22),
+                                    border: Border.all(
+                                      color: item.isEquipped
+                                          ? tokens.glowColor.withOpacity(.78)
+                                          : tokens.borderColor.withOpacity(.18),
+                                      width: item.isEquipped ? 1.6 : 1,
+                                    ),
+                                  ),
+                                  padding: const EdgeInsets.all(10),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Center(
+                                        child: FramedAvatar(
+                                          size: 92,
+                                          label: profile.name,
+                                          avatarUrl: avatarUrl,
+                                          frameUrl: currentFrameUrl,
+                                          backgroundColor: tokens.cardGradient.first,
+                                          avatarInset: 0.05,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        item.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: tokens.textPrimary,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '${item.rarity.toUpperCase()} · ${item.category}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: tokens.textSecondary.withOpacity(.8),
+                                          fontSize: 10.8,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      const Spacer(),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: FilledButton(
+                                          style: FilledButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(vertical: 10),
+                                            textStyle: const TextStyle(
+                                              fontSize: 12.5,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          onPressed: !enabled || isBusy || item.isEquipped
+                                              ? null
+                                              : () async {
+                                                  final ok = await controller.equipProfileFrame(item);
+                                                  if (ok) {
+                                                    if (sheetContext.mounted) {
+                                                      ScaffoldMessenger.of(sheetContext).showSnackBar(
+                                                        SnackBar(content: Text('${item.name} equipped.')),
+                                                      );
+                                                    }
+                                                  } else if (controller.error.value != null && sheetContext.mounted) {
+                                                    ScaffoldMessenger.of(sheetContext).showSnackBar(
+                                                      SnackBar(content: Text(controller.error.value!)),
+                                                    );
+                                                  }
+                                                },
+                                          child: isBusy
+                                              ? const SizedBox(
+                                                  width: 18,
+                                                  height: 18,
+                                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                                )
+                                              : Text(
+                                                  item.isEquipped
+                                                      ? 'Equipped'
+                                                      : enabled
+                                                          ? 'Equip'
+                                                          : 'Locked',
+                                                ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        });
+      },
+    );
+  }
+}
+
 class _ProfileHeaderCard extends StatelessWidget {
   final ProfileDto profile;
   final String? avatarUrl;
+  final String? profileFrameUrl;
   final List<String> roleLabels;
   final String? location;
   final String? about;
@@ -723,6 +1105,7 @@ class _ProfileHeaderCard extends StatelessWidget {
   const _ProfileHeaderCard({
     required this.profile,
     required this.avatarUrl,
+    required this.profileFrameUrl,
     required this.roleLabels,
     required this.location,
     required this.about,
@@ -742,6 +1125,7 @@ class _ProfileHeaderCard extends StatelessWidget {
     final hostBlocked =
         profile.status.hostBlocked || profile.hostProfile?.isBlocked == true;
     final agencyBlocked = profile.hostProfile?.agency?.isBlocked == true;
+    final hasProfileFrame = (profileFrameUrl ?? '').trim().isNotEmpty;
 
     return _GlassShell(
       padding: const EdgeInsets.all(18),
@@ -752,37 +1136,27 @@ class _ProfileHeaderCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(2),
+                width: 64,
+                height: 64,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(30),
-                  gradient: LinearGradient(
-                    colors: tokens.primaryButtonGradient,
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  gradient: hasProfileFrame
+                      ? null
+                      : LinearGradient(
+                          colors: tokens.primaryButtonGradient,
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                  color: hasProfileFrame ? Colors.transparent : null,
                 ),
-                child: CircleAvatar(
-                  radius: 28,
+                child: FramedAvatar(
+                  size: 64,
+                  label: profile.name.toString(),
+                  avatarUrl: avatarUrl,
+                  frameUrl: profileFrameUrl,
                   backgroundColor: tokens.cardGradient.first,
-                  backgroundImage:
-                      avatarUrl != null ? NetworkImage(avatarUrl!) : null,
-                  child:
-                      avatarUrl == null
-                          ? Text(
-                            profile.name.toString().isEmpty
-                                ? 'U'
-                                : profile.name
-                                    .toString()
-                                    .trim()
-                                    .substring(0, 1)
-                                    .toUpperCase(),
-                            style: const TextStyle(
-                              fontSize: 24,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          )
-                          : null,
+                  avatarInset: 0.04,
+                  borderRadius: 28,
                 ),
               ),
               const SizedBox(width: 14),

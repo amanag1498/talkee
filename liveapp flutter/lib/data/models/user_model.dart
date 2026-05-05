@@ -4,6 +4,7 @@ class UserModel {
   final String name;
   final String email;
   final String? avatarUrl;
+  final UserProfileFrameSummary? profileFrame;
   final String provider;
   final bool emailVerified;
   final bool isBlocked;
@@ -34,6 +35,7 @@ class UserModel {
     required this.emailVerified,
     required this.isBlocked,
     this.avatarUrl,
+    this.profileFrame,
     this.roles = const [],
     this.permissions = const [],
     this.canGoLive = false,
@@ -71,6 +73,11 @@ class UserModel {
       name: (j['name'] ?? '') as String,
       email: (j['email'] ?? '') as String,
       avatarUrl: j['avatar_url'] as String?,
+      profileFrame: j['profile_frame'] is Map
+          ? UserProfileFrameSummary.fromJson(
+              Map<String, dynamic>.from(j['profile_frame'] as Map),
+            )
+          : null,
       provider: (j['provider'] ?? '') as String,
       emailVerified: (j['email_verified'] ?? false) as bool,
       isBlocked: (j['is_blocked'] ?? false) as bool,
@@ -99,6 +106,7 @@ class UserModel {
     'name': name,
     'email': email,
     'avatar_url': avatarUrl,
+    'profile_frame': profileFrame?.toJson(),
     'provider': provider,
     'email_verified': emailVerified,
     'is_blocked': isBlocked,
@@ -123,6 +131,7 @@ class UserModel {
     String? name,
     String? email,
     String? avatarUrl,
+    UserProfileFrameSummary? profileFrame,
     String? provider,
     bool? emailVerified,
     bool? isBlocked,
@@ -146,6 +155,7 @@ class UserModel {
       name: name ?? this.name,
       email: email ?? this.email,
       avatarUrl: avatarUrl ?? this.avatarUrl,
+      profileFrame: profileFrame ?? this.profileFrame,
       provider: provider ?? this.provider,
       emailVerified: emailVerified ?? this.emailVerified,
       isBlocked: isBlocked ?? this.isBlocked,
@@ -196,5 +206,67 @@ class HostProfile {
     'city': city,
     'bio': bio,
     'contact_phone': contactPhone,
+  };
+}
+
+class UserProfileFrameSummary {
+  final int id;
+  final String name;
+  final String slug;
+  final String? assetUrl;
+  final String? thumbnailUrl;
+  final String rarity;
+  final String category;
+  final String unlockType;
+  final bool owned;
+  final bool canEquip;
+  final bool isEquipped;
+  final bool isExpired;
+
+  const UserProfileFrameSummary({
+    required this.id,
+    required this.name,
+    required this.slug,
+    required this.rarity,
+    required this.category,
+    required this.unlockType,
+    required this.owned,
+    required this.canEquip,
+    required this.isEquipped,
+    required this.isExpired,
+    this.assetUrl,
+    this.thumbnailUrl,
+  });
+
+  factory UserProfileFrameSummary.fromJson(Map<String, dynamic> j) {
+    return UserProfileFrameSummary(
+      id: (j['id'] as num?)?.toInt() ?? 0,
+      name: (j['name'] ?? '').toString(),
+      slug: (j['slug'] ?? '').toString(),
+      assetUrl: j['asset_url']?.toString(),
+      thumbnailUrl: j['thumbnail_url']?.toString(),
+      rarity: (j['rarity'] ?? 'rare').toString(),
+      category: (j['category'] ?? 'general').toString(),
+      unlockType: (j['unlock_type'] ?? 'free_catalog').toString(),
+      owned: j['owned'] == true,
+      canEquip: j['can_equip'] == true,
+      isEquipped: j['is_equipped'] == true,
+      isExpired: j['is_expired'] == true,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'slug': slug,
+    'asset_url': assetUrl,
+    'thumbnail_url': thumbnailUrl,
+    'rarity': rarity,
+    'category': category,
+    'unlock_type': unlockType,
+    'owned': owned,
+    'can_equip': canEquip,
+    'is_equipped': isEquipped,
+    'is_expired': isExpired,
   };
 }

@@ -3,9 +3,10 @@ import 'dart:collection';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../app/models/remote_media_kind.dart';
 import '../../../app/theme/brand.dart';
+import '../../../app/widgets/remote_media_art.dart';
 import '../models/room_gift_animation_event.dart';
 
 class GiftAnchorRegistry {
@@ -1621,71 +1622,48 @@ class _GiftAssetCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final borderRadius = BorderRadius.circular(
-      tier == RoomGiftAnimationTier.legendary ? 28 : 22,
-    );
     return RepaintBoundary(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: borderRadius,
-          gradient: LinearGradient(
-            colors: [
-              tokens.primaryButtonGradient.first.withOpacity(
-                tier.index >= RoomGiftAnimationTier.premium.index ? .28 : .18,
-              ),
-              tokens.cardGradient.last.withOpacity(
-                tier.index >= RoomGiftAnimationTier.premium.index ? .34 : .20,
-              ),
-            ],
-          ),
-          border: Border.all(
-            color: tokens.primaryButtonGradient.first.withOpacity(
-              tier.index >= RoomGiftAnimationTier.premium.index ? .52 : .34,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          SizedBox(
+            width: size,
+            height: size,
+            child: _GiftAssetRenderer(
+              event: event,
+              size: size,
+              tokens: tokens,
             ),
-            width: tier.index >= RoomGiftAnimationTier.premium.index ? 1.5 : 1,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: tokens.primaryButtonGradient.first.withOpacity(
-                tier.index >= RoomGiftAnimationTier.premium.index ? .30 : .20,
+          if (showCombo)
+            Positioned(
+              right: comboInline ? -6 : -2,
+              top: comboInline ? -6 : -2,
+              child: _ComboBadge(
+                count: event.comboCount,
+                tokens: tokens,
               ),
-              blurRadius:
-                  tier == RoomGiftAnimationTier.small
-                      ? 14
-                      : tier == RoomGiftAnimationTier.medium
-                      ? 22
-                      : 30,
-              offset: const Offset(0, 10),
             ),
-          ],
-        ),
-        child: Padding(
-          padding: EdgeInsets.all(tier == RoomGiftAnimationTier.small ? 8 : 14),
-          child: Stack(
-            clipBehavior: Clip.none,
-            alignment: Alignment.center,
-            children: [
-              SizedBox(
+          if (tier.index >= RoomGiftAnimationTier.premium.index)
+            IgnorePointer(
+              child: Container(
                 width: size,
                 height: size,
-                child: _GiftAssetRenderer(
-                  event: event,
-                  size: size,
-                  tokens: tokens,
-                ),
-              ),
-              if (showCombo)
-                Positioned(
-                  right: comboInline ? -6 : 8,
-                  top: comboInline ? -6 : 8,
-                  child: _ComboBadge(
-                    count: event.comboCount,
-                    tokens: tokens,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      tokens.glowColor.withOpacity(
+                        tier == RoomGiftAnimationTier.legendary ? .22 : .14,
+                      ),
+                      Colors.transparent,
+                    ],
                   ),
                 ),
-            ],
-          ),
-        ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1739,63 +1717,25 @@ class _GiftAssetRenderer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final placeholder = _GiftAssetFallback(
-      label: event.giftName,
-      size: size,
-      tokens: tokens,
-      loading: true,
+    return RemoteMediaArt(
+      url: event.giftAssetUrl,
+      explicitType: switch (event.assetKind) {
+        RemoteMediaKind.svg => 'svg',
+        RemoteMediaKind.svga => 'svga',
+        RemoteMediaKind.gif => 'gif',
+        RemoteMediaKind.image => 'image',
+        RemoteMediaKind.unknown => event.giftType,
+      },
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      fallback: _GiftAssetFallback(
+        label: event.giftName,
+        size: size,
+        tokens: tokens,
+        loading: true,
+      ),
     );
-
-    switch (event.assetKind) {
-      case RoomGiftAssetKind.svg:
-        return SvgPicture.network(
-          event.giftAssetUrl,
-          width: size,
-          height: size,
-          fit: BoxFit.contain,
-          placeholderBuilder: (_) => placeholder,
-        );
-      case RoomGiftAssetKind.gif:
-      case RoomGiftAssetKind.image:
-        return Image.network(
-          event.giftAssetUrl,
-          width: size,
-          height: size,
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => _GiftAssetFallback(
-            label: event.giftName,
-            size: size,
-            tokens: tokens,
-          ),
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
-            return placeholder;
-          },
-        );
-      case RoomGiftAssetKind.unknown:
-        if (event.giftAssetUrl.isNotEmpty) {
-          return Image.network(
-            event.giftAssetUrl,
-            width: size,
-            height: size,
-            fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => _GiftAssetFallback(
-              label: event.giftName,
-              size: size,
-              tokens: tokens,
-            ),
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              return placeholder;
-            },
-          );
-        }
-        return _GiftAssetFallback(
-          label: event.giftName,
-          size: size,
-          tokens: tokens,
-        );
-    }
   }
 }
 

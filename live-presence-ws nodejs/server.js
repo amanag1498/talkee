@@ -46,6 +46,32 @@ const pendingRoomLeaveTimers = new Map();
 
 const nowISO = () => new Date().toISOString();
 
+function publicApiOriginForSocket(socket) {
+  const configured = String(process.env.PUBLIC_API_BASE_URL || '').trim();
+  if (configured) {
+    return configured.replace(/\/+$/, '');
+  }
+
+  const hostHeader = String(
+    socket?.handshake?.headers?.['x-forwarded-host']
+      || socket?.handshake?.headers?.host
+      || '',
+  ).trim();
+  if (!hostHeader) {
+    return '';
+  }
+
+  const forwardedProto = String(
+    socket?.handshake?.headers?.['x-forwarded-proto'] || '',
+  ).trim();
+  const apiBase = new URL(API_BASE);
+  const protocol = forwardedProto || apiBase.protocol.replace(':', '') || 'http';
+  const hostname = hostHeader.split(':')[0];
+  const port = apiBase.port ? `:${apiBase.port}` : '';
+
+  return `${protocol}://${hostname}${port}`;
+}
+
 function defaultAppConfig() {
   return {
     enable_premium_theme_variants: false,
@@ -256,9 +282,10 @@ console.log('[common]  ', nowISO(), `Moderation cache TTL: ${MODERATION_CACHE_TT
 console.log('[common]  ', nowISO(), `Moderation cache poll interval: ${MODERATION_CACHE_POLL_MS}ms`);
 
 // ------------ Auth helpers ------------
-async function verifyUserFromLaravel(token) {
+async function verifyUserFromLaravel(token, socket = null) {
   if (!token) return null;
-  const cacheKey = String(token);
+  const publicOrigin = publicApiOriginForSocket(socket);
+  const cacheKey = `${token}|${publicOrigin}`;
   const cached = verifiedUserCache.get(cacheKey);
   const now = Date.now();
   if (cached && cached.expiresAt > now) {
@@ -269,7 +296,10 @@ async function verifyUserFromLaravel(token) {
   }
   try {
     const { data } = await api.get('/ws/verify', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(publicOrigin ? { 'X-Public-Origin': publicOrigin } : {}),
+      },
     });
     if (!data || !data.id) return null;
     const user = {
@@ -277,6 +307,7 @@ async function verifyUserFromLaravel(token) {
       name: data.name || `User#${data.id}`,
       blocked: !!data.blocked,
       avatar_url: data.avatar_url || null,
+      profile_frame: data.profile_frame || null,
       level: Number.isFinite(Number(data.level)) ? Number(data.level) : null,
       is_vip: !!data.is_vip,
       active_theme_key: data.active_theme_key || 'midnight',
@@ -298,7 +329,7 @@ async function refreshSocketUserFromLaravel(socket) {
   if (!VERIFY_WITH_LARAVEL || !socket?.authToken) {
     return socket?.user || null;
   }
-  const freshUser = await verifyUserFromLaravel(socket.authToken);
+  const freshUser = await verifyUserFromLaravel(socket.authToken, socket);
   if (!freshUser) {
     return socket?.user || null;
   }
@@ -392,7 +423,7 @@ function makeAuthMiddleware(_namespaceName) {
           socket.handshake.auth?.token ||
           socket.handshake.headers?.authorization?.replace(/^Bearer\s+/i, '') ||
           socket.handshake.headers?.['x-api-token'];
-        userPromise = verifyUserFromLaravel(token);
+        userPromise = verifyUserFromLaravel(token, socket);
       } else {
         userPromise = Promise.resolve(devUser(socket));
       }
@@ -1115,6 +1146,7 @@ async function upsertRoomFromEvent(room, type) {
     room_type: room.room_type ?? prev.room_type ?? 'video',
     host_id: room.host_id ?? prev.host_id ?? null,
     host_name: room.host_name ?? prev.host_name ?? null,
+    host_profile_frame: room.host_profile_frame ?? prev.host_profile_frame ?? null,
     status: room.status ?? prev.status ?? 'scheduled',
     capacity: Number(room.capacity ?? prev.capacity ?? 0),
     max_speakers: Number(room.max_speakers ?? prev.max_speakers ?? 4),
@@ -1650,6 +1682,7 @@ roomsNs.on('connection', (socket) => {
       user_id: Number(socket.user?.id || 0),
       name: String(socket.user?.name || 'User'),
       avatar_url: socket.user?.avatar_url || null,
+      profile_frame: socket.user?.profile_frame || null,
       active_theme_key: String(socket.user?.active_theme_key || 'midnight'),
       is_vip: !!socket.user?.is_vip,
       is_host: Array.isArray(socket.user?.roles)
@@ -1843,6 +1876,7 @@ roomsNs.on('connection', (socket) => {
       sender_id: Number(socket.user?.id || 0),
       sender_name: senderName || 'User',
       sender_avatar: socket.user?.avatar_url || null,
+      sender_profile_frame: socket.user?.profile_frame || null,
       sender_level: Number.isFinite(Number(socket.user?.level))
         ? Number(socket.user.level)
         : null,

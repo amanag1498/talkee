@@ -215,6 +215,7 @@ class EntryPackService
             'entry_pack_id' => (int) $pack->id,
             'entry_pack_name' => (string) $pack->name,
             'svg_url' => $pack->svg_url,
+            'asset_type' => $this->detectAssetType($pack->svg_url),
             'animation_style' => (string) $pack->animation_style,
             'priority' => (int) $pack->priority,
             'duration_ms' => max(2000, min(4000, (int) $pack->duration_ms)),
@@ -291,6 +292,7 @@ class EntryPackService
             'name' => (string) $pack->name,
             'price_coins' => (int) $pack->price_coins,
             'svg_url' => $pack->svg_url,
+            'asset_type' => $this->detectAssetType($pack->svg_url),
             'animation_style' => (string) $pack->animation_style,
             'priority' => (int) $pack->priority,
             'duration_ms' => (int) $pack->duration_ms,
@@ -326,5 +328,17 @@ class EntryPackService
             'error' => $error,
             'message' => $message,
         ], $status));
+    }
+
+    private function detectAssetType(?string $value): string
+    {
+        $path = strtolower(trim((string) $value));
+        if ($path === '') {
+            return 'svg';
+        }
+
+        return str_ends_with(parse_url($path, PHP_URL_PATH) ?: $path, '.svga')
+            ? 'svga'
+            : 'svg';
     }
 }

@@ -9,6 +9,7 @@ import 'package:liveapp/app/routes/app_routes.dart';
 
 import '../../../app/theme/brand.dart';
 import '../../../app/widgets/audio_room_tite.dart';
+import '../../../app/widgets/framed_avatar.dart';
 import '../../../services/app_settings_service.dart';
 import '../../Live/services/live_service.dart';
 import '../../banners/models/banner_item.dart';
@@ -1204,6 +1205,7 @@ class _CompactAudioRoomTile extends StatelessWidget {
                       _CompactAudioAvatar(
                         name: hostName,
                         imageUrl: imageUrl,
+                        frameUrl: room.hostProfileFrameUrl,
                         tokens: tokens,
                       ),
                       const SizedBox(width: 10),
@@ -1310,31 +1312,28 @@ class _CompactAudioAvatar extends StatelessWidget {
   const _CompactAudioAvatar({
     required this.name,
     required this.imageUrl,
+    this.frameUrl,
     required this.tokens,
   });
 
   final String name;
   final String? imageUrl;
+  final String? frameUrl;
   final PremiumThemeTokens tokens;
 
   @override
   Widget build(BuildContext context) {
     final first = name.isEmpty ? 'H' : name.characters.first.toUpperCase();
-    return CircleAvatar(
-      radius: 19,
-      backgroundColor: tokens.glassColor.withOpacity(.18),
-      backgroundImage:
-          imageUrl != null && imageUrl!.isNotEmpty ? NetworkImage(imageUrl!) : null,
-      child: imageUrl == null || imageUrl!.isEmpty
-          ? Text(
-              first,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                fontSize: 16,
-              ),
-            )
-          : null,
+    return SizedBox(
+      width: 38,
+      height: 38,
+      child: FramedAvatar(
+        avatarUrl: imageUrl,
+        frameUrl: frameUrl,
+        label: first,
+        size: 38,
+        backgroundColor: tokens.glassColor.withOpacity(.18),
+      ),
     );
   }
 }
@@ -2135,15 +2134,15 @@ class _LiveTile extends StatelessWidget {
                     ),
                     child: Row(
                       children: [
-                        CircleAvatar(
-                          radius: 12,
-                          backgroundColor: Colors.white.withOpacity(.18),
-                          child: Text(
-                            _initial(hostLabel),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                            ),
+                        SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: FramedAvatar(
+                            avatarUrl: thumb,
+                            frameUrl: room.hostProfileFrameUrl,
+                            label: _initial(hostLabel),
+                            size: 24,
+                            backgroundColor: Colors.white.withOpacity(.18),
                           ),
                         ),
                         const SizedBox(width: 7),

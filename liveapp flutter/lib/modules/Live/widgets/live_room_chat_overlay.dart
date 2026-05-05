@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/brand.dart';
+import '../../../app/widgets/framed_avatar.dart';
 import '../models/live_room_chat_message.dart';
 
 class LiveRoomChatOverlay extends StatefulWidget {
@@ -615,6 +616,7 @@ class _ChatBubble extends StatelessWidget {
                   _SenderAvatar(
                     name: message.senderName,
                     avatarUrl: message.senderAvatar,
+                    frameUrl: message.senderProfileFrame,
                     tokens: tokens,
                     compact: compact,
                     onTap: onSenderTap,
@@ -700,6 +702,7 @@ class _SenderAvatar extends StatelessWidget {
   const _SenderAvatar({
     required this.name,
     required this.avatarUrl,
+    required this.frameUrl,
     required this.tokens,
     required this.compact,
     this.onTap,
@@ -707,6 +710,7 @@ class _SenderAvatar extends StatelessWidget {
 
   final String name;
   final String? avatarUrl;
+  final String? frameUrl;
   final PremiumThemeTokens tokens;
   final bool compact;
   final VoidCallback? onTap;
@@ -718,28 +722,16 @@ class _SenderAvatar extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
-      child: Container(
+      child: SizedBox(
         width: compact ? 30 : 34,
         height: compact ? 30 : 34,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(colors: tokens.primaryButtonGradient),
-        ),
-        padding: EdgeInsets.all(compact ? 1.5 : 1.7),
-        child: CircleAvatar(
+        child: FramedAvatar(
+          avatarUrl: trimmed,
+          frameUrl: frameUrl,
+          label: initial,
+          size: compact ? 30 : 34,
+          textColor: tokens.textPrimary,
           backgroundColor: tokens.chipColor,
-          backgroundImage:
-              trimmed != null && trimmed.isNotEmpty ? NetworkImage(trimmed) : null,
-          child: trimmed == null || trimmed.isEmpty
-              ? Text(
-                  initial,
-                  style: TextStyle(
-                    color: tokens.textPrimary,
-                    fontWeight: FontWeight.w900,
-                    fontSize: compact ? 12 : 13,
-                  ),
-                )
-              : null,
         ),
       ),
     );

@@ -4,6 +4,7 @@ class ProfileDto {
   final String? displayName;
   final String email;
   final String? avatarUrl;
+  final ProfileFrameDto? profileFrame;
   final String? bio;
   final String? city;
   final String? location;
@@ -44,6 +45,7 @@ class ProfileDto {
     this.displayName,
     this.activeThemeKey,
     this.avatarUrl,
+    this.profileFrame,
     this.bio,
     this.city,
     this.location,
@@ -79,6 +81,11 @@ class ProfileDto {
       displayName: json['display_name']?.toString(),
       email: (json['email'] ?? '').toString(),
       avatarUrl: json['avatar_url']?.toString(),
+      profileFrame: json['profile_frame'] is Map<String, dynamic>
+          ? ProfileFrameDto.fromJson(json['profile_frame'] as Map<String, dynamic>)
+          : (json['profile_frame'] is Map
+              ? ProfileFrameDto.fromJson(Map<String, dynamic>.from(json['profile_frame'] as Map))
+              : null),
       bio: json['bio']?.toString(),
       city: json['city']?.toString(),
       location: json['location']?.toString(),
@@ -116,6 +123,80 @@ class ProfileDto {
       ),
     );
   }
+}
+
+class ProfileFrameDto {
+  final int id;
+  final String name;
+  final String slug;
+  final String? assetUrl;
+  final String? thumbnailUrl;
+  final String rarity;
+  final String category;
+  final String unlockType;
+  final bool owned;
+  final bool canEquip;
+  final bool isEquipped;
+  final String? source;
+  final DateTime? grantedAt;
+  final DateTime? expiresAt;
+  final bool isExpired;
+
+  const ProfileFrameDto({
+    required this.id,
+    required this.name,
+    required this.slug,
+    required this.rarity,
+    required this.category,
+    required this.unlockType,
+    required this.owned,
+    required this.canEquip,
+    required this.isEquipped,
+    required this.isExpired,
+    this.assetUrl,
+    this.thumbnailUrl,
+    this.source,
+    this.grantedAt,
+    this.expiresAt,
+  });
+
+  factory ProfileFrameDto.fromJson(Map<String, dynamic> json) {
+    return ProfileFrameDto(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      name: (json['name'] ?? '').toString(),
+      slug: (json['slug'] ?? '').toString(),
+      assetUrl: json['asset_url']?.toString(),
+      thumbnailUrl: json['thumbnail_url']?.toString(),
+      rarity: (json['rarity'] ?? 'rare').toString(),
+      category: (json['category'] ?? 'general').toString(),
+      unlockType: (json['unlock_type'] ?? 'free_catalog').toString(),
+      owned: json['owned'] == true,
+      canEquip: json['can_equip'] == true,
+      isEquipped: json['is_equipped'] == true,
+      source: json['source']?.toString(),
+      grantedAt: DateTime.tryParse((json['granted_at'] ?? '').toString()),
+      expiresAt: DateTime.tryParse((json['expires_at'] ?? '').toString()),
+      isExpired: json['is_expired'] == true,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'slug': slug,
+    'asset_url': assetUrl,
+    'thumbnail_url': thumbnailUrl,
+    'rarity': rarity,
+    'category': category,
+    'unlock_type': unlockType,
+    'owned': owned,
+    'can_equip': canEquip,
+    'is_equipped': isEquipped,
+    'source': source,
+    'granted_at': grantedAt?.toIso8601String(),
+    'expires_at': expiresAt?.toIso8601String(),
+    'is_expired': isExpired,
+  };
 }
 
 class ProfileHostDto {

@@ -13,6 +13,7 @@ import 'package:liveapp/modules/notifications/controllers/notification_controlle
 import '../../../app/widgets/approval_dialog.dart';
 import '../../../app/widgets/level_up_card.dart';
 import '../../../app/widgets/logout_and_blocked_dialog.dart';
+import '../../../app/widgets/profile_frame_unlock_card.dart';
 import '../../../app/widgets/theme_unlock_card.dart';
 import '../../../data/models/user_model.dart';
 import '../../themes/controllers/theme_center_controller.dart';
@@ -223,6 +224,37 @@ class HomeController extends SuperController {
               if (Get.isRegistered<ThemeCenterController>()) {
                 unawaited(Get.find<ThemeCenterController>().load());
               }
+              break;
+            case 'profile_frame_unlocked':
+              final frameMeta =
+                  meta['profile_frame'] is Map
+                      ? Map<String, dynamic>.from(meta['profile_frame'] as Map)
+                      : const <String, dynamic>{};
+              if (frameMeta.isNotEmpty && Get.isRegistered<StorageService>()) {
+                unawaited(
+                  Get.find<StorageService>().updateUserJson((json) {
+                    json['profile_frame'] = frameMeta;
+                  }),
+                );
+              }
+              final currentUser = auth.currentUser;
+              showProfileFrameUnlockCard(
+                frameName:
+                    (frameMeta['name'] ?? title).toString().trim().isNotEmpty
+                        ? (frameMeta['name'] ?? title).toString()
+                        : 'Profile frame unlocked',
+                message:
+                    body.isNotEmpty
+                        ? body
+                        : 'A new profile frame was added to your account.',
+                userName:
+                    currentUser?.name.trim().isNotEmpty == true
+                        ? currentUser!.name.trim()
+                        : user.name,
+                avatarUrl: currentUser?.avatarUrl ?? user.avatarUrl,
+                frameUrl: frameMeta['asset_url']?.toString(),
+                rarity: frameMeta['rarity']?.toString(),
+              );
               break;
             case 'host_online':
             case 'host_available':

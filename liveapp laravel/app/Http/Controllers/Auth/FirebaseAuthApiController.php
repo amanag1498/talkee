@@ -229,6 +229,7 @@ class FirebaseAuthApiController extends Controller
         );
         $hostProfile = optional($user->host)->only(['id','stage_name','country','city','bio','contact_phone']);
         $level = app(\App\Services\UserLevelService::class)->profileProgress($user);
+        $profileFrame = app(\App\Services\ProfileFrameService::class)->equippedFramePayload($user);
 
         return response()->json([
             'ok'    => true,
@@ -245,6 +246,7 @@ class FirebaseAuthApiController extends Controller
                 'permissions'    => $permissions,
                 'can_go_live'    => $canGoLive,
                 'host_profile'   => $hostProfile,
+                'profile_frame'  => $profileFrame,
                 'level'          => $level['level'],
                 'level_title'    => $level['level_title'],
                 'badge_icon'     => $level['badge_icon'],

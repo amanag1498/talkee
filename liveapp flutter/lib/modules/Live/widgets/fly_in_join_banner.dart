@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/brand.dart';
+import '../../../app/widgets/framed_avatar.dart';
 
 class FlyInJoinBanner extends StatefulWidget {
   const FlyInJoinBanner({
@@ -12,6 +13,7 @@ class FlyInJoinBanner extends StatefulWidget {
     required this.themeKey,
     required this.onCompleted,
     this.avatarUrl,
+    this.frameUrl,
     this.isHost = false,
     this.isVip = false,
     this.level,
@@ -21,6 +23,7 @@ class FlyInJoinBanner extends StatefulWidget {
   final String userId;
   final String name;
   final String? avatarUrl;
+  final String? frameUrl;
   final String themeKey;
   final bool isHost;
   final bool isVip;
@@ -341,6 +344,7 @@ class _FlyInJoinBannerState extends State<FlyInJoinBanner>
                                     _Avatar(
                                       name: widget.name,
                                       avatarUrl: widget.avatarUrl,
+                                      frameUrl: widget.frameUrl,
                                       tint: tint,
                                       emphasis: _isHostBanner || _isVipBanner,
                                     ),
@@ -479,12 +483,14 @@ class _Avatar extends StatelessWidget {
   const _Avatar({
     required this.name,
     required this.avatarUrl,
+    required this.frameUrl,
     required this.tint,
     required this.emphasis,
   });
 
   final String name;
   final String? avatarUrl;
+  final String? frameUrl;
   final Color tint;
   final bool emphasis;
 
@@ -495,53 +501,17 @@ class _Avatar extends StatelessWidget {
     final initial =
         name.trim().isNotEmpty ? name.trim().characters.first.toUpperCase() : '?';
 
-    return Container(
+    return SizedBox(
       width: radius * 2,
       height: radius * 2,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.2),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: tint.withValues(alpha: emphasis ? 0.18 : 0.12),
-            blurRadius: emphasis ? 14 : 10,
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(2),
-      child: ClipOval(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: <Color>[
-                  Colors.white.withValues(alpha: 0.2),
-                  tint.withValues(alpha: 0.18),
-                ],
-              ),
-            ),
-            child: CircleAvatar(
-              backgroundColor: Colors.black.withValues(alpha: 0.12),
-              backgroundImage: trimmed != null && trimmed.isNotEmpty
-                  ? NetworkImage(trimmed)
-                  : null,
-              child: trimmed == null || trimmed.isEmpty
-                  ? Text(
-                      initial,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        fontWeight: FontWeight.w800,
-                      ),
-                    )
-                  : null,
-            ),
-          ),
-        ),
+      child: FramedAvatar(
+        avatarUrl: trimmed,
+        frameUrl: frameUrl,
+        size: radius * 2,
+        label: initial,
+        backgroundColor: Colors.black.withValues(alpha: 0.12),
+        avatarInset: 0.08,
+        frameScale: 1.18,
       ),
     );
   }

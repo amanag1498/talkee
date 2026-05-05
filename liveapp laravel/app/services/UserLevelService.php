@@ -13,6 +13,24 @@ use Illuminate\Support\Facades\DB;
 
 class UserLevelService
 {
+    private const LEVEL_REWARD_FRAMES = [
+        1 => 'crimson-crown-laurel',
+        11 => 'sapphire-crown-laurel',
+        21 => 'amethyst-crown-laurel',
+        31 => 'emerald-crown-laurel',
+        41 => 'rose-orbit-crown',
+        51 => 'ruby-crown-laurel',
+        61 => 'azure-crown-laurel',
+        71 => 'imperial-violet-crown',
+        81 => 'royal-sapphire-crown',
+        91 => 'emerald-throne-crown',
+    ];
+
+    public function __construct(
+        private readonly ProfileFrameService $frames,
+    ) {
+    }
+
     /**
      * Categories that should never count toward spend even if a debit somehow appears.
      */
@@ -108,6 +126,7 @@ class UserLevelService
             ])->save();
 
             if ($newLevel && $oldLevelId !== $newLevel->id) {
+                $oldLevel = $oldLevelId ? UserLevel::query()->find($oldLevelId) : null;
                 UserLevelHistory::query()->create([
                     'user_id' => $user->id,
                     'old_level_id' => $oldLevelId,
@@ -119,8 +138,14 @@ class UserLevelService
                 $this->emitLevelUpRealtime(
                     $user->fresh('level'),
                     $newLevel,
-                    $oldLevelId ? UserLevel::query()->find($oldLevelId) : null,
+                    $oldLevel,
                     $walletTransaction,
+                );
+                $this->syncLevelRewardFrame(
+                    $user->fresh('level'),
+                    $newLevel,
+                    $oldLevel,
+                    true,
                 );
             }
 
@@ -141,6 +166,10 @@ class UserLevelService
                 'lifetime_spend_coins' => (int) $user->lifetime_spend_coins,
             ])->save();
             $user->setRelation('level', $level);
+        }
+
+        if ($level) {
+            $this->syncLevelRewardFrame($user->fresh('level'), $level, null, false);
         }
 
         return $this->progressPayload($user->fresh('level'));
@@ -363,5 +392,54 @@ class UserLevelService
         } catch (\Throwable) {
             // Realtime level-up feedback must never block wallet progression.
         }
+    }
+
+    private function syncLevelRewardFrame(
+        User $user,
+        UserLevel $newLevel,
+        ?UserLevel $oldLevel = null,
+        bool $notify = false,
+    ): void {
+        $currentBandStart = $this->levelBandStart((int) $newLevel->level);
+        $frameSlug = self::LEVEL_REWARD_FRAMES[$currentBandStart] ?? null;
+        if ($frameSlug === null) {
+            return;
+        }
+
+        $oldBandStart = $oldLevel ? $this->levelBandStart((int) $oldLevel->level) : null;
+        $shouldNotify = $notify && $oldBandStart !== $currentBandStart;
+
+        try {
+            $ownership = $this->frames->grantBySlug(
+                $user,
+                $frameSlug,
+                'level_reward',
+                null,
+                true,
+            );
+
+            if ($shouldNotify) {
+                $this->frames->notifyUnlocked(
+                    $user,
+                    $ownership,
+                    'Level reward unlocked',
+                    sprintf(
+                        '%s unlocked for reaching Level %d.',
+                        $ownership->profileFrame?->name ?? 'Profile frame',
+                        (int) $newLevel->level,
+                    ),
+                    false,
+                );
+            }
+        } catch (\Throwable) {
+            // Cosmetic rewards must never block progression.
+        }
+    }
+
+    private function levelBandStart(int $level): int
+    {
+        $normalized = max(1, min(100, $level));
+
+        return (int) (floor(($normalized - 1) / 10) * 10) + 1;
     }
 }

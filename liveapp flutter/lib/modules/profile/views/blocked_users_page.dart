@@ -3,6 +3,8 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
 import '../../../app/theme/brand.dart';
+import '../../../app/utils/profile_frame_payload.dart';
+import '../../../app/widgets/framed_avatar.dart';
 import '../../../services/app_settings_service.dart';
 import '../../Live/services/live_service.dart';
 
@@ -193,22 +195,15 @@ class _BlockedUsersPageState extends State<BlockedUsersPage> {
                               ),
                               child: Row(
                                 children: [
-                                  CircleAvatar(
-                                    radius: 24,
-                                    backgroundColor: tokens.primaryButtonGradient.first,
-                                    backgroundImage: avatarUrl != null &&
-                                            avatarUrl.trim().isNotEmpty
-                                        ? NetworkImage(avatarUrl.trim())
-                                        : null,
-                                    child: avatarUrl == null || avatarUrl.trim().isEmpty
-                                        ? Text(
-                                            _label(row).characters.first.toUpperCase(),
-                                            style: TextStyle(
-                                              color: tokens.textPrimary,
-                                              fontWeight: FontWeight.w900,
-                                            ),
-                                          )
-                                        : null,
+                                  SizedBox(
+                                    width: 48,
+                                    height: 48,
+                                    child: FramedAvatar(
+                                      avatarUrl: avatarUrl,
+                                      frameUrl: profileFrameAssetUrlFromPayload(row),
+                                      label: _label(row),
+                                      size: 48,
+                                    ),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(

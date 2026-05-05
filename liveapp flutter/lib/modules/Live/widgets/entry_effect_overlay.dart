@@ -3,10 +3,10 @@ import 'dart:collection';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 
 import '../../../app/theme/brand.dart';
+import '../../../app/widgets/remote_media_art.dart';
 import '../../../services/app_settings_service.dart';
 import '../models/live_entry_effect_event.dart';
 
@@ -225,7 +225,11 @@ class _BannerEntryEffect extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _SvgOrFallback(svgUrl: event.svgUrl, size: 54),
+                  _EffectArt(
+                    assetUrl: event.svgUrl,
+                    assetType: event.assetType,
+                    size: 54,
+                  ),
                   const SizedBox(width: 12),
                   Flexible(
                     child: Column(
@@ -319,7 +323,11 @@ class _CenterEntryEffect extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _SvgOrFallback(svgUrl: event.svgUrl, size: 120),
+                    _EffectArt(
+                      assetUrl: event.svgUrl,
+                      assetType: event.assetType,
+                      size: 120,
+                    ),
                     const SizedBox(height: 14),
                     Text(
                       event.userName,
@@ -425,7 +433,11 @@ class _FullscreenEntryEffect extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      _SvgOrFallback(svgUrl: event.svgUrl, size: 160),
+                      _EffectArt(
+                        assetUrl: event.svgUrl,
+                        assetType: event.assetType,
+                        size: 160,
+                      ),
                       const SizedBox(height: 16),
                       Text(
                         event.userName,
@@ -457,32 +469,25 @@ class _FullscreenEntryEffect extends StatelessWidget {
   }
 }
 
-class _SvgOrFallback extends StatelessWidget {
-  const _SvgOrFallback({required this.svgUrl, required this.size});
+class _EffectArt extends StatelessWidget {
+  const _EffectArt({
+    required this.assetUrl,
+    required this.assetType,
+    required this.size,
+  });
 
-  final String? svgUrl;
+  final String? assetUrl;
+  final String? assetType;
   final double size;
 
   @override
   Widget build(BuildContext context) {
-    final value = svgUrl?.trim();
-    final fallback = _fallback(size);
-    if (value == null || value.isEmpty) return fallback;
-    if (value.startsWith('assets/') || value.startsWith('packages/')) {
-      return SvgPicture.asset(
-        value,
-        width: size,
-        height: size,
-        fit: BoxFit.contain,
-        placeholderBuilder: (_) => fallback,
-      );
-    }
-    return SvgPicture.network(
-      value,
+    return RemoteMediaArt(
+      url: assetUrl,
+      explicitType: assetType,
       width: size,
       height: size,
-      fit: BoxFit.contain,
-      placeholderBuilder: (_) => fallback,
+      fallback: _fallback(size),
     );
   }
 

@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 class LiveRoomChatMessage {
   const LiveRoomChatMessage({
     required this.id,
@@ -9,6 +11,7 @@ class LiveRoomChatMessage {
     required this.messageType,
     required this.createdAt,
     this.senderAvatar,
+    this.senderProfileFrame,
     this.senderLevel,
     this.senderIsVip = false,
     this.senderIsHost = false,
@@ -21,6 +24,7 @@ class LiveRoomChatMessage {
   final int senderId;
   final String senderName;
   final String? senderAvatar;
+  final String? senderProfileFrame;
   final int? senderLevel;
   final bool senderIsVip;
   final bool senderIsHost;
@@ -38,6 +42,7 @@ class LiveRoomChatMessage {
     int? senderId,
     String? senderName,
     String? senderAvatar,
+    String? senderProfileFrame,
     int? senderLevel,
     bool? senderIsVip,
     bool? senderIsHost,
@@ -53,6 +58,7 @@ class LiveRoomChatMessage {
       senderId: senderId ?? this.senderId,
       senderName: senderName ?? this.senderName,
       senderAvatar: senderAvatar ?? this.senderAvatar,
+      senderProfileFrame: senderProfileFrame ?? this.senderProfileFrame,
       senderLevel: senderLevel ?? this.senderLevel,
       senderIsVip: senderIsVip ?? this.senderIsVip,
       senderIsHost: senderIsHost ?? this.senderIsHost,
@@ -71,10 +77,30 @@ class LiveRoomChatMessage {
             : DateTime.now();
     final senderId = _toInt(json['sender_id']) ?? 0;
     final message = (json['message'] ?? '').toString();
+    final senderProfileFrame =
+        (json['sender_profile_frame'] is Map)
+            ? Map<String, dynamic>.from(
+              json['sender_profile_frame'] as Map,
+            )['asset_url']?.toString()
+            : null;
     final senderName =
         (json['sender_name'] ?? '').toString().trim().isNotEmpty
             ? json['sender_name'].toString().trim()
             : (senderId > 0 ? 'User $senderId' : 'System');
+    if (kDebugMode) {
+      debugPrint(
+        '[chat][payload] '
+        'room=${json['room_id']} '
+        'type=${json['room_type']} '
+        'sender=$senderId '
+        'name=$senderName '
+        'avatar=${json['sender_avatar']} '
+        'frame=$senderProfileFrame '
+        'rawSenderProfileFrame=${json['sender_profile_frame']} '
+        'messageType=${json['message_type']} '
+        'message=${message.length > 80 ? '${message.substring(0, 80)}...' : message}',
+      );
+    }
     return LiveRoomChatMessage(
       id:
           (json['id']?.toString().trim().isNotEmpty ?? false)
@@ -85,6 +111,7 @@ class LiveRoomChatMessage {
       senderId: senderId,
       senderName: senderName,
       senderAvatar: json['sender_avatar']?.toString(),
+      senderProfileFrame: senderProfileFrame,
       senderLevel: _toInt(json['sender_level']),
       senderIsVip: json['sender_is_vip'] == true,
       senderIsHost: json['sender_is_host'] == true,

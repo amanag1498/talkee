@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
 import '../../../app/theme/brand.dart';
+import '../../../app/widgets/framed_avatar.dart';
 import '../../../services/app_settings_service.dart';
 import '../../../services/auth_service.dart';
 import '../../Live/widgets/themed_room_frame.dart';
@@ -355,6 +356,7 @@ class _PublicProfileCardSheetState extends State<_PublicProfileCardSheet> {
                                 displayName: displayName,
                                 subtitle: subtitle,
                                 avatarUrl: avatarUrl,
+                                profileFrameUrl: profile?.profileFrame?.assetUrl,
                                 isHost: isHost,
                                 isVip: isVip,
                                 isSpeaking: speaking,
@@ -449,6 +451,7 @@ class _ProfileHero extends StatelessWidget {
     required this.isVip,
     required this.isSpeaking,
     this.avatarUrl,
+    this.profileFrameUrl,
     this.level,
     this.joinedLabel,
   });
@@ -463,6 +466,7 @@ class _ProfileHero extends StatelessWidget {
   final bool isVip;
   final bool isSpeaking;
   final String? avatarUrl;
+  final String? profileFrameUrl;
   final int? level;
   final String? joinedLabel;
 
@@ -471,30 +475,40 @@ class _ProfileHero extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ThemedRoomFrame(
-          themeKey: frameThemeKey,
-          isHost: isHost,
-          isVip: isVip,
-          isSpeaking: isSpeaking,
-          borderRadius: 26,
-          size: 76,
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(26),
-              gradient: LinearGradient(
-                colors: [
-                  frameTokens.primaryButtonGradient.first.withOpacity(.94),
-                  frameTokens.primaryButtonGradient.last.withOpacity(.94),
-                ],
+        profileFrameUrl != null && profileFrameUrl!.trim().isNotEmpty
+            ? FramedAvatar(
+                size: 76,
+                label: displayName,
+                avatarUrl: avatarUrl,
+                frameUrl: profileFrameUrl,
+                backgroundColor: frameTokens.cardGradient.first,
+                avatarInset: 0.05,
+                borderRadius: 26,
+              )
+            : ThemedRoomFrame(
+                themeKey: frameThemeKey,
+                isHost: isHost,
+                isVip: isVip,
+                isSpeaking: isSpeaking,
+                borderRadius: 26,
+                size: 76,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(26),
+                    gradient: LinearGradient(
+                      colors: [
+                        frameTokens.primaryButtonGradient.first.withOpacity(.94),
+                        frameTokens.primaryButtonGradient.last.withOpacity(.94),
+                      ],
+                    ),
+                  ),
+                  child: _ProfileAvatarFace(
+                    label: displayName,
+                    avatarUrl: avatarUrl,
+                    textColor: frameTokens.textPrimary,
+                  ),
+                ),
               ),
-            ),
-            child: _ProfileAvatarFace(
-              label: displayName,
-              avatarUrl: avatarUrl,
-              textColor: frameTokens.textPrimary,
-            ),
-          ),
-        ),
         const SizedBox(width: 14),
         Expanded(
           child: Column(

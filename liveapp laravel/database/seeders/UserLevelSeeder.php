@@ -22,6 +22,32 @@ class UserLevelSeeder extends Seeder
             ['level' => 10, 'title' => 'Superstar', 'min_spend_coins' => 1000000, 'badge_icon' => 'stars', 'badge_color' => '#F472B6', 'sort_order' => 100],
         ];
 
+        $threshold = 1000000;
+        $palette = [
+            '#8A63E8',
+            '#4BE3C2',
+            '#5EA1FF',
+            '#FF8A65',
+            '#FFC857',
+            '#FF6B9A',
+            '#9A7EF0',
+            '#2DD4BF',
+            '#60A5FA',
+            '#F472B6',
+        ];
+
+        for ($level = 11; $level <= 100; $level++) {
+            $threshold += 500000 + (($level - 11) * 50000);
+            $levels[] = [
+                'level' => $level,
+                'title' => 'Level '.$level,
+                'min_spend_coins' => $threshold,
+                'badge_icon' => 'stars',
+                'badge_color' => $palette[($level - 1) % count($palette)],
+                'sort_order' => $level * 10,
+            ];
+        }
+
         foreach ($levels as $data) {
             UserLevel::query()->updateOrCreate(
                 ['level' => $data['level']],

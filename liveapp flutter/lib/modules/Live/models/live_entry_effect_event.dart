@@ -1,3 +1,5 @@
+import '../../../app/models/remote_media_kind.dart';
+
 class LiveEntryEffectEvent {
   final String roomId;
   final String roomType;
@@ -7,6 +9,7 @@ class LiveEntryEffectEvent {
   final int entryPackId;
   final String entryPackName;
   final String? svgUrl;
+  final String? assetType;
   final String animationStyle;
   final int priority;
   final int durationMs;
@@ -26,6 +29,7 @@ class LiveEntryEffectEvent {
     required this.triggeredAt,
     this.avatarUrl,
     this.svgUrl,
+    this.assetType,
     this.maxAgeMs = 8000,
   });
 
@@ -45,6 +49,7 @@ class LiveEntryEffectEvent {
       entryPackId: toInt(json['entry_pack_id'], 0),
       entryPackName: (json['entry_pack_name'] ?? 'Entry Pack').toString(),
       svgUrl: json['svg_url']?.toString(),
+      assetType: json['asset_type']?.toString(),
       animationStyle: (json['animation_style'] ?? 'banner').toString(),
       priority: toInt(json['priority'], 1),
       durationMs: toInt(json['duration_ms'], 3000).clamp(2000, 4000),
@@ -56,4 +61,7 @@ class LiveEntryEffectEvent {
   String get dedupeKey => '$roomId|$userId|$entryPackId|${triggeredAt.toIso8601String()}';
 
   bool get isExpired => DateTime.now().difference(triggeredAt).inMilliseconds > maxAgeMs;
+
+  RemoteMediaKind get mediaKind =>
+      detectRemoteMediaKind(explicitType: assetType, url: svgUrl);
 }

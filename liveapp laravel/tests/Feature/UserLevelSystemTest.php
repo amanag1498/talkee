@@ -7,6 +7,7 @@ use App\Models\Host;
 use App\Models\RechargePlan;
 use App\Models\User;
 use App\Models\UserLevel;
+use App\Models\UserNotification;
 use App\Models\Wallet;
 use App\Services\CallBillingService;
 use App\Services\UserLevelService;
@@ -280,7 +281,33 @@ class UserLevelSystemTest extends TestCase
             ->assertJsonPath('data.1.level', 2)
             ->assertJsonPath('data.1.min_spend_coins', 1000)
             ->assertJsonPath('data.9.level', 10)
-            ->assertJsonPath('data.9.min_spend_coins', 1000000);
+            ->assertJsonPath('data.9.min_spend_coins', 1000000)
+            ->assertJsonPath('data.99.level', 100);
+    }
+
+    public function test_level_reward_frame_unlocks_when_entering_new_10_level_band(): void
+    {
+        $user = $this->makeUserWithBalance(1500000);
+
+        WalletService::spend($user, 1500000, 'gift', null, 'level-frame:test');
+
+        $user->refresh();
+
+        $this->assertSame(11, (int) $user->level?->level);
+        $this->assertDatabaseHas('user_profile_frames', [
+            'user_id' => $user->id,
+            'source' => 'level_reward',
+            'is_equipped' => true,
+        ]);
+
+        $notification = UserNotification::query()
+            ->where('user_id', $user->id)
+            ->where('type', 'profile_frame_unlocked')
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($notification);
+        $this->assertSame('sapphire-crown-laurel', data_get($notification->meta, 'profile_frame.slug'));
     }
 
     private function makeUserWithBalance(int $balance): User

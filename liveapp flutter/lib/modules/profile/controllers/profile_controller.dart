@@ -23,9 +23,12 @@ class ProfileController extends GetxController {
   final isSaving = false.obs;
   final isUploadingAvatar = false.obs;
   final isLoadingHostReport = false.obs;
+  final isLoadingFrames = false.obs;
+  final equippingFrameId = RxnInt();
   final error = RxnString();
   final profile = Rxn<ProfileDto>();
   final hostReport = Rxn<HostEarningsReportDto>();
+  final frames = <ProfileFrameDto>[].obs;
 
   @override
   void onInit() {
@@ -43,6 +46,7 @@ class ProfileController extends GetxController {
       if (isClosed) return;
       profile.value = data;
       await _syncUserCache(data);
+      await loadFrames();
       if (data.isHost) {
         await loadHostReport();
       } else {
@@ -53,6 +57,22 @@ class ProfileController extends GetxController {
       error.value = _message(e);
     } finally {
       if (!isClosed) isLoading.value = false;
+    }
+  }
+
+  Future<void> loadFrames() async {
+    if (isLoadingFrames.value) return;
+    isLoadingFrames.value = true;
+    try {
+      final items = await api.fetchProfileFrames();
+      if (isClosed) return;
+      frames.assignAll(items);
+    } catch (e) {
+      if (!isClosed) {
+        error.value ??= _message(e);
+      }
+    } finally {
+      if (!isClosed) isLoadingFrames.value = false;
     }
   }
 
@@ -129,6 +149,9 @@ class ProfileController extends GetxController {
       current.copyWith(
         name: data.name,
         avatarUrl: data.avatarUrl,
+        profileFrame: data.profileFrame == null
+            ? null
+            : UserProfileFrameSummary.fromJson(data.profileFrame!.toJson()),
         roles: data.roles,
         canGoLive: data.canGoLive,
         level: data.level,
@@ -152,6 +175,31 @@ class ProfileController extends GetxController {
               ),
       ).toJson(),
     );
+  }
+
+  Future<bool> equipProfileFrame(ProfileFrameDto frame) async {
+    if (equippingFrameId.value != null) return false;
+    equippingFrameId.value = frame.id;
+    error.value = null;
+    try {
+      final body = await api.equipProfileFrame(frame.id);
+      if (isClosed) return false;
+      final nextProfile = ProfileDto.fromJson(
+        Map<String, dynamic>.from(body['profile'] as Map? ?? const {}),
+      );
+      final nextFrames = ((body['inventory'] as List?) ?? const <dynamic>[])
+          .map((item) => ProfileFrameDto.fromJson(Map<String, dynamic>.from(item as Map)))
+          .toList(growable: false);
+      profile.value = nextProfile;
+      frames.assignAll(nextFrames);
+      await _syncUserCache(nextProfile);
+      return true;
+    } catch (e) {
+      if (!isClosed) error.value = _message(e);
+      return false;
+    } finally {
+      if (!isClosed) equippingFrameId.value = null;
+    }
   }
 
   String _message(Object error) {

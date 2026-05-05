@@ -18,6 +18,7 @@ use App\Services\LiveRoomPkService;
 use App\Services\LiveRoomSeatService;
 use App\Services\LiveRoomStateService;
 use App\Services\ThemeUnlockService;
+use App\Services\ProfileFrameService;
 use App\Support\OpsMetrics;
 use App\Models\UserSubscription;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -31,6 +32,7 @@ class LiveRoomIngestController extends Controller
         private EntryPackService $entryPacks,
         private LiveRoomPkService $pk,
         private ThemeUnlockService $themes,
+        private ProfileFrameService $frames,
     )
     {
     }
@@ -71,6 +73,7 @@ class LiveRoomIngestController extends Controller
                 'level' => null,
                 'avatar' => null,
                 'avatar_url' => null,
+                'profile_frame' => null,
             ];
         }
 
@@ -108,6 +111,7 @@ class LiveRoomIngestController extends Controller
             'level' => $user->level?->level !== null ? (int) $user->level->level : null,
             'avatar' => $user->avatar_url,
             'avatar_url' => $user->avatar_url,
+            'profile_frame' => $this->frames->equippedFramePayload($user),
         ];
     }
 

@@ -38,6 +38,7 @@ class LiveRoomSeatService
         private LiveRoomStateService $state,
         private LiveRoomPkService $pk,
         private ThemeUnlockService $themes,
+        private ProfileFrameService $frames,
     ) {
     }
 
@@ -51,6 +52,7 @@ class LiveRoomSeatService
                 'level' => null,
                 'avatar' => null,
                 'avatar_url' => null,
+                'profile_frame' => null,
             ];
         }
 
@@ -88,6 +90,7 @@ class LiveRoomSeatService
             'level' => $user->level?->level !== null ? (int) $user->level->level : null,
             'avatar' => $user->avatar_url,
             'avatar_url' => $user->avatar_url,
+            'profile_frame' => $this->frames->equippedFramePayload($user),
         ];
     }
 
@@ -749,6 +752,7 @@ class LiveRoomSeatService
                 'name' => $request->user->name,
                 'email' => $request->user->email,
                 'avatar_url' => $request->user->avatar_url,
+                'profile_frame' => $this->frames->equippedFramePayload($request->user),
             ] : null,
             'status' => (string) $request->status,
             'requested_at' => optional($request->requested_at)->toIso8601String(),

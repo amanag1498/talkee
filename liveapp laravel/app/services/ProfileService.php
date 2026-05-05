@@ -14,6 +14,7 @@ class ProfileService
         private UserLevelService $levels,
         private HostFollowService $follows,
         private ThemeUnlockService $themes,
+        private ProfileFrameService $frames,
     )
     {
     }
@@ -49,6 +50,7 @@ class ProfileService
             'display_name' => $displayName,
             'email' => $public ? '' : $user->email,
             'avatar_url' => $user->avatar_url,
+            'profile_frame' => $this->frames->equippedFramePayload($user),
             'joined_at' => optional($user->created_at)->toIso8601String(),
             'roles' => $user->getRoleNames()->values()->all(),
             'is_vip' => $isVip,

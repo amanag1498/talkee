@@ -5,6 +5,7 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Http\Exceptions\PostTooLargeException;
 use App\Http\Middleware\AppMaintenanceMode;
 use App\Http\Middleware\EnforceAndroidClientVersion;
 use App\Http\Middleware\EnsureNotBlocked;
@@ -60,6 +61,19 @@ $middleware->alias([
         $middleware->redirectGuestsTo(fn (Request $request) => route('home'));
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        //
+        $exceptions->render(function (PostTooLargeException $e, Request $request) {
+            if (!$request->expectsJson()) {
+                return back()->withErrors([
+                    'asset_file' => 'The uploaded file is larger than the server limit. Increase PHP upload_max_filesize, post_max_size, and nginx client_max_body_size.',
+                    'gift_file' => 'The uploaded file is larger than the server limit. Increase PHP upload_max_filesize, post_max_size, and nginx client_max_body_size.',
+                ])->withInput();
+            }
+
+            return response()->json([
+                'ok' => false,
+                'error' => 'POST_TOO_LARGE',
+                'message' => 'Uploaded file exceeds the server size limit.',
+            ], 413);
+        });
     })
     ->create();

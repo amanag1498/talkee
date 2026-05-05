@@ -11,6 +11,7 @@ class RoomJoinAnimationRequest {
     required this.name,
     required this.themeKey,
     this.avatarUrl,
+    this.frameUrl,
     this.isHost = false,
     this.isVip = false,
     this.level,
@@ -19,6 +20,7 @@ class RoomJoinAnimationRequest {
   final String userId;
   final String name;
   final String? avatarUrl;
+  final String? frameUrl;
   final String themeKey;
   final bool isHost;
   final bool isVip;
@@ -97,6 +99,7 @@ class RoomJoinAnimationOverlayManager {
                   userId: request.userId,
                   name: request.name,
                   avatarUrl: request.avatarUrl,
+                  frameUrl: request.frameUrl,
                   themeKey: request.themeKey,
                   isHost: request.isHost,
                   isVip: request.isVip,

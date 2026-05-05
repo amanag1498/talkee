@@ -2,11 +2,11 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
 import '../../../app/theme/brand.dart';
+import '../../../app/widgets/remote_media_art.dart';
 import '../../../app/widgets/haptics.dart';
 import '../../../services/app_settings_service.dart';
 import '../../wallet/widgets/recharge_bottom_sheet.dart';
@@ -429,7 +429,11 @@ class _EntryCatalogHero extends StatelessWidget {
         children: [
           Row(
             children: [
-              _EntryCatalogArt(svgUrl: pack?.svgUrl, size: 62),
+              _EntryCatalogArt(
+                svgUrl: pack?.svgUrl,
+                assetType: pack?.assetType,
+                size: 62,
+              ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -535,7 +539,10 @@ class _EntryCatalogPackCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _EntryCatalogArt(svgUrl: pack.svgUrl),
+              _EntryCatalogArt(
+                svgUrl: pack.svgUrl,
+                assetType: pack.assetType,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -678,9 +685,14 @@ class _EntryCatalogPackCard extends StatelessWidget {
 }
 
 class _EntryCatalogArt extends StatelessWidget {
-  const _EntryCatalogArt({this.svgUrl, this.size = 64});
+  const _EntryCatalogArt({
+    this.svgUrl,
+    this.assetType,
+    this.size = 64,
+  });
 
   final String? svgUrl;
+  final String? assetType;
   final double size;
 
   @override
@@ -696,19 +708,16 @@ class _EntryCatalogArt extends StatelessWidget {
       alignment: Alignment.center,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
-        child:
-            svgUrl != null && svgUrl!.isNotEmpty
-                ? SvgPicture.network(
-                  svgUrl!,
-                  width: size * .62,
-                  height: size * .62,
-                  placeholderBuilder:
-                      (_) => Icon(
-                        Icons.auto_awesome_rounded,
-                        color: tokens.textPrimary,
-                      ),
-                )
-                : Icon(Icons.auto_awesome_rounded, color: tokens.textPrimary),
+        child: RemoteMediaArt(
+          url: svgUrl,
+          explicitType: assetType,
+          width: size * .62,
+          height: size * .62,
+          fallback: Icon(
+            Icons.auto_awesome_rounded,
+            color: tokens.textPrimary,
+          ),
+        ),
       ),
     );
   }

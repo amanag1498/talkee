@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../app/theme/brand.dart';
+import '../../../app/utils/profile_frame_payload.dart';
+import '../../../app/widgets/framed_avatar.dart';
 import '../../../services/app_settings_service.dart';
 import '../../calls/controllers/call_controller.dart';
 import '../controllers/host_follow_controller.dart';
@@ -138,15 +140,15 @@ class _FollowingPageState extends State<FollowingPage> {
                 children: [
                   Row(
                     children: [
-                      CircleAvatar(
-                        radius: 24,
-                        backgroundColor: tokens.cardGradient.first,
-                        backgroundImage: ((item['avatar_url'] ?? '').toString().isNotEmpty)
-                            ? NetworkImage(item['avatar_url'].toString())
-                            : null,
-                        child: ((item['avatar_url'] ?? '').toString().isNotEmpty)
-                            ? null
-                            : Text((item['name'] ?? 'H').toString().substring(0, 1).toUpperCase()),
+                      SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: FramedAvatar(
+                          avatarUrl: item['avatar_url']?.toString(),
+                          frameUrl: profileFrameAssetUrlFromPayload(item),
+                          label: (item['name'] ?? 'H').toString(),
+                          size: 48,
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(

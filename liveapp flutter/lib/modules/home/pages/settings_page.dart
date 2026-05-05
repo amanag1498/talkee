@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../banners/models/banner_item.dart';
 import '../../banners/services/banner_service.dart';
 import '../../../app/routes/app_routes.dart';
+import '../../../app/widgets/framed_avatar.dart';
 import '../../../app/widgets/haptics.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/app_settings_service.dart';
@@ -227,6 +228,9 @@ class _SettingsPageState extends State<SettingsPage>
                     name: effectiveName,
                     roleLabel: roleLabel,
                     avatarUrl: avatarUrl,
+                    profileFrameUrl:
+                        profile?.profileFrame?.assetUrl ??
+                        user?.profileFrame?.assetUrl,
                     initials:
                         (effectiveName.isNotEmpty
                                 ? effectiveName.substring(0, 1)
@@ -295,21 +299,6 @@ class _SettingsPageState extends State<SettingsPage>
               _AnimatedEntrance(
                 index: 4,
                 child: _SettingsSection(
-                  title: 'Activity',
-                  subtitle: 'History and transaction records',
-                  children: const [
-                    _PremiumEmptyState(
-                      title: 'Activity shortcuts hidden',
-                      message:
-                          'Call history, recharge history, and Mock PK Room are currently hidden from this screen.',
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              _AnimatedEntrance(
-                index: 5,
-                child: _SettingsSection(
                   title: 'Support & Legal',
                   subtitle: 'Assistance, privacy, and policy documents',
                   children: [
@@ -336,7 +325,7 @@ class _SettingsPageState extends State<SettingsPage>
               ),
               const SizedBox(height: 12),
               _AnimatedEntrance(
-                index: 6,
+                index: 5,
                 child: _SettingsSection(
                   title: 'Session',
                   subtitle: 'Account access on this device',
@@ -346,7 +335,7 @@ class _SettingsPageState extends State<SettingsPage>
                       title: 'Logout',
                       subtitle: 'Sign out of this device',
                       tint: tokens.dangerColor,
-                      onTap: () => auth.logout(),
+                      onTap: () => _confirmLogout(auth),
                     ),
                   ],
                 ),
@@ -362,6 +351,61 @@ class _SettingsPageState extends State<SettingsPage>
   static Future<void> _openExternal(String raw) async {
     final uri = Uri.parse(raw);
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _confirmLogout(AuthService auth) async {
+    final tokens = _settingsTokens();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: tokens.cardGradient.last,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+            side: BorderSide(color: tokens.borderColor),
+          ),
+          title: Text(
+            'Logout?',
+            style: TextStyle(
+              color: tokens.textPrimary,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          content: Text(
+            'You will be signed out from this device.',
+            style: TextStyle(
+              color: tokens.textSecondary,
+              fontWeight: FontWeight.w600,
+              height: 1.4,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(
+                'Cancel',
+                style: TextStyle(
+                  color: tokens.textSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: tokens.dangerColor,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Logout'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true) {
+      await auth.logout();
+    }
   }
 
   static String _formatShortDate(DateTime? value) {
@@ -652,6 +696,7 @@ class _AccountCard extends StatelessWidget {
   final String name;
   final String roleLabel;
   final String? avatarUrl;
+  final String? profileFrameUrl;
   final String initials;
   final int? level;
   final String? levelTitle;
@@ -668,6 +713,7 @@ class _AccountCard extends StatelessWidget {
     required this.name,
     required this.roleLabel,
     required this.avatarUrl,
+    required this.profileFrameUrl,
     required this.initials,
     this.level,
     this.levelTitle,
@@ -683,6 +729,7 @@ class _AccountCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = _settingsTokens();
+    final hasProfileFrame = (profileFrameUrl ?? '').trim().isNotEmpty;
     return _GlassShell(
       padding: const EdgeInsets.all(15),
       borderRadius: 30,
@@ -702,31 +749,27 @@ class _AccountCard extends StatelessWidget {
                 child: Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(2),
+                      width: 56,
+                      height: 56,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(24),
-                        gradient: LinearGradient(
-                          colors: tokens.primaryButtonGradient,
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
+                        gradient: hasProfileFrame
+                            ? null
+                            : LinearGradient(
+                                colors: tokens.primaryButtonGradient,
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                        color: hasProfileFrame ? Colors.transparent : null,
                       ),
-                      child: CircleAvatar(
-                        radius: 24,
+                      child: FramedAvatar(
+                        size: 56,
+                        label: initials,
+                        avatarUrl: avatarUrl,
+                        frameUrl: profileFrameUrl,
                         backgroundColor: tokens.cardGradient.first,
-                        backgroundImage:
-                            avatarUrl != null ? NetworkImage(avatarUrl!) : null,
-                        child:
-                            avatarUrl == null
-                                ? Text(
-                                  initials,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 19,
-                                  ),
-                                )
-                                : null,
+                        avatarInset: 0.04,
+                        borderRadius: 22,
                       ),
                     ),
                     const SizedBox(width: 12),

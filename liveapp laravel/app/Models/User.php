@@ -181,6 +181,11 @@ class User extends Authenticatable
         return $this->hasOne(UserThemePreference::class);
     }
 
+    public function profileFrameOwnerships(): HasMany
+    {
+        return $this->hasMany(UserProfileFrame::class)->latest('id');
+    }
+
     public function referredBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'referred_by_user_id');

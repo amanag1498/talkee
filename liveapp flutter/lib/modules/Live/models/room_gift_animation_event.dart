@@ -1,6 +1,6 @@
-enum RoomGiftAnimationTier { small, medium, premium, legendary }
+import '../../../app/models/remote_media_kind.dart';
 
-enum RoomGiftAssetKind { svg, gif, image, unknown }
+enum RoomGiftAnimationTier { small, medium, premium, legendary }
 
 class RoomGiftAnimationEvent {
   const RoomGiftAnimationEvent({
@@ -226,28 +226,8 @@ class RoomGiftAnimationEvent {
     return RoomGiftAnimationTier.small;
   }
 
-  RoomGiftAssetKind get assetKind {
-    final explicit = (giftType ?? '').trim().toLowerCase();
-    if (explicit == 'svg') return RoomGiftAssetKind.svg;
-    if (explicit == 'gif') return RoomGiftAssetKind.gif;
-    if (explicit == 'png' ||
-        explicit == 'jpg' ||
-        explicit == 'jpeg' ||
-        explicit == 'webp' ||
-        explicit == 'image') {
-      return RoomGiftAssetKind.image;
-    }
-
-    final url = giftAssetUrl.toLowerCase();
-    if (url.endsWith('.svg')) return RoomGiftAssetKind.svg;
-    if (url.endsWith('.gif')) return RoomGiftAssetKind.gif;
-    if (url.endsWith('.png') ||
-        url.endsWith('.jpg') ||
-        url.endsWith('.jpeg') ||
-        url.endsWith('.webp')) {
-      return RoomGiftAssetKind.image;
-    }
-    return RoomGiftAssetKind.unknown;
+  RemoteMediaKind get assetKind {
+    return detectRemoteMediaKind(explicitType: giftType, url: giftAssetUrl);
   }
 
   String get comboKey => '$senderId:$receiverId:$giftId:$roomId';

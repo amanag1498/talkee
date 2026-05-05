@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Host;
 use App\Services\HostEarningsReportService;
+use App\Services\ProfileFrameService;
 use App\Services\ProfileService;
 use Illuminate\Http\Request;
 
@@ -13,6 +14,7 @@ class ProfileController extends Controller
 {
     public function __construct(
         private ProfileService $profiles,
+        private ProfileFrameService $frames,
         private HostEarningsReportService $hostReports,
     )
     {
@@ -69,6 +71,31 @@ class ProfileController extends Controller
         return response()->json([
             'ok' => true,
             'data' => $this->profiles->payload($user),
+        ]);
+    }
+
+    public function frames(Request $request)
+    {
+        return response()->json([
+            'ok' => true,
+            'data' => $this->frames->inventoryPayload($request->user()),
+        ]);
+    }
+
+    public function equipFrame(Request $request)
+    {
+        $data = $request->validate([
+            'profile_frame_id' => 'required|integer|exists:profile_frames,id',
+        ]);
+
+        $equipped = $this->frames->equip($request->user(), (int) $data['profile_frame_id']);
+        $user = $request->user()->fresh(['host', 'wallet', 'level']);
+
+        return response()->json([
+            'ok' => true,
+            'profile_frame' => $equipped,
+            'profile' => $this->profiles->payload($user),
+            'inventory' => $this->frames->inventoryPayload($user),
         ]);
     }
 

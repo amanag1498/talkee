@@ -130,6 +130,94 @@
           </form>
         </div>
       </div>
+
+      <div class="card mb-3">
+        <div class="card-header"><h6 class="mb-0">Profile Frames</h6></div>
+        <div class="card-body">
+          <div class="row g-2 mb-3">
+            <div class="col-md-6">
+              <div class="border rounded-3 p-3 h-100">
+                <div class="small text-muted">Equipped Frame</div>
+                <div class="fw-semibold">{{ $equippedProfileFrame?->profileFrame?->name ?? 'None' }}</div>
+                <div class="text-muted small">
+                  @if($equippedProfileFrame?->profileFrame)
+                    {{ strtoupper($equippedProfileFrame->profileFrame->rarity) }} · {{ $equippedProfileFrame->profileFrame->category }}
+                  @else
+                    No frame equipped
+                  @endif
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="border rounded-3 p-3 h-100">
+                <div class="small text-muted">Owned Frames</div>
+                <div class="fw-semibold">{{ number_format($profileFrameHistory->count()) }}</div>
+                <div class="text-muted small">Admin can grant, expire, auto-equip, and revoke frames here.</div>
+              </div>
+            </div>
+          </div>
+          <form method="post" action="{{ route('admin.users.profile-frames.store', $user) }}" class="row g-2 mb-3">
+            @csrf
+            <div class="col-md-5">
+              <select name="profile_frame_id" class="form-select" required>
+                @foreach($availableProfileFrames as $frame)
+                  <option value="{{ $frame->id }}">{{ $frame->name }} · {{ strtoupper($frame->rarity) }} · {{ $frame->unlock_type }}</option>
+                @endforeach
+              </select>
+            </div>
+            <div class="col-md-3">
+              <input type="datetime-local" name="expires_at" class="form-control">
+            </div>
+            <div class="col-md-2 d-flex align-items-center">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="auto_equip" value="1" id="auto_equip_frame" checked>
+                <label class="form-check-label" for="auto_equip_frame">Auto equip</label>
+              </div>
+            </div>
+            <div class="col-md-2 d-grid">
+              <button class="btn btn-primary">Assign Frame</button>
+            </div>
+            <div class="col-12"><input type="text" name="reason" class="form-control" placeholder="Reason"></div>
+          </form>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>ID</th><th>Frame</th><th>Source</th><th>Status</th><th>Granted</th><th>Expires</th><th class="text-end">Action</th></tr></thead>
+              <tbody>
+              @forelse($profileFrameHistory as $ownership)
+                <tr>
+                  <td>{{ $ownership->id }}</td>
+                  <td>
+                    <div class="fw-semibold">{{ $ownership->profileFrame?->name ?? '—' }}</div>
+                    <div class="text-muted small">{{ $ownership->profileFrame?->rarity ? strtoupper($ownership->profileFrame->rarity) : '—' }}</div>
+                  </td>
+                  <td>{{ $ownership->source ?: '—' }}</td>
+                  <td>
+                    @if($ownership->is_equipped)
+                      <span class="badge bg-success">Equipped</span>
+                    @elseif($ownership->expires_at && $ownership->expires_at->isPast())
+                      <span class="badge bg-warning text-dark">Expired</span>
+                    @else
+                      <span class="badge bg-secondary">Owned</span>
+                    @endif
+                  </td>
+                  <td>{{ $ownership->granted_at?->format('d M Y H:i') ?? '—' }}</td>
+                  <td>{{ $ownership->expires_at?->format('d M Y H:i') ?? 'Permanent' }}</td>
+                  <td class="text-end">
+                    <form method="post" action="{{ route('admin.users.profile-frames.destroy', [$user, $ownership]) }}" class="d-inline" onsubmit="return confirm('Revoke this profile frame?')">
+                      @csrf @method('DELETE')
+                      <input type="hidden" name="reason" value="Revoked from user 360">
+                      <button class="btn btn-sm btn-outline-danger">Revoke</button>
+                    </form>
+                  </td>
+                </tr>
+              @empty
+                <tr><td colspan="7" class="text-center text-muted py-3">No profile frames assigned.</td></tr>
+              @endforelse
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="col-lg-8">

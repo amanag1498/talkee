@@ -73,6 +73,7 @@ class EntryPackApiTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $activePack->id)
+            ->assertJsonPath('data.0.asset_type', 'svg')
             ->assertJsonPath('data.0.owned', true)
             ->assertJsonPath('data.0.active', true);
     }

@@ -56,10 +56,6 @@ class LiveRoomGiftService
             throw new HttpException(409, 'Room host is missing.');
         }
 
-        if ($hostUser->id === $sender->id) {
-            throw new HttpException(409, 'Hosts cannot gift their own room.');
-        }
-
         $this->moderation->assertNotBlockedByHostUserId(
             $hostUser->id,
             $sender->id,

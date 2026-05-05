@@ -7,7 +7,9 @@ import 'package:livekit_client/livekit_client.dart';
 
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/brand.dart';
+import '../../../app/utils/profile_frame_payload.dart';
 import '../../../app/widgets/haptics.dart';
+import '../../../app/widgets/framed_avatar.dart';
 import '../../../services/app_settings_service.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/live_rooms_ws_service.dart';
@@ -850,6 +852,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
       userId: userId,
       name: name,
       avatarUrl: event['avatar_url']?.toString(),
+      frameUrl: profileFrameAssetUrlFromPayload(event),
       themeKey:
           event['active_theme_key']?.toString().trim().isNotEmpty == true
               ? event['active_theme_key'].toString().trim()
@@ -884,6 +887,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
       avatarUrl: currentUser.avatarUrl?.trim().isNotEmpty == true
           ? currentUser.avatarUrl!.trim()
           : null,
+      frameUrl: currentUser.profileFrame?.assetUrl,
       themeKey: Get.find<AppSettingsService>().activePremiumThemeVariant,
       isHost: _isHost,
       isVip: currentUser.roles.any(
@@ -909,6 +913,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
       name: name,
       avatarUrl:
           metadata['avatar_url']?.toString() ?? metadata['avatar']?.toString(),
+      frameUrl: profileFrameAssetUrlFromPayload(metadata),
       themeKey:
           metadata['active_theme_key']?.toString().trim().isNotEmpty == true
               ? metadata['active_theme_key'].toString().trim()
@@ -2046,6 +2051,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
         isHost: true,
         userId: _hostUserId,
         avatarUrl: null,
+        frameUrl: null,
         level: null,
         onProfileTap:
             () => _showParticipantProfileCard(
@@ -2097,6 +2103,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
           userId: userId,
           avatarUrl:
               speaker['avatar_url']?.toString() ?? speaker['avatar']?.toString(),
+          frameUrl: profileFrameAssetUrlFromPayload(speaker),
           level: _joinSafeInt(speaker['level']),
           onProfileTap:
               () => _showParticipantProfileCard(
@@ -2145,6 +2152,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
             final avatarUrl =
                 metadata['avatar_url']?.toString() ??
                 metadata['avatar']?.toString();
+            final frameUrl = profileFrameAssetUrlFromPayload(metadata);
             return _ListenerGridEntry(
               key: ValueKey('listener-${participant.identity}'),
               label: name,
@@ -2154,6 +2162,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
               isVip: isVip,
               userId: userId,
               avatarUrl: avatarUrl,
+              frameUrl: frameUrl,
               level: level,
               onProfileTap:
                   () => _showParticipantProfileCard(
@@ -2188,6 +2197,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
       final userId = _joinSafeInt(data['user_id']);
       final avatarUrl =
           data['avatar_url']?.toString() ?? data['avatar']?.toString();
+      final frameUrl = profileFrameAssetUrlFromPayload(data);
       final level = _joinSafeInt(data['level']);
       return _ListenerGridEntry(
         key: ValueKey('dev-listener-$label'),
@@ -2198,6 +2208,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
         isVip: isVip,
         userId: userId,
         avatarUrl: avatarUrl,
+        frameUrl: frameUrl,
         level: level,
         onProfileTap:
             () => _showParticipantProfileCard(
@@ -2384,6 +2395,10 @@ class _AudioRoomPageState extends State<AudioRoomPage>
                               label: _participantLabel(participant),
                               subtitle: 'Listening',
                               speaking: _isParticipantSpeaking(participant),
+                              avatarUrl:
+                                  metadata['avatar_url']?.toString() ??
+                                  metadata['avatar']?.toString(),
+                              frameUrl: profileFrameAssetUrlFromPayload(metadata),
                               onProfileTap:
                                   () => _showParticipantProfileCard(
                                     name: _participantLabel(participant),
@@ -3366,6 +3381,7 @@ class _SpeakerGridEntry {
     required this.isHost,
     this.userId,
     this.avatarUrl,
+    this.frameUrl,
     this.level,
     this.onProfileTap,
     this.onMute,
@@ -3383,6 +3399,7 @@ class _SpeakerGridEntry {
   final bool isHost;
   final int? userId;
   final String? avatarUrl;
+  final String? frameUrl;
   final int? level;
   final VoidCallback? onProfileTap;
   final VoidCallback? onMute;
@@ -3399,6 +3416,7 @@ class _ListenerGridEntry {
     required this.isVip,
     this.userId,
     this.avatarUrl,
+    this.frameUrl,
     this.level,
     this.onProfileTap,
   });
@@ -3411,6 +3429,7 @@ class _ListenerGridEntry {
   final bool isVip;
   final int? userId;
   final String? avatarUrl;
+  final String? frameUrl;
   final int? level;
   final VoidCallback? onProfileTap;
 }
@@ -3430,6 +3449,7 @@ class _StageGridItem {
     required this.isVip,
     this.userId,
     this.avatarUrl,
+    this.frameUrl,
     this.level,
     this.onProfileTap,
     this.onMute,
@@ -3449,6 +3469,7 @@ class _StageGridItem {
   final bool isVip;
   final int? userId;
   final String? avatarUrl;
+  final String? frameUrl;
   final int? level;
   final VoidCallback? onProfileTap;
   final VoidCallback? onMute;
@@ -3638,6 +3659,7 @@ class _AudioParticipantsStage extends StatelessWidget {
           isVip: entry.isVip,
           userId: entry.userId,
           avatarUrl: entry.avatarUrl,
+          frameUrl: entry.frameUrl,
           level: entry.level,
           onProfileTap: entry.onProfileTap,
           onMute: entry.onMute,
@@ -3912,6 +3934,7 @@ class _UnifiedParticipantTile extends StatelessWidget {
                   themeKey: item.themeKey,
                   dominant: dominant,
                   avatarUrl: item.avatarUrl,
+                  frameUrl: item.frameUrl,
                   onTap: item.onProfileTap,
                 ),
               ),
@@ -4528,6 +4551,7 @@ class _SpeakerTileWidget extends StatelessWidget {
                   muted: entry.muted,
                   themeKey: entry.themeKey,
                   avatarUrl: entry.avatarUrl,
+                  frameUrl: entry.frameUrl,
                   onTap: entry.onProfileTap,
                 ),
               ),
@@ -4625,6 +4649,7 @@ class _ListenerTileWidget extends StatelessWidget {
                 muted: false,
                 themeKey: entry.themeKey,
                 avatarUrl: entry.avatarUrl,
+                frameUrl: entry.frameUrl,
                 onTap: entry.onProfileTap,
               ),
               const SizedBox(height: 8),
@@ -4658,6 +4683,7 @@ class _SpeakingAvatar extends StatefulWidget {
     required this.themeKey,
     this.dominant = false,
     this.avatarUrl,
+    this.frameUrl,
     this.onTap,
   });
 
@@ -4669,6 +4695,7 @@ class _SpeakingAvatar extends StatefulWidget {
   final String themeKey;
   final bool dominant;
   final String? avatarUrl;
+  final String? frameUrl;
   final VoidCallback? onTap;
 
   @override
@@ -4745,26 +4772,16 @@ class _SpeakingAvatarState extends State<_SpeakingAvatar>
                   ? (widget.dominant ? .18 + (t * .18) : .14 + (t * .12))
                   : 0.0;
 
-          final avatar = CircleAvatar(
-            radius: widget.radius,
-            backgroundColor: baseColor,
-            backgroundImage:
-                (widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty)
-                    ? NetworkImage(widget.avatarUrl!)
-                    : null,
-            child:
-                (widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty)
-                    ? null
-                    : Text(
-                      widget.label.isNotEmpty
-                          ? widget.label.characters.first.toUpperCase()
-                          : '?',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                        fontSize: widget.radius * .72,
-                      ),
-                    ),
+          final avatar = SizedBox(
+            width: widget.radius * 2,
+            height: widget.radius * 2,
+            child: FramedAvatar(
+              avatarUrl: widget.avatarUrl,
+              frameUrl: widget.frameUrl,
+              label: widget.label,
+              size: widget.radius * 2,
+              backgroundColor: baseColor,
+            ),
           );
 
           return Stack(
@@ -5017,6 +5034,7 @@ class _SpeakerCard extends StatelessWidget {
     required this.isHost,
     this.userId,
     this.avatarUrl,
+    this.frameUrl,
     this.level,
     this.onProfileTap,
     this.onMute,
@@ -5033,6 +5051,7 @@ class _SpeakerCard extends StatelessWidget {
   final bool isHost;
   final int? userId;
   final String? avatarUrl;
+  final String? frameUrl;
   final int? level;
   final VoidCallback? onProfileTap;
   final VoidCallback? onMute;
@@ -5094,19 +5113,18 @@ class _SpeakerCard extends StatelessWidget {
                             ],
                           ),
                         ),
-                      CircleAvatar(
-                        radius: 20,
-                        backgroundColor:
-                            highlighted
-                                ? frameTokens.primaryButtonGradient.last
-                                : frameTokens.primaryButtonGradient.first,
-                        child: Text(
-                          name.isNotEmpty ? name[0].toUpperCase() : '?',
-                          style: TextStyle(
-                            color: frameTokens.textPrimary,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 15,
-                          ),
+                      SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: FramedAvatar(
+                          avatarUrl: avatarUrl,
+                          frameUrl: frameUrl,
+                          label: name,
+                          size: 40,
+                          backgroundColor:
+                              highlighted
+                                  ? frameTokens.primaryButtonGradient.last
+                                  : frameTokens.primaryButtonGradient.first,
                         ),
                       ),
                     ],
@@ -5293,6 +5311,8 @@ class _RequestCard extends StatelessWidget {
     );
     final user = request['user'] as Map<String, dynamic>?;
     final name = user?['name']?.toString() ?? 'Listener';
+    final avatarUrl = user?['avatar_url']?.toString();
+    final frameUrl = profileFrameAssetUrlFromPayload(user);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -5300,11 +5320,18 @@ class _RequestCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: tokens.borderColor.withOpacity(.22)),
       ),
-      child: Row(
+        child: Row(
         children: [
-          CircleAvatar(
-            backgroundColor: tokens.primaryButtonGradient.first,
-            child: Text(name.isNotEmpty ? name[0].toUpperCase() : '?'),
+          SizedBox(
+            width: 40,
+            height: 40,
+            child: FramedAvatar(
+              avatarUrl: avatarUrl,
+              frameUrl: frameUrl,
+              label: name,
+              size: 40,
+              backgroundColor: tokens.primaryButtonGradient.first,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -6530,12 +6557,16 @@ class _AudienceTile extends StatelessWidget {
     required this.label,
     required this.subtitle,
     required this.speaking,
+    this.avatarUrl,
+    this.frameUrl,
     this.onProfileTap,
   });
 
   final String label;
   final String subtitle;
   final bool speaking;
+  final String? avatarUrl;
+  final String? frameUrl;
   final VoidCallback? onProfileTap;
 
   @override
@@ -6562,16 +6593,15 @@ class _AudienceTile extends StatelessWidget {
           InkWell(
             onTap: onProfileTap,
             borderRadius: BorderRadius.circular(999),
-            child: CircleAvatar(
-              radius: 18,
-              backgroundColor: tokens.primaryButtonGradient.first.withOpacity(.92),
-              child: Text(
-                label.isNotEmpty ? label.characters.first.toUpperCase() : 'L',
-                style: TextStyle(
-                  color: tokens.textPrimary,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 13,
-                ),
+            child: SizedBox(
+              width: 36,
+              height: 36,
+              child: FramedAvatar(
+                avatarUrl: avatarUrl,
+                frameUrl: frameUrl,
+                label: label,
+                size: 36,
+                backgroundColor: tokens.primaryButtonGradient.first.withOpacity(.92),
               ),
             ),
           ),

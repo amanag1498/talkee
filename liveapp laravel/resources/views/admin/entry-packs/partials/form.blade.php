@@ -11,7 +11,7 @@
             <ul class="mb-0 ps-3">@foreach($errors->all() as $e)<li>{{ $e }}</li>@endforeach</ul>
           </div>
         @endif
-        <form method="post" action="{{ $route }}" class="vstack gap-3">
+        <form method="post" action="{{ $route }}" class="vstack gap-3" enctype="multipart/form-data">
           @csrf
           @if($method !== 'POST') @method($method) @endif
           <div>
@@ -33,8 +33,18 @@
             </div>
           </div>
           <div>
-            <label class="form-label">SVG URL</label>
-            <input name="svg_url" class="form-control" value="{{ old('svg_url', $pack?->svg_url) }}" placeholder="https://example.com/entry.svg">
+            <label class="form-label">{{ $pack ? 'Replace Entry Asset' : 'Entry Asset' }}</label>
+            <input
+              type="file"
+              name="asset_file"
+              accept=".svg,.svga"
+              class="form-control @error('asset_file') is-invalid @enderror"
+              {{ $pack ? '' : 'required' }}
+            >
+            @error('asset_file') <div class="invalid-feedback">{{ $message }}</div> @enderror
+            <small class="text-muted d-block mt-1">
+              Upload SVG or SVGA. Leave empty while editing to keep the current file.
+            </small>
           </div>
           <div class="row g-3">
             <div class="col-md-4">
@@ -73,10 +83,15 @@
     <div class="card">
       <div class="card-header"><h6 class="mb-0"><i class="ti ti-eye me-2"></i>Preview</h6></div>
       <div class="card-body">
-        @if(old('svg_url', $pack?->svg_url))
-          <object data="{{ old('svg_url', $pack?->svg_url) }}" type="image/svg+xml" style="width:100%;height:220px;border-radius:16px;background:#f8fafc;"></object>
+        @php($previewAsset = old('svg_url', $pack?->svg_url))
+        @if($previewAsset)
+          @if(str_ends_with(strtolower($previewAsset), '.svga'))
+            <div class="text-muted">SVGA asset uploaded. Preview is available in the app runtime.</div>
+          @else
+            <object data="{{ $previewAsset }}" type="image/svg+xml" style="width:100%;height:220px;border-radius:16px;background:#f8fafc;"></object>
+          @endif
         @else
-          <div class="text-muted">Add an SVG URL to preview the entry artwork.</div>
+          <div class="text-muted">Upload an SVG or SVGA file to preview the entry artwork.</div>
         @endif
       </div>
     </div>

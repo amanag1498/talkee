@@ -129,6 +129,50 @@ class LiveRoomAccessAndGiftTest extends TestCase
         $this->assertSame(20, (int) data_get(LiveRoomGift::query()->first()?->meta, 'platform_earning'));
     }
 
+    public function test_host_can_self_gift_own_room(): void
+    {
+        [$hostUser, $room] = $this->makeLiveRoom();
+
+        Wallet::query()->where('user_id', $hostUser->id)->update([
+            'balance' => 500,
+        ]);
+
+        $gift = Gift::query()->create([
+            'name' => 'Host Crown',
+            'coins' => 40,
+            'gift_url' => 'https://example.com/host-crown.png',
+            'is_active' => true,
+            'sort_order' => 1,
+        ]);
+
+        Sanctum::actingAs($hostUser);
+
+        $this->postJson("/api/live/rooms/{$room->room_id}/gifts", [
+            'gift_id' => $gift->id,
+            'quantity' => 2,
+        ])->assertCreated()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('gift.total_coins', 80)
+            ->assertJsonPath('gift.host_user_id', $hostUser->id)
+            ->assertJsonPath('gift.sender_user_id', $hostUser->id);
+
+        $this->assertDatabaseHas('live_room_gifts', [
+            'live_room_id' => $room->id,
+            'gift_id' => $gift->id,
+            'sender_user_id' => $hostUser->id,
+            'quantity' => 2,
+            'total_coins' => 80,
+        ]);
+
+        $this->assertDatabaseHas('wallet_transactions', [
+            'category' => 'gift',
+            'type' => 'debit',
+            'coins' => 80,
+            'counterparty_user_id' => $hostUser->id,
+        ]);
+        $this->assertSame(420, (int) Wallet::query()->where('user_id', $hostUser->id)->value('balance'));
+    }
+
     public function test_room_gift_creates_gross_earning_ledger_without_wallet_crediting_host_or_agency(): void
     {
         $agencyOwner = User::factory()->create();

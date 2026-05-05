@@ -374,6 +374,11 @@
                 <span class="pc-micon"><i class="ti ti-palette"></i></span><span class="pc-mtext">Themes</span>
               </a>
             </li>
+            <li class="pc-item">
+              <a href="{{ route('admin.profile-frames.index') }}" class="pc-link {{ request()->routeIs('admin.profile-frames.*') ? 'active' : '' }}">
+                <span class="pc-micon"><i class="ti ti-photo-star"></i></span><span class="pc-mtext">Profile Frames</span>
+              </a>
+            </li>
 
             <li class="pc-item pc-caption">
               <label>Live Ops</label>

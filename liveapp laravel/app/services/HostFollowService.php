@@ -12,6 +12,11 @@ use InvalidArgumentException;
 
 class HostFollowService
 {
+    public function __construct(
+        private ProfileFrameService $frames,
+    ) {
+    }
+
     public function follow(User $user, Host $host, array $preferences = []): HostFollower
     {
         if ((int) $host->user_id === (int) $user->id) {
@@ -96,6 +101,7 @@ class HostFollowService
         $rows = HostFollower::query()
             ->with([
                 'host.user.roles',
+                'host.user.level',
                 'host.user.hostAvailability',
                 'host.agency',
             ])
@@ -126,6 +132,7 @@ class HostFollowService
                 'name' => $follow->user?->name,
                 'email' => $follow->user?->email,
                 'avatar_url' => $follow->user?->avatar_url,
+                'profile_frame' => $follow->user ? $this->frames->equippedFramePayload($follow->user) : null,
                 'notify_when_online' => (bool) $follow->notify_when_online,
                 'notify_when_available' => (bool) $follow->notify_when_available,
                 'followed_at' => optional($follow->created_at)?->toIso8601String(),
@@ -159,6 +166,7 @@ class HostFollowService
             'host_id' => $host->id,
             'name' => $host->stage_name ?: $host->user->name,
             'avatar_url' => $host->user->avatar_url,
+            'profile_frame' => $this->frames->equippedFramePayload($host->user),
             'agency' => $host->agency ? [
                 'id' => $host->agency->id,
                 'name' => $host->agency->name,
