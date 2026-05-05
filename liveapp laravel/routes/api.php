@@ -67,12 +67,14 @@ Route::middleware(['auth:sanctum','throttle:240,1'])->group(function () {
     Route::post('/subscriptions/welcome-tip/ack', [\App\Http\Controllers\Api\SubscriptionController::class,'ackWelcomeTip'])->middleware('feature_enabled:subscriptions_enabled');
     Route::get('/profile', [ProfileController::class, 'show']);
     Route::get('/profile/frames', [ProfileController::class, 'frames']);
+    Route::get('/profile/frames/shop', [ProfileController::class, 'shopFrames']);
     Route::get('/profile/users/{user}', [ProfileController::class, 'publicShow']);
     Route::get('/profile/host-earnings-report', [ProfileController::class, 'hostEarningsReport']);
     Route::get('/dashboard/leaderboards', [DashboardLeaderboardController::class, 'index'])->withoutMiddleware('throttle:60,1')->middleware('throttle:240,1');
     Route::put('/profile', [ProfileController::class, 'update']);
     Route::post('/profile/avatar', [ProfileController::class, 'avatar']);
     Route::post('/profile/frames/equip', [ProfileController::class, 'equipFrame']);
+    Route::post('/profile/frames/purchase', [ProfileController::class, 'purchaseFrame']);
     Route::post('/app/activity', function (Request $request, ThemeUnlockService $themes) {
         $result = $themes->recordDailyActivity($request->user());
         return response()->json([
@@ -85,6 +87,7 @@ Route::middleware(['auth:sanctum','throttle:240,1'])->group(function () {
         ]);
     });
     Route::get('/themes', [ThemeController::class, 'index']);
+    Route::post('/themes/purchase', [ThemeController::class, 'purchase']);
     Route::post('/themes/select', [ThemeController::class, 'select']);
     Route::get('/me/following', [HostFollowController::class, 'following']);
     Route::get('/me/followers', [HostFollowController::class, 'followers']);

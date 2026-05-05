@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\UserProfileFrame;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class ProfileFrameService
 {
@@ -49,6 +50,29 @@ class ProfileFrameService
 
             return $this->framePayload($frame, $ownership);
         })->values()->all();
+    }
+
+    public function shopPayload(User $user): array
+    {
+        $ownerships = UserProfileFrame::query()
+            ->where('user_id', $user->id)
+            ->get()
+            ->keyBy('profile_frame_id');
+
+        return ProfileFrame::query()
+            ->where('is_active', true)
+            ->where('unlock_type', 'shop_purchase')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get()
+            ->filter(function (ProfileFrame $frame) use ($ownerships): bool {
+                $ownership = $ownerships->get($frame->id);
+
+                return !$ownership || $this->isExpired($ownership);
+            })
+            ->map(fn (ProfileFrame $frame) => $this->framePayload($frame))
+            ->values()
+            ->all();
     }
 
     public function equip(User $user, int $profileFrameId): array
@@ -102,6 +126,61 @@ class ProfileFrameService
         return $this->grant($user, $frame, $source, $expiresAt, $autoEquip);
     }
 
+    public function purchase(User $user, int $profileFrameId, ?string $idempotencyKey = null): UserProfileFrame
+    {
+        return DB::transaction(function () use ($user, $profileFrameId, $idempotencyKey): UserProfileFrame {
+            $frame = ProfileFrame::query()
+                ->where('is_active', true)
+                ->findOrFail($profileFrameId);
+
+            if ($frame->unlock_type !== 'shop_purchase') {
+                abort(422, 'This profile frame is not purchasable.');
+            }
+
+            $ownership = UserProfileFrame::query()
+                ->where('user_id', $user->id)
+                ->where('profile_frame_id', $frame->id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($ownership && !$this->isExpired($ownership)) {
+                return $ownership->fresh(['profileFrame']);
+            }
+
+            $normalizedKey = $idempotencyKey ? trim($idempotencyKey) : null;
+            $reference = 'PROFILE_FRAME_PURCHASE:'.$user->id.':'.$frame->id.':'.($normalizedKey ?: Str::uuid()->toString());
+
+            if ((int) ($frame->price_coins ?? 0) > 0) {
+                try {
+                    WalletService::spend(
+                        user: $user,
+                        coins: (int) $frame->price_coins,
+                        category: 'other',
+                        counterparty: null,
+                        reference: $reference,
+                        meta: [
+                            'event' => 'PROFILE_FRAME_PURCHASE',
+                            'profile_frame_id' => $frame->id,
+                            'profile_frame_slug' => $frame->slug,
+                            'profile_frame_name' => $frame->name,
+                            'purchase_key' => $normalizedKey,
+                        ],
+                    );
+                } catch (\InvalidArgumentException) {
+                    abort(422, 'Not enough coins to purchase this profile frame.');
+                }
+            }
+
+            return $this->grant(
+                $user,
+                $frame,
+                'shop_purchase',
+                $frame->valid_days ? now()->addDays(max(1, (int) $frame->valid_days)) : null,
+                false,
+            );
+        });
+    }
+
     public function grant(
         User $user,
         ProfileFrame $frame,
@@ -150,11 +229,13 @@ class ProfileFrameService
             'category' => (string) ($frame->category ?? 'general'),
             'unlock_type' => (string) ($frame->unlock_type ?? 'free_catalog'),
             'valid_days' => $frame->valid_days,
+            'price_coins' => $frame->price_coins !== null ? (int) $frame->price_coins : null,
             'sort_order' => (int) ($frame->sort_order ?? 0),
             'is_active' => (bool) $frame->is_active,
             'owned' => $owned,
             'can_equip' => (bool) $frame->is_active && $owned,
             'is_equipped' => $equipped,
+            'can_purchase' => (bool) $frame->is_active && !$owned && ($frame->unlock_type === 'shop_purchase'),
             'source' => $ownership?->source,
             'granted_at' => optional($ownership?->granted_at)->toIso8601String(),
             'expires_at' => optional($ownership?->expires_at)->toIso8601String(),

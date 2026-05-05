@@ -25,10 +25,12 @@ class ProfileController extends GetxController {
   final isLoadingHostReport = false.obs;
   final isLoadingFrames = false.obs;
   final equippingFrameId = RxnInt();
+  final purchasingFrameId = RxnInt();
   final error = RxnString();
   final profile = Rxn<ProfileDto>();
   final hostReport = Rxn<HostEarningsReportDto>();
   final frames = <ProfileFrameDto>[].obs;
+  final shopFrames = <ProfileFrameDto>[].obs;
 
   @override
   void onInit() {
@@ -65,8 +67,10 @@ class ProfileController extends GetxController {
     isLoadingFrames.value = true;
     try {
       final items = await api.fetchProfileFrames();
+      final shopItems = await api.fetchShopProfileFrames();
       if (isClosed) return;
       frames.assignAll(items);
+      shopFrames.assignAll(shopItems);
     } catch (e) {
       if (!isClosed) {
         error.value ??= _message(e);
@@ -190,8 +194,10 @@ class ProfileController extends GetxController {
       final nextFrames = ((body['inventory'] as List?) ?? const <dynamic>[])
           .map((item) => ProfileFrameDto.fromJson(Map<String, dynamic>.from(item as Map)))
           .toList(growable: false);
+      final nextShopFrames = await api.fetchShopProfileFrames();
       profile.value = nextProfile;
       frames.assignAll(nextFrames);
+      shopFrames.assignAll(nextShopFrames);
       await _syncUserCache(nextProfile);
       return true;
     } catch (e) {
@@ -199,6 +205,35 @@ class ProfileController extends GetxController {
       return false;
     } finally {
       if (!isClosed) equippingFrameId.value = null;
+    }
+  }
+
+  Future<bool> purchaseProfileFrame(ProfileFrameDto frame) async {
+    if (purchasingFrameId.value != null) return false;
+    purchasingFrameId.value = frame.id;
+    error.value = null;
+    try {
+      final body = await api.purchaseProfileFrame(frame.id);
+      if (isClosed) return false;
+      final nextProfile = ProfileDto.fromJson(
+        Map<String, dynamic>.from(body['profile'] as Map? ?? const {}),
+      );
+      final nextFrames = ((body['inventory'] as List?) ?? const <dynamic>[])
+          .map((item) => ProfileFrameDto.fromJson(Map<String, dynamic>.from(item as Map)))
+          .toList(growable: false);
+      final nextShopFrames = ((body['shop'] as List?) ?? const <dynamic>[])
+          .map((item) => ProfileFrameDto.fromJson(Map<String, dynamic>.from(item as Map)))
+          .toList(growable: false);
+      profile.value = nextProfile;
+      frames.assignAll(nextFrames);
+      shopFrames.assignAll(nextShopFrames);
+      await _syncUserCache(nextProfile);
+      return true;
+    } catch (e) {
+      if (!isClosed) error.value = _message(e);
+      return false;
+    } finally {
+      if (!isClosed) purchasingFrameId.value = null;
     }
   }
 

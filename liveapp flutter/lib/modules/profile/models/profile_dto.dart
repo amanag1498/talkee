@@ -134,8 +134,10 @@ class ProfileFrameDto {
   final String rarity;
   final String category;
   final String unlockType;
+  final int? priceCoins;
   final bool owned;
   final bool canEquip;
+  final bool canPurchase;
   final bool isEquipped;
   final String? source;
   final DateTime? grantedAt;
@@ -149,8 +151,10 @@ class ProfileFrameDto {
     required this.rarity,
     required this.category,
     required this.unlockType,
+    required this.priceCoins,
     required this.owned,
     required this.canEquip,
+    required this.canPurchase,
     required this.isEquipped,
     required this.isExpired,
     this.assetUrl,
@@ -170,8 +174,10 @@ class ProfileFrameDto {
       rarity: (json['rarity'] ?? 'rare').toString(),
       category: (json['category'] ?? 'general').toString(),
       unlockType: (json['unlock_type'] ?? 'free_catalog').toString(),
+      priceCoins: (json['price_coins'] as num?)?.toInt(),
       owned: json['owned'] == true,
       canEquip: json['can_equip'] == true,
+      canPurchase: json['can_purchase'] == true,
       isEquipped: json['is_equipped'] == true,
       source: json['source']?.toString(),
       grantedAt: DateTime.tryParse((json['granted_at'] ?? '').toString()),
@@ -189,8 +195,10 @@ class ProfileFrameDto {
     'rarity': rarity,
     'category': category,
     'unlock_type': unlockType,
+    'price_coins': priceCoins,
     'owned': owned,
     'can_equip': canEquip,
+    'can_purchase': canPurchase,
     'is_equipped': isEquipped,
     'source': source,
     'granted_at': grantedAt?.toIso8601String(),

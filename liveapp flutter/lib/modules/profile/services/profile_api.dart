@@ -69,9 +69,28 @@ class ProfileApi {
         .toList(growable: false);
   }
 
+  Future<List<ProfileFrameDto>> fetchShopProfileFrames() async {
+    final res = await _api.get<Map<String, dynamic>>('profile/frames/shop');
+    final body = _asMap(res.data);
+    final list = (body['data'] as List?) ?? const <dynamic>[];
+    return list
+        .map((item) => ProfileFrameDto.fromJson(_asMap(item)))
+        .toList(growable: false);
+  }
+
   Future<Map<String, dynamic>> equipProfileFrame(int profileFrameId) async {
     final res = await _api.post<Map<String, dynamic>>(
       'profile/frames/equip',
+      data: {
+        'profile_frame_id': profileFrameId,
+      },
+    );
+    return _asMap(res.data);
+  }
+
+  Future<Map<String, dynamic>> purchaseProfileFrame(int profileFrameId) async {
+    final res = await _api.post<Map<String, dynamic>>(
+      'profile/frames/purchase',
       data: {
         'profile_frame_id': profileFrameId,
       },

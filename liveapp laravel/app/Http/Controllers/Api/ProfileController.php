@@ -82,6 +82,14 @@ class ProfileController extends Controller
         ]);
     }
 
+    public function shopFrames(Request $request)
+    {
+        return response()->json([
+            'ok' => true,
+            'data' => $this->frames->shopPayload($request->user()),
+        ]);
+    }
+
     public function equipFrame(Request $request)
     {
         $data = $request->validate([
@@ -97,6 +105,29 @@ class ProfileController extends Controller
             'profile' => $this->profiles->payload($user),
             'inventory' => $this->frames->inventoryPayload($user),
         ]);
+    }
+
+    public function purchaseFrame(Request $request)
+    {
+        $data = $request->validate([
+            'profile_frame_id' => 'required|integer|exists:profile_frames,id',
+        ]);
+
+        $ownership = $this->frames->purchase(
+            $request->user(),
+            (int) $data['profile_frame_id'],
+            $request->header('Idempotency-Key') ?: $request->input('idempotency_key'),
+        );
+
+        $user = $request->user()->fresh(['host', 'wallet', 'level']);
+
+        return response()->json([
+            'ok' => true,
+            'profile_frame' => $this->frames->framePayload($ownership->profileFrame, $ownership),
+            'profile' => $this->profiles->payload($user),
+            'inventory' => $this->frames->inventoryPayload($user),
+            'shop' => $this->frames->shopPayload($user),
+        ], 201);
     }
 
     public function hostEarningsReport(Request $request)

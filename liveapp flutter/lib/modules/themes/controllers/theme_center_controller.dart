@@ -67,6 +67,26 @@ class ThemeCenterController extends GetxController {
     }
   }
 
+  Future<void> purchaseTheme(ThemeAccessItemDto theme) async {
+    if (submitting.value || theme.unlocked) return;
+    submitting.value = true;
+    pendingThemeKey.value = theme.key;
+    try {
+      final nextCatalog = await _api.purchaseTheme(theme.key);
+      catalog.value = nextCatalog;
+      await _settings.refresh();
+      Get.snackbar('Theme unlocked', '${theme.name} was added to your account.');
+    } on DioException catch (e) {
+      final message = _extractMessage(e);
+      Get.snackbar('Purchase failed', message);
+    } catch (e) {
+      Get.snackbar('Purchase failed', e.toString());
+    } finally {
+      pendingThemeKey.value = null;
+      submitting.value = false;
+    }
+  }
+
   String _extractMessage(DioException e) {
     final data = e.response?.data;
     if (data is Map && data['message'] != null) {

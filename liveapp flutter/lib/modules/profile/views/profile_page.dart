@@ -885,7 +885,9 @@ class _ProfileFramesCard extends StatelessWidget {
       builder: (sheetContext) {
         return Obx(() {
           final items = controller.frames;
+          final shopItems = controller.shopFrames;
           final busyId = controller.equippingFrameId.value;
+          final purchaseBusyId = controller.purchasingFrameId.value;
           return SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 18),
@@ -918,7 +920,7 @@ class _ProfileFramesCard extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  'Only frames unlocked on your account appear here.',
+                                  'Unlocked frames can be equipped. Shop frames can be purchased below.',
                                   style: TextStyle(
                                     color: tokens.textSecondary.withOpacity(.82),
                                     fontWeight: FontWeight.w600,
@@ -936,9 +938,9 @@ class _ProfileFramesCard extends StatelessWidget {
                     ),
                     const Divider(height: 1),
                     Expanded(
-                      child: controller.isLoadingFrames.value && items.isEmpty
+                      child: controller.isLoadingFrames.value && items.isEmpty && shopItems.isEmpty
                           ? const Center(child: CircularProgressIndicator())
-                          : items.isEmpty
+                          : items.isEmpty && shopItems.isEmpty
                               ? Center(
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -961,7 +963,7 @@ class _ProfileFramesCard extends StatelessWidget {
                                         ),
                                         const SizedBox(height: 6),
                                         Text(
-                                          'Unlock frames from level rewards, host or agency rewards, leaderboard wins, or admin grants.',
+                                          'Unlock frames from rewards, grants, or purchase them from the shop below when available.',
                                           textAlign: TextAlign.center,
                                           style: TextStyle(
                                             color: tokens.textSecondary.withOpacity(.82),
@@ -972,114 +974,134 @@ class _ProfileFramesCard extends StatelessWidget {
                                     ),
                                   ),
                                 )
-                          : GridView.builder(
+                          : SingleChildScrollView(
                               padding: const EdgeInsets.all(16),
-                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 2,
-                                mainAxisSpacing: 12,
-                                crossAxisSpacing: 12,
-                                childAspectRatio: 0.72,
-                              ),
-                              itemCount: items.length,
-                              itemBuilder: (context, index) {
-                                final item = items[index];
-                                final currentFrameUrl = item.thumbnailUrl ?? item.assetUrl;
-                                final isBusy = busyId == item.id;
-                                final enabled = item.canEquip && !item.isExpired;
-                                return Container(
-                                  decoration: BoxDecoration(
-                                    color: tokens.glassColor.withOpacity(.12),
-                                    borderRadius: BorderRadius.circular(22),
-                                    border: Border.all(
-                                      color: item.isEquipped
-                                          ? tokens.glowColor.withOpacity(.78)
-                                          : tokens.borderColor.withOpacity(.18),
-                                      width: item.isEquipped ? 1.6 : 1,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (items.isNotEmpty) ...[
+                                    Text(
+                                      'Unlocked Frames',
+                                      style: TextStyle(
+                                        color: tokens.textPrimary,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                      ),
                                     ),
-                                  ),
-                                  padding: const EdgeInsets.all(10),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Center(
-                                        child: FramedAvatar(
-                                          size: 92,
-                                          label: profile.name,
+                                    const SizedBox(height: 12),
+                                    GridView.builder(
+                                      shrinkWrap: true,
+                                      physics: const NeverScrollableScrollPhysics(),
+                                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: 2,
+                                        mainAxisSpacing: 12,
+                                        crossAxisSpacing: 12,
+                                        childAspectRatio: 0.72,
+                                      ),
+                                      itemCount: items.length,
+                                      itemBuilder: (context, index) {
+                                        final item = items[index];
+                                        final currentFrameUrl = item.thumbnailUrl ?? item.assetUrl;
+                                        final isBusy = busyId == item.id;
+                                        final enabled = item.canEquip && !item.isExpired;
+                                        return _ProfileFrameTile(
+                                          tokens: tokens,
+                                          profileName: profile.name,
                                           avatarUrl: avatarUrl,
                                           frameUrl: currentFrameUrl,
-                                          backgroundColor: tokens.cardGradient.first,
-                                          avatarInset: 0.05,
-                                        ),
+                                          title: item.name,
+                                          subtitle: '${item.rarity.toUpperCase()} · ${item.category}',
+                                          buttonLabel: item.isEquipped
+                                              ? 'Equipped'
+                                              : enabled
+                                                  ? 'Equip'
+                                                  : 'Locked',
+                                          buttonBusy: isBusy,
+                                          buttonEnabled: enabled && !isBusy && !item.isEquipped,
+                                          selected: item.isEquipped,
+                                          onPressed: () async {
+                                            final ok = await controller.equipProfileFrame(item);
+                                            if (ok) {
+                                              if (sheetContext.mounted) {
+                                                ScaffoldMessenger.of(sheetContext).showSnackBar(
+                                                  SnackBar(content: Text('${item.name} equipped.')),
+                                                );
+                                              }
+                                            } else if (controller.error.value != null && sheetContext.mounted) {
+                                              ScaffoldMessenger.of(sheetContext).showSnackBar(
+                                                SnackBar(content: Text(controller.error.value!)),
+                                              );
+                                            }
+                                          },
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                  if (shopItems.isNotEmpty) ...[
+                                    if (items.isNotEmpty) const SizedBox(height: 18),
+                                    Text(
+                                      'Frame Shop',
+                                      style: TextStyle(
+                                        color: tokens.textPrimary,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
                                       ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        item.name,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: tokens.textPrimary,
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 13,
-                                        ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Buy premium frames with wallet coins.',
+                                      style: TextStyle(
+                                        color: tokens.textSecondary.withOpacity(.82),
+                                        fontWeight: FontWeight.w600,
                                       ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        '${item.rarity.toUpperCase()} · ${item.category}',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: tokens.textSecondary.withOpacity(.8),
-                                          fontSize: 10.8,
-                                          fontWeight: FontWeight.w600,
-                                        ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    GridView.builder(
+                                      shrinkWrap: true,
+                                      physics: const NeverScrollableScrollPhysics(),
+                                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: 2,
+                                        mainAxisSpacing: 12,
+                                        crossAxisSpacing: 12,
+                                        childAspectRatio: 0.72,
                                       ),
-                                      const SizedBox(height: 8),
-                                      const Spacer(),
-                                      SizedBox(
-                                        width: double.infinity,
-                                        child: FilledButton(
-                                          style: FilledButton.styleFrom(
-                                            padding: const EdgeInsets.symmetric(vertical: 10),
-                                            textStyle: const TextStyle(
-                                              fontSize: 12.5,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                          onPressed: !enabled || isBusy || item.isEquipped
-                                              ? null
-                                              : () async {
-                                                  final ok = await controller.equipProfileFrame(item);
-                                                  if (ok) {
-                                                    if (sheetContext.mounted) {
-                                                      ScaffoldMessenger.of(sheetContext).showSnackBar(
-                                                        SnackBar(content: Text('${item.name} equipped.')),
-                                                      );
-                                                    }
-                                                  } else if (controller.error.value != null && sheetContext.mounted) {
-                                                    ScaffoldMessenger.of(sheetContext).showSnackBar(
-                                                      SnackBar(content: Text(controller.error.value!)),
-                                                    );
-                                                  }
-                                                },
-                                          child: isBusy
-                                              ? const SizedBox(
-                                                  width: 18,
-                                                  height: 18,
-                                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                                )
-                                              : Text(
-                                                  item.isEquipped
-                                                      ? 'Equipped'
-                                                      : enabled
-                                                          ? 'Equip'
-                                                          : 'Locked',
-                                                ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
+                                      itemCount: shopItems.length,
+                                      itemBuilder: (context, index) {
+                                        final item = shopItems[index];
+                                        final currentFrameUrl = item.thumbnailUrl ?? item.assetUrl;
+                                        final isBusy = purchaseBusyId == item.id;
+                                        final price = item.priceCoins ?? 0;
+                                        return _ProfileFrameTile(
+                                          tokens: tokens,
+                                          profileName: profile.name,
+                                          avatarUrl: avatarUrl,
+                                          frameUrl: currentFrameUrl,
+                                          title: item.name,
+                                          subtitle: '${item.rarity.toUpperCase()} · $price coins',
+                                          buttonLabel: price > 0 ? 'Buy $price' : 'Claim',
+                                          buttonBusy: isBusy,
+                                          buttonEnabled: item.canPurchase && !isBusy,
+                                          selected: false,
+                                          onPressed: () async {
+                                            final ok = await controller.purchaseProfileFrame(item);
+                                            if (ok) {
+                                              if (sheetContext.mounted) {
+                                                ScaffoldMessenger.of(sheetContext).showSnackBar(
+                                                  SnackBar(content: Text('${item.name} purchased.')),
+                                                );
+                                              }
+                                            } else if (controller.error.value != null && sheetContext.mounted) {
+                                              ScaffoldMessenger.of(sheetContext).showSnackBar(
+                                                SnackBar(content: Text(controller.error.value!)),
+                                              );
+                                            }
+                                          },
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ),
                     ),
                   ],
@@ -1089,6 +1111,110 @@ class _ProfileFramesCard extends StatelessWidget {
           );
         });
       },
+    );
+  }
+}
+
+class _ProfileFrameTile extends StatelessWidget {
+  const _ProfileFrameTile({
+    required this.tokens,
+    required this.profileName,
+    required this.avatarUrl,
+    required this.frameUrl,
+    required this.title,
+    required this.subtitle,
+    required this.buttonLabel,
+    required this.buttonBusy,
+    required this.buttonEnabled,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final PremiumThemeTokens tokens;
+  final String profileName;
+  final String? avatarUrl;
+  final String? frameUrl;
+  final String title;
+  final String subtitle;
+  final String buttonLabel;
+  final bool buttonBusy;
+  final bool buttonEnabled;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: tokens.glassColor.withOpacity(.12),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: selected
+              ? tokens.glowColor.withOpacity(.78)
+              : tokens.borderColor.withOpacity(.18),
+          width: selected ? 1.6 : 1,
+        ),
+      ),
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: FramedAvatar(
+              size: 92,
+              label: profileName,
+              avatarUrl: avatarUrl,
+              frameUrl: frameUrl,
+              backgroundColor: tokens.cardGradient.first,
+              avatarInset: 0.05,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: tokens.textPrimary,
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: tokens.textSecondary.withOpacity(.8),
+              fontSize: 10.8,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Spacer(),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                textStyle: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              onPressed: buttonEnabled ? onPressed : null,
+              child: buttonBusy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(buttonLabel),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

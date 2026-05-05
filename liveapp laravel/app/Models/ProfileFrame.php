@@ -17,6 +17,7 @@ class ProfileFrame extends Model
         'category',
         'unlock_type',
         'valid_days',
+        'price_coins',
         'sort_order',
         'is_active',
         'meta',
@@ -24,6 +25,7 @@ class ProfileFrame extends Model
 
     protected $casts = [
         'valid_days' => 'integer',
+        'price_coins' => 'integer',
         'sort_order' => 'integer',
         'is_active' => 'boolean',
         'meta' => 'array',

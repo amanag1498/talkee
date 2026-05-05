@@ -82,6 +82,10 @@ class ThemeCenterPage extends GetView<ThemeCenterController> {
                         item.key == controller.pendingThemeKey.value,
                     onTap:
                         item.unlocked ? () => controller.selectTheme(item) : null,
+                    onPurchase:
+                        !item.unlocked && item.unlockType == 'limited_paid'
+                            ? () => controller.purchaseTheme(item)
+                            : null,
                   );
                 },
               ),
@@ -99,12 +103,14 @@ class _ThemeCard extends StatelessWidget {
     required this.selected,
     required this.submitting,
     required this.onTap,
+    required this.onPurchase,
   });
 
   final ThemeAccessItemDto item;
   final bool selected;
   final bool submitting;
   final VoidCallback? onTap;
+  final VoidCallback? onPurchase;
 
   @override
   Widget build(BuildContext context) {
@@ -115,7 +121,15 @@ class _ThemeCard extends StatelessWidget {
     );
     final shell = _themeCenterTokens();
     final buttonLabel =
-        selected ? 'Selected' : item.unlocked ? 'Use Theme' : 'Locked';
+        selected
+            ? 'Selected'
+            : item.unlocked
+                ? 'Use Theme'
+                : item.unlockType == 'limited_paid'
+                    ? ((item.price ?? 0) > 0
+                        ? 'Buy ${_formatPrice(item.price!)}'
+                        : 'Claim')
+                    : 'Locked';
 
     return Container(
       decoration: BoxDecoration(
@@ -259,7 +273,11 @@ class _ThemeCard extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: item.unlocked && !selected && !submitting ? onTap : null,
+                onPressed: submitting
+                    ? null
+                    : item.unlocked
+                        ? (!selected ? onTap : null)
+                        : onPurchase,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: preview.primaryButtonGradient.first,
                   foregroundColor: preview.textPrimary,
@@ -290,6 +308,14 @@ class _ThemeCard extends StatelessWidget {
     final month = local.month.toString().padLeft(2, '0');
     final day = local.day.toString().padLeft(2, '0');
     return '${local.year}-$month-$day';
+  }
+
+  String _formatPrice(double value) {
+    if (value == value.roundToDouble()) {
+      return '${value.toInt()} coins';
+    }
+
+    return '${value.toStringAsFixed(2)} coins';
   }
 }
 

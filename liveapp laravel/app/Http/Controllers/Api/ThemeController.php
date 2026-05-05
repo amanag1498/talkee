@@ -58,4 +58,33 @@ class ThemeController extends Controller
             ],
         ]);
     }
+
+    public function purchase(Request $request)
+    {
+        $data = $request->validate([
+            'theme_key' => 'required|string|max:80',
+        ]);
+
+        try {
+            $result = $this->themes->purchaseTheme(
+                $request->user(),
+                $data['theme_key'],
+                $request->header('Idempotency-Key') ?: $request->input('idempotency_key'),
+            );
+        } catch (InvalidArgumentException $e) {
+            return response()->json([
+                'ok' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'data' => [
+                'theme_key' => $result['theme']->key,
+                'active_theme_key' => $this->themes->activeThemeKeyFor($request->user()),
+                'catalog' => $this->themes->catalogFor($request->user()),
+            ],
+        ], 201);
+    }
 }

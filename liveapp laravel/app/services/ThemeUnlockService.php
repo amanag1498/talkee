@@ -13,6 +13,7 @@ use App\Models\UserThemePreference;
 use App\Models\UserThemeUnlock;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -300,6 +301,84 @@ class ThemeUnlockService
         return $themeKey;
     }
 
+    public function purchaseTheme(User $user, string $themeKey, ?string $idempotencyKey = null): array
+    {
+        $themeKey = strtolower(trim($themeKey));
+        $theme = $this->themesCatalog()->firstWhere('key', $themeKey);
+        if (!$theme) {
+            throw new InvalidArgumentException('Theme does not exist.');
+        }
+
+        if (!$theme->is_active) {
+            throw new InvalidArgumentException('Theme is disabled.');
+        }
+
+        if ($theme->unlock_type !== 'limited_paid') {
+            throw new InvalidArgumentException('This theme is not purchasable.');
+        }
+
+        $priceCoins = max(0, (int) round((float) ($theme->price ?? 0)));
+
+        return DB::transaction(function () use ($user, $theme, $themeKey, $idempotencyKey, $priceCoins): array {
+            $existing = UserThemeUnlock::query()
+                ->where('user_id', $user->id)
+                ->where('theme_key', $themeKey)
+                ->where(function ($query) {
+                    $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                })
+                ->lockForUpdate()
+                ->latest('id')
+                ->first();
+
+            if ($existing) {
+                return [
+                    'theme' => $theme,
+                    'unlock' => $existing,
+                ];
+            }
+
+            $normalizedKey = $idempotencyKey ? trim($idempotencyKey) : null;
+            $reference = 'THEME_PURCHASE:'.$user->id.':'.$themeKey.':'.($normalizedKey ?: Str::uuid()->toString());
+
+            if ($priceCoins > 0) {
+                try {
+                    WalletService::spend(
+                        user: $user,
+                        coins: $priceCoins,
+                        category: 'other',
+                        counterparty: null,
+                        reference: $reference,
+                        meta: [
+                            'event' => 'THEME_PURCHASE',
+                            'theme_key' => $themeKey,
+                            'theme_name' => $theme->name,
+                            'purchase_key' => $normalizedKey,
+                        ],
+                    );
+                } catch (\InvalidArgumentException) {
+                    throw new InvalidArgumentException('Not enough coins to purchase this theme.');
+                }
+            }
+
+            $unlock = $this->grantTheme(
+                user: $user,
+                themeKey: $themeKey,
+                source: 'shop_purchase',
+                expiresAt: null,
+                metadata: [
+                    'purchase_key' => $normalizedKey,
+                    'purchased_with_coins' => $priceCoins,
+                    'purchased_at' => now()->toIso8601String(),
+                ],
+            );
+
+            return [
+                'theme' => $theme,
+                'unlock' => $unlock,
+            ];
+        });
+    }
+
     public function grantTheme(
         User $user,
         string $themeKey,
@@ -520,7 +599,7 @@ class ThemeUnlockService
             'host_follower_milestone' => $this->hostFollowerAccess($user, $theme),
             'agency_host_elite' => $this->agencyHostEliteAccess($user),
             'event_reward', 'festival_event' => $this->eventWindowAccess($theme),
-            'limited_paid' => $this->locked('Purchase flow is not enabled for this theme yet.'),
+            'limited_paid' => $this->locked('Purchase this theme with coins.'),
             'loyalty' => $this->loyaltyAccess($user, $theme),
             'top_spender' => $this->topSpenderAccess($user, $theme),
             default => $this->locked('Theme is locked.'),

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\ProfileFrame;
 use App\Models\User;
 use App\Models\UserProfileFrame;
+use App\Models\Wallet;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Role;
@@ -118,5 +119,78 @@ class ProfileFrameApiTest extends TestCase
             ->assertJsonPath('data.name', 'Frame User')
             ->assertJsonPath('data.profile_frame.id', $frame->id)
             ->assertJsonPath('data.profile_frame.slug', 'rose-crown-halo');
+    }
+
+    public function test_user_can_purchase_shop_profile_frame(): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole('user');
+        Wallet::query()->updateOrCreate(['user_id' => $user->id], ['balance' => 800]);
+
+        $frame = ProfileFrame::query()->create([
+            'name' => 'Shop Frame',
+            'slug' => 'shop-frame',
+            'asset_url' => 'profile-frames/seed/crown_00.png',
+            'thumbnail_url' => 'profile-frames/seed/crown_00.png',
+            'rarity' => 'epic',
+            'category' => 'shop',
+            'unlock_type' => 'shop_purchase',
+            'price_coins' => 250,
+            'sort_order' => 999,
+            'is_active' => true,
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $this->postJson('/api/profile/frames/purchase', [
+            'profile_frame_id' => $frame->id,
+        ])->assertCreated()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('profile_frame.id', $frame->id)
+            ->assertJsonPath('profile_frame.owned', true);
+
+        $this->assertDatabaseHas('user_profile_frames', [
+            'user_id' => $user->id,
+            'profile_frame_id' => $frame->id,
+            'source' => 'shop_purchase',
+        ]);
+        $this->assertDatabaseHas('wallet_transactions', [
+            'type' => 'debit',
+            'coins' => 250,
+            'category' => 'other',
+        ]);
+        $this->assertSame(550, (int) Wallet::query()->where('user_id', $user->id)->value('balance'));
+    }
+
+    public function test_profile_frame_purchase_blocks_when_balance_is_insufficient(): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole('user');
+        Wallet::query()->updateOrCreate(['user_id' => $user->id], ['balance' => 40]);
+
+        $frame = ProfileFrame::query()->create([
+            'name' => 'Costly Frame',
+            'slug' => 'costly-frame',
+            'asset_url' => 'profile-frames/seed/crown_01.png',
+            'thumbnail_url' => 'profile-frames/seed/crown_01.png',
+            'rarity' => 'epic',
+            'category' => 'shop',
+            'unlock_type' => 'shop_purchase',
+            'price_coins' => 250,
+            'sort_order' => 1000,
+            'is_active' => true,
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $this->postJson('/api/profile/frames/purchase', [
+            'profile_frame_id' => $frame->id,
+        ])->assertStatus(422);
+
+        $this->assertDatabaseMissing('user_profile_frames', [
+            'user_id' => $user->id,
+            'profile_frame_id' => $frame->id,
+        ]);
+        $this->assertDatabaseCount('wallet_transactions', 0);
     }
 }

@@ -77,6 +77,7 @@ class ProfileFrameAdminController extends Controller
             'category' => $data['category'],
             'unlock_type' => $data['unlock_type'],
             'valid_days' => $data['valid_days'] ? (int) $data['valid_days'] : null,
+            'price_coins' => $data['price_coins'] !== null ? (int) $data['price_coins'] : null,
             'sort_order' => (int) ($data['sort_order'] ?? 0),
             'is_active' => $request->boolean('is_active', true),
         ]);
@@ -120,6 +121,7 @@ class ProfileFrameAdminController extends Controller
             'category' => $data['category'],
             'unlock_type' => $data['unlock_type'],
             'valid_days' => $data['valid_days'] ? (int) $data['valid_days'] : null,
+            'price_coins' => $data['price_coins'] !== null ? (int) $data['price_coins'] : null,
             'sort_order' => (int) ($data['sort_order'] ?? 0),
             'is_active' => $request->boolean('is_active'),
         ]);
@@ -152,6 +154,7 @@ class ProfileFrameAdminController extends Controller
             'category' => ['required', 'string', 'max:60'],
             'unlock_type' => ['required', 'string', 'max:60'],
             'valid_days' => ['nullable', 'integer', 'min:1', 'max:3650'],
+            'price_coins' => ['nullable', 'integer', 'min:0', 'max:100000000'],
             'sort_order' => ['nullable', 'integer', 'min:0', 'max:9999'],
             'is_active' => ['nullable'],
         ]);

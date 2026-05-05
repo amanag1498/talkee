@@ -80,6 +80,13 @@
       </div>
 
       <div class="col-md-4">
+        <label class="form-label">Price Coins</label>
+        <input type="number" min="0" max="100000000" name="price_coins" class="form-control @error('price_coins') is-invalid @enderror" value="{{ old('price_coins', $frame->price_coins) }}">
+        @error('price_coins')<div class="invalid-feedback">{{ $message }}</div>@enderror
+        <div class="form-text">Used when unlock type is <code>shop_purchase</code>.</div>
+      </div>
+
+      <div class="col-md-4">
         <label class="form-label">Sort Order</label>
         <input type="number" min="0" max="9999" name="sort_order" class="form-control @error('sort_order') is-invalid @enderror" value="{{ old('sort_order', $frame->sort_order ?? 0) }}">
         @error('sort_order')<div class="invalid-feedback">{{ $message }}</div>@enderror
