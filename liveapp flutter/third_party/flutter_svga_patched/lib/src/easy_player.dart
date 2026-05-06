@@ -4,12 +4,14 @@ class SVGAEasyPlayer extends StatefulWidget {
   final String? resUrl;
   final String? assetsName;
   final BoxFit fit;
+  final bool enableAudio;
 
   const SVGAEasyPlayer({
     super.key,
     this.resUrl,
     this.assetsName,
     this.fit = BoxFit.contain,
+    this.enableAudio = true,
   });
 
   @override
@@ -25,13 +27,17 @@ class _SVGAEasyPlayerState extends State<SVGAEasyPlayer>
   @override
   void initState() {
     super.initState();
-    animationController = SVGAAnimationController(vsync: this);
+    animationController = SVGAAnimationController(
+      vsync: this,
+      enableAudio: widget.enableAudio,
+    );
     _tryDecodeSvga();
   }
 
   @override
   void didUpdateWidget(covariant SVGAEasyPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
+    animationController?.enableAudio = widget.enableAudio;
     if (oldWidget.resUrl != widget.resUrl ||
         oldWidget.assetsName != widget.assetsName) {
       _tryDecodeSvga();

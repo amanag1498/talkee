@@ -20,36 +20,42 @@ class ProfileFrameAwardService
             'slug' => 'blush-laurel-crown',
             'title' => 'Last Week Top Gifter',
             'leaderboard' => 'weekly_user',
+            'top_n' => 3,
         ],
         [
             'source' => 'weekly_top_agency',
             'slug' => 'silver-sapphire-crown',
             'title' => 'Last Week Top Agency',
             'leaderboard' => 'weekly_agency',
+            'top_n' => 3,
         ],
         [
             'source' => 'weekly_top_host',
             'slug' => 'scarlet-regal-crown',
             'title' => 'Last Week Top Host',
             'leaderboard' => 'weekly_host',
+            'top_n' => 3,
         ],
         [
             'source' => 'alltime_top_gifter',
             'slug' => 'silver-amethyst-crown',
             'title' => 'All Time Top Gifter',
             'leaderboard' => 'alltime_user',
+            'top_n' => 3,
         ],
         [
             'source' => 'alltime_top_agency',
             'slug' => 'ivory-laurel-crown',
             'title' => 'All Time Top Agency',
             'leaderboard' => 'alltime_agency',
+            'top_n' => 3,
         ],
         [
             'source' => 'alltime_top_host',
             'slug' => 'obsidian-crown-laurel',
             'title' => 'All Time Top Host',
             'leaderboard' => 'alltime_host',
+            'top_n' => 3,
         ],
     ];
 
@@ -70,8 +76,14 @@ class ProfileFrameAwardService
         $skipped = 0;
 
         foreach (self::AWARDS as $definition) {
-            $winner = $this->resolveWinner($definition['leaderboard'], $weekStart, $weekEnd);
-            if ($winner === null) {
+            $winners = $this->resolveWinners(
+                $definition['leaderboard'],
+                $weekStart,
+                $weekEnd,
+                (int) ($definition['top_n'] ?? 1),
+            );
+
+            if ($winners === []) {
                 $rows[] = [
                     'source' => $definition['source'],
                     'title' => $definition['title'],
@@ -79,65 +91,71 @@ class ProfileFrameAwardService
                     'status' => 'no_winner',
                     'winner_name' => null,
                     'user_id' => null,
+                    'rank' => null,
                     'expires_at' => null,
                 ];
                 $skipped++;
                 continue;
             }
 
-            $currentOwnership = UserProfileFrame::query()
-                ->where('user_id', $winner['user']->id)
-                ->whereHas('profileFrame', fn ($query) => $query->where('slug', $definition['slug']))
-                ->first();
+            foreach ($winners as $winner) {
+                $currentOwnership = UserProfileFrame::query()
+                    ->where('user_id', $winner['user']->id)
+                    ->whereHas('profileFrame', fn ($query) => $query->where('slug', $definition['slug']))
+                    ->first();
 
-            $alreadyCovered = $currentOwnership !== null
-                && $currentOwnership->expires_at !== null
-                && $currentOwnership->expires_at->greaterThanOrEqualTo($expiresAt);
+                $alreadyCovered = $currentOwnership !== null
+                    && $currentOwnership->expires_at !== null
+                    && $currentOwnership->expires_at->greaterThanOrEqualTo($expiresAt);
 
-            if ($alreadyCovered) {
+                if ($alreadyCovered) {
+                    $rows[] = [
+                        'source' => $definition['source'],
+                        'title' => $definition['title'],
+                        'frame_slug' => $definition['slug'],
+                        'status' => 'already_active',
+                        'winner_name' => $winner['name'],
+                        'user_id' => $winner['user']->id,
+                        'rank' => $winner['rank'],
+                        'expires_at' => $currentOwnership->expires_at?->toIso8601String(),
+                    ];
+                    $skipped++;
+                    continue;
+                }
+
+                $ownership = $this->frames->grantBySlug(
+                    $winner['user'],
+                    $definition['slug'],
+                    $definition['source'],
+                    $expiresAt,
+                    true,
+                );
+
+                $this->frames->notifyUnlocked(
+                    $winner['user'],
+                    $ownership,
+                    $definition['title'].' frame unlocked',
+                    sprintf(
+                        '%s unlocked for 7 days after your rank #%d %s finish.',
+                        $ownership->profileFrame?->name ?? 'Profile frame',
+                        (int) $winner['rank'],
+                        strtolower($definition['title']),
+                    ),
+                    false,
+                );
+
                 $rows[] = [
                     'source' => $definition['source'],
                     'title' => $definition['title'],
                     'frame_slug' => $definition['slug'],
-                    'status' => 'already_active',
+                    'status' => 'granted',
                     'winner_name' => $winner['name'],
                     'user_id' => $winner['user']->id,
-                    'expires_at' => $currentOwnership->expires_at?->toIso8601String(),
+                    'rank' => $winner['rank'],
+                    'expires_at' => $ownership->expires_at?->toIso8601String(),
                 ];
-                $skipped++;
-                continue;
+                $granted++;
             }
-
-            $ownership = $this->frames->grantBySlug(
-                $winner['user'],
-                $definition['slug'],
-                $definition['source'],
-                $expiresAt,
-                true,
-            );
-
-            $this->frames->notifyUnlocked(
-                $winner['user'],
-                $ownership,
-                $definition['title'].' frame unlocked',
-                sprintf(
-                    '%s unlocked for 7 days after your %s finish.',
-                    $ownership->profileFrame?->name ?? 'Profile frame',
-                    strtolower($definition['title']),
-                ),
-                false,
-            );
-
-            $rows[] = [
-                'source' => $definition['source'],
-                'title' => $definition['title'],
-                'frame_slug' => $definition['slug'],
-                'status' => 'granted',
-                'winner_name' => $winner['name'],
-                'user_id' => $winner['user']->id,
-                'expires_at' => $ownership->expires_at?->toIso8601String(),
-            ];
-            $granted++;
         }
 
         return [
@@ -151,26 +169,28 @@ class ProfileFrameAwardService
         ];
     }
 
-    private function resolveWinner(string $leaderboard, Carbon $weekStart, Carbon $weekEnd): ?array
+    private function resolveWinners(string $leaderboard, Carbon $weekStart, Carbon $weekEnd, int $limit): array
     {
+        $limit = max(1, $limit);
+
         return match ($leaderboard) {
-            'weekly_user' => $this->weeklyTopUser($weekStart, $weekEnd),
-            'weekly_host' => $this->weeklyTopHost($weekStart, $weekEnd),
-            'weekly_agency' => $this->weeklyTopAgency($weekStart, $weekEnd),
-            'alltime_user' => $this->allTimeTopUser(),
-            'alltime_host' => $this->allTimeTopHost(),
-            'alltime_agency' => $this->allTimeTopAgency(),
-            default => null,
+            'weekly_user' => $this->weeklyTopUsers($weekStart, $weekEnd, $limit),
+            'weekly_host' => $this->weeklyTopHosts($weekStart, $weekEnd, $limit),
+            'weekly_agency' => $this->weeklyTopAgencies($weekStart, $weekEnd, $limit),
+            'alltime_user' => $this->allTimeTopUsers($limit),
+            'alltime_host' => $this->allTimeTopHosts($limit),
+            'alltime_agency' => $this->allTimeTopAgencies($limit),
+            default => [],
         };
     }
 
-    private function weeklyTopUser(Carbon $weekStart, Carbon $weekEnd): ?array
+    private function weeklyTopUsers(Carbon $weekStart, Carbon $weekEnd, int $limit): array
     {
         if (!$this->hasLeaderboardRollups()) {
-            return null;
+            return [];
         }
 
-        $row = LeaderboardDailyStat::query()
+        $rows = LeaderboardDailyStat::query()
             ->join('users', 'users.id', '=', 'leaderboard_daily_stats.subject_id')
             ->where('leaderboard_daily_stats.subject_type', 'user')
             ->whereBetween('leaderboard_daily_stats.stat_date', [
@@ -181,30 +201,19 @@ class ProfileFrameAwardService
             ->selectRaw('users.id as user_id, users.name as name, SUM(leaderboard_daily_stats.total_coins) as total_coins')
             ->orderByDesc('total_coins')
             ->orderBy('users.id')
-            ->first();
+            ->limit($limit)
+            ->get();
 
-        if (!$row) {
-            return null;
-        }
-
-        $user = User::query()->find((int) $row->user_id);
-        if (!$user) {
-            return null;
-        }
-
-        return [
-            'user' => $user,
-            'name' => (string) $row->name,
-        ];
+        return $this->mapRankedUsers($rows, 'user_id', 'name');
     }
 
-    private function weeklyTopHost(Carbon $weekStart, Carbon $weekEnd): ?array
+    private function weeklyTopHosts(Carbon $weekStart, Carbon $weekEnd, int $limit): array
     {
         if (!$this->hasLeaderboardRollups()) {
-            return null;
+            return [];
         }
 
-        $row = LeaderboardDailyStat::query()
+        $rows = LeaderboardDailyStat::query()
             ->join('hosts', 'hosts.id', '=', 'leaderboard_daily_stats.subject_id')
             ->join('users', 'users.id', '=', 'hosts.user_id')
             ->where('leaderboard_daily_stats.subject_type', 'host')
@@ -221,30 +230,19 @@ class ProfileFrameAwardService
             ")
             ->orderByDesc('total_coins')
             ->orderBy('hosts.id')
-            ->first();
+            ->limit($limit)
+            ->get();
 
-        if (!$row) {
-            return null;
-        }
-
-        $user = User::query()->find((int) $row->user_id);
-        if (!$user) {
-            return null;
-        }
-
-        return [
-            'user' => $user,
-            'name' => (string) $row->display_name,
-        ];
+        return $this->mapRankedUsers($rows, 'user_id', 'display_name');
     }
 
-    private function weeklyTopAgency(Carbon $weekStart, Carbon $weekEnd): ?array
+    private function weeklyTopAgencies(Carbon $weekStart, Carbon $weekEnd, int $limit): array
     {
         if (!$this->hasLeaderboardRollups()) {
-            return null;
+            return [];
         }
 
-        $row = LeaderboardDailyStat::query()
+        $rows = LeaderboardDailyStat::query()
             ->join('agencies', 'agencies.id', '=', 'leaderboard_daily_stats.subject_id')
             ->where('leaderboard_daily_stats.subject_type', 'agency')
             ->whereBetween('leaderboard_daily_stats.stat_date', [
@@ -255,85 +253,125 @@ class ProfileFrameAwardService
             ->selectRaw('agencies.id as agency_id, agencies.name as name, SUM(leaderboard_daily_stats.total_coins) as total_coins')
             ->orderByDesc('total_coins')
             ->orderBy('agencies.id')
-            ->first();
+            ->limit($limit)
+            ->get();
 
-        if (!$row) {
-            return null;
-        }
-
-        $agency = Agency::query()->find((int) $row->agency_id);
-        $user = $agency?->owner;
-        if (!$agency || !$user) {
-            return null;
-        }
-
-        return [
-            'user' => $user,
-            'name' => (string) $row->name,
-        ];
+        return $this->mapRankedAgencies($rows);
     }
 
-    private function allTimeTopUser(): ?array
+    private function allTimeTopUsers(int $limit): array
     {
-        $row = $this->leaderboards->topUsersAllTime(1)[0] ?? null;
-        if (!$row) {
-            return null;
-        }
-
-        $user = User::query()->find((int) ($row['id'] ?? 0));
-        if (!$user) {
-            return null;
-        }
-
-        return [
-            'user' => $user,
-            'name' => (string) ($row['name'] ?? $user->name),
-        ];
+        return $this->mapRankedLeaderboardUsers(
+            $this->leaderboards->topUsersAllTime($limit),
+            'id',
+            'name',
+        );
     }
 
-    private function allTimeTopHost(): ?array
+    private function allTimeTopHosts(int $limit): array
     {
         if (!$this->hasLeaderboardRollups()) {
-            return null;
+            return [];
         }
 
-        $row = $this->leaderboards->topHosts('alltime', 1)[0] ?? null;
-        if (!$row) {
-            return null;
-        }
-
-        $user = User::query()->find((int) ($row['host_user_id'] ?? 0));
-        if (!$user) {
-            return null;
-        }
-
-        return [
-            'user' => $user,
-            'name' => (string) ($row['name'] ?? $user->name),
-        ];
+        return $this->mapRankedLeaderboardUsers(
+            $this->leaderboards->topHosts('alltime', $limit),
+            'host_user_id',
+            'name',
+        );
     }
 
-    private function allTimeTopAgency(): ?array
+    private function allTimeTopAgencies(int $limit): array
     {
         if (!$this->hasLeaderboardRollups()) {
-            return null;
+            return [];
         }
 
-        $row = $this->leaderboards->topAgencies('alltime', 1)[0] ?? null;
-        if (!$row) {
-            return null;
-        }
+        return $this->mapRankedLeaderboardAgencies(
+            $this->leaderboards->topAgencies('alltime', $limit),
+        );
+    }
 
-        $agency = Agency::query()->find((int) ($row['agency_id'] ?? 0));
-        $user = $agency?->owner;
-        if (!$agency || !$user) {
-            return null;
-        }
+    private function mapRankedUsers($rows, string $userIdField, string $nameField): array
+    {
+        $rank = 0;
 
-        return [
-            'user' => $user,
-            'name' => (string) ($row['name'] ?? $agency->name),
-        ];
+        return $rows->map(function ($row) use (&$rank, $userIdField, $nameField): ?array {
+            $user = User::query()->find((int) data_get($row, $userIdField));
+            if (!$user) {
+                return null;
+            }
+
+            $rank++;
+
+            return [
+                'user' => $user,
+                'name' => (string) data_get($row, $nameField, $user->name),
+                'rank' => $rank,
+            ];
+        })->filter()->values()->all();
+    }
+
+    private function mapRankedAgencies($rows): array
+    {
+        $rank = 0;
+
+        return $rows->map(function ($row) use (&$rank): ?array {
+            $agency = Agency::query()->find((int) data_get($row, 'agency_id'));
+            $user = $agency?->owner;
+            if (!$agency || !$user) {
+                return null;
+            }
+
+            $rank++;
+
+            return [
+                'user' => $user,
+                'name' => (string) data_get($row, 'name', $agency->name),
+                'rank' => $rank,
+            ];
+        })->filter()->values()->all();
+    }
+
+    private function mapRankedLeaderboardUsers(array $rows, string $userIdField, string $nameField): array
+    {
+        $rank = 0;
+
+        return collect($rows)->map(function (array $row) use (&$rank, $userIdField, $nameField): ?array {
+            $user = User::query()->find((int) ($row[$userIdField] ?? 0));
+            if (!$user) {
+                return null;
+            }
+
+            $rank++;
+
+            return [
+                'user' => $user,
+                'name' => (string) ($row[$nameField] ?? $user->name),
+                'rank' => $rank,
+            ];
+        })->filter()->values()->all();
+    }
+
+    private function mapRankedLeaderboardAgencies(array $rows): array
+    {
+        $rank = 0;
+
+        return collect($rows)->map(function (array $row) use (&$rank): ?array {
+            $agency = Agency::query()->find((int) ($row['agency_id'] ?? 0));
+            $user = $agency?->owner;
+            if (!$agency || !$user) {
+                return null;
+            }
+
+            $rank++;
+
+            return [
+                'user' => $user,
+                'name' => (string) ($row['name'] ?? $agency->name),
+                'rank' => $rank,
+            ];
+        })->filter()->values()->all();
     }
 
     private function previousWeekRange(Carbon $reference): array

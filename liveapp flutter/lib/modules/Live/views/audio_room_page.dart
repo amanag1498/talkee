@@ -10,11 +10,13 @@ import '../../../app/theme/brand.dart';
 import '../../../app/utils/profile_frame_payload.dart';
 import '../../../app/widgets/haptics.dart';
 import '../../../app/widgets/framed_avatar.dart';
+import '../../../app/widgets/keep_awake_scope.dart';
 import '../../../services/app_settings_service.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/live_rooms_ws_service.dart';
 import '../../profile/controllers/host_follow_controller.dart';
 import '../../profile/widgets/public_profile_card_sheet.dart';
+import '../../wallet/services/wallet_api.dart';
 import '../../wallet/widgets/recharge_bottom_sheet.dart';
 import '../models/live_gift_item.dart';
 import '../models/live_pk_battle_model.dart';
@@ -67,6 +69,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
   String? _error;
   String? _seatError;
   String? _giftError;
+  int? _walletBalanceCoins;
   String? _requestStatus;
   String _currentRole = 'listener';
   int? _pendingRequestId;
@@ -178,6 +181,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
   Future<void> _bootstrap() async {
     await _refreshSeatSnapshot();
     await _loadGiftCatalog();
+    await _refreshWalletBalance();
     await _loadFollowState();
     _bindSeatEvents();
     _bindGiftEvents();
@@ -439,6 +443,14 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     } catch (_) {}
   }
 
+  Future<void> _refreshWalletBalance() async {
+    try {
+      final balance = (await Get.find<WalletApi>().fetchSummary()).balance;
+      if (!mounted) return;
+      setState(() => _walletBalanceCoins = balance);
+    } catch (_) {}
+  }
+
   Future<void> _loadFollowState() async {
     if (_myUserId == null || _hostUserId == null || _hostUserId == _myUserId) {
       if (mounted) {
@@ -556,6 +568,11 @@ class _AudioRoomPageState extends State<AudioRoomPage>
           await _forceMuteLocalMic();
           if (mounted) {
             setState(() => _mutedByHost = true);
+          }
+          Haptics.light();
+        } else if (name == 'speaker:unmuted') {
+          if (mounted) {
+            setState(() => _mutedByHost = false);
           }
           Haptics.light();
         }
@@ -1282,6 +1299,19 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     }
   }
 
+  Future<void> _unmuteSpeaker(int userId) async {
+    if (_seatActionBusy) return;
+    setState(() => _seatActionBusy = true);
+    try {
+      await widget.live.unmuteSpeaker(widget.room.roomId, userId);
+      await _refreshSeatSnapshot();
+    } catch (e) {
+      if (mounted) setState(() => _seatError = e.toString());
+    } finally {
+      if (mounted) setState(() => _seatActionBusy = false);
+    }
+  }
+
   Future<void> _acceptRequest(int requestId) async {
     if (_seatActionBusy) return;
     setState(() {
@@ -1330,6 +1360,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     final selection = await LiveRoomGiftSheet.show(
       context,
       gifts: _availableGifts,
+      balanceCoins: _walletBalanceCoins,
     );
     if (selection == null) return;
     setState(() {
@@ -1346,6 +1377,15 @@ class _AudioRoomPageState extends State<AudioRoomPage>
         giftId: selection.gift.id,
         quantity: selection.quantity,
       );
+      if (mounted) {
+        setState(() {
+          final spend = selection.gift.coins * selection.quantity;
+          if (_walletBalanceCoins != null) {
+            final nextBalance = _walletBalanceCoins! - spend;
+            _walletBalanceCoins = nextBalance < 0 ? 0 : nextBalance;
+          }
+        });
+      }
       Haptics.light();
     } catch (e) {
       if (!mounted) return;
@@ -1357,6 +1397,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
           reasonMessage:
               'You need more coins to send gifts in this room. Recharge your wallet and try again.',
         );
+        await _refreshWalletBalance();
       }
     } finally {
       if (mounted) setState(() => _giftBusy = false);
@@ -2127,7 +2168,13 @@ class _AudioRoomPageState extends State<AudioRoomPage>
                     speaker['avatar_url']?.toString() ??
                     speaker['avatar']?.toString(),
               ),
-          onMute: _isHost && userId != null ? () => _muteSpeaker(userId) : null,
+          onMute:
+              _isHost && userId != null
+                  ? (mutedByHost
+                      ? () => _unmuteSpeaker(userId)
+                      : () => _muteSpeaker(userId))
+                  : null,
+          muteActionLabel: mutedByHost ? 'Unmute' : 'Mute',
           onRemove:
               _isHost && userId != null ? () => _removeSpeaker(userId) : null,
         ),
@@ -2920,6 +2967,17 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     final busy = _seatActionBusy || _giftBusy;
     if (_isHost) {
       return <Widget>[
+        KeyedSubtree(
+          key: _giftAnchors.keyFor(GiftAnchorRegistry.giftButton),
+          child: _ChatInputActionPill(
+            icon: Icons.redeem_rounded,
+            tokens: tokens,
+            accent: const Color(0xFFFF8BC2),
+            onTap: busy ? null : _openGiftSheet,
+            iconOnly: true,
+            tooltip: 'Gift',
+          ),
+        ),
         _ChatInputActionPill(
           icon:
               _mutedByHost
@@ -3016,17 +3074,18 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     final speakerEntries = _buildSpeakerEntries();
     final listenerEntries = _buildListenerEntries(listeners);
 
-    return Obx(
-      () => WillPopScope(
-        onWillPop: () async {
-          await _exitRoom();
-          return false;
-        },
-        child: Scaffold(
-          backgroundColor: _tokens.backgroundGradient.first,
-          body: SafeArea(
-            child: Stack(
-              children: [
+    return KeepAwakeScope(
+      child: Obx(
+        () => WillPopScope(
+          onWillPop: () async {
+            await _exitRoom();
+            return false;
+          },
+          child: Scaffold(
+            backgroundColor: _tokens.backgroundGradient.first,
+            body: SafeArea(
+              child: Stack(
+                children: [
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
@@ -3263,6 +3322,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
           ),
         ),
       ),
+    ),
     );
   }
 
@@ -3358,7 +3418,13 @@ class _AudioRoomPageState extends State<AudioRoomPage>
                     speaker['avatar_url']?.toString() ??
                     speaker['avatar']?.toString(),
               ),
-          onMute: _isHost && userId != null ? () => _muteSpeaker(userId) : null,
+          onMute:
+              _isHost && userId != null
+                  ? (mutedByHost
+                      ? () => _unmuteSpeaker(userId)
+                      : () => _muteSpeaker(userId))
+                  : null,
+          muteActionLabel: mutedByHost ? 'Unmute' : 'Mute',
           onRemove:
               _isHost && userId != null ? () => _removeSpeaker(userId) : null,
         ),
@@ -3385,6 +3451,7 @@ class _SpeakerGridEntry {
     this.level,
     this.onProfileTap,
     this.onMute,
+    this.muteActionLabel = 'Mute',
     this.onRemove,
   });
 
@@ -3403,6 +3470,7 @@ class _SpeakerGridEntry {
   final int? level;
   final VoidCallback? onProfileTap;
   final VoidCallback? onMute;
+  final String muteActionLabel;
   final VoidCallback? onRemove;
 }
 
@@ -3453,6 +3521,7 @@ class _StageGridItem {
     this.level,
     this.onProfileTap,
     this.onMute,
+    this.muteActionLabel = 'Mute',
     this.onRemove,
   });
 
@@ -3473,6 +3542,7 @@ class _StageGridItem {
   final int? level;
   final VoidCallback? onProfileTap;
   final VoidCallback? onMute;
+  final String muteActionLabel;
   final VoidCallback? onRemove;
 }
 
@@ -3663,28 +3733,12 @@ class _AudioParticipantsStage extends StatelessWidget {
           level: entry.level,
           onProfileTap: entry.onProfileTap,
           onMute: entry.onMute,
+          muteActionLabel: entry.muteActionLabel,
           onRemove: entry.onRemove,
         ),
       ),
     ];
-
-    items.sort((a, b) {
-      int score(_StageGridItem item) {
-        if (item.isHost && item.speaking) return 600;
-        if (item.isHost) return 550;
-        if (item.isSpeaker && item.speaking) return 500;
-        if (item.isSpeaker) return 400;
-        if (item.speaking) return 300;
-        if (item.isMe) return 200;
-        return 100;
-      }
-
-      return score(b).compareTo(score(a));
-    });
-
-    final dominantIndex = items.indexWhere(
-      (item) => item.isSpeaker && item.speaking,
-    );
+    final dominantIndex = items.indexWhere((item) => item.isHost);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -4520,11 +4574,7 @@ class _SpeakerTileWidget extends StatelessWidget {
       Get.find<AppSettingsService>().activePremiumThemeVariant,
     );
     final avatarRadius = compact ? 20.0 : 24.0;
-    return AnimatedScale(
-      duration: const Duration(milliseconds: 220),
-      scale: entry.speaking ? 1.02 : 1,
-      curve: Curves.easeOutCubic,
-      child: ThemedRoomFrame(
+    return ThemedRoomFrame(
         themeKey: entry.themeKey,
         isHost: entry.isHost,
         isVip: entry.isVip,
@@ -4593,7 +4643,7 @@ class _SpeakerTileWidget extends StatelessWidget {
                   children: [
                     if (entry.onMute != null)
                       _SmallAction(
-                        label: 'Mute',
+                        label: entry.muteActionLabel,
                         onTap: entry.onMute!,
                         tokens: surfaceTokens,
                         compact: true,
@@ -4611,8 +4661,7 @@ class _SpeakerTileWidget extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 }
 
@@ -4623,10 +4672,7 @@ class _ListenerTileWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedScale(
-      duration: const Duration(milliseconds: 220),
-      scale: entry.speaking ? 1.02 : 1,
-      child: ThemedRoomFrame(
+    return ThemedRoomFrame(
         themeKey: entry.themeKey,
         isHost: false,
         isVip: entry.isVip,
@@ -4667,8 +4713,7 @@ class _ListenerTileWidget extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 }
 
@@ -5038,6 +5083,7 @@ class _SpeakerCard extends StatelessWidget {
     this.level,
     this.onProfileTap,
     this.onMute,
+    this.muteActionLabel = 'Mute',
     this.onRemove,
   });
 
@@ -5055,6 +5101,7 @@ class _SpeakerCard extends StatelessWidget {
   final int? level;
   final VoidCallback? onProfileTap;
   final VoidCallback? onMute;
+  final String muteActionLabel;
   final VoidCallback? onRemove;
 
   @override
@@ -5219,7 +5266,7 @@ class _SpeakerCard extends StatelessWidget {
                       children: [
                         if (onMute != null)
                           _SmallAction(
-                            label: 'Mute',
+                            label: muteActionLabel,
                             onTap: onMute!,
                             tokens: tokens,
                             compact: true,

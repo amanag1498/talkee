@@ -267,6 +267,16 @@ class LiveService {
     }
   }
 
+  Future<Map<String, dynamic>> unmuteSpeaker(String roomId, int userId) async {
+    roomId = _requireRoomId(roomId, action: 'unmute speaker');
+    try {
+      final res = await api.post<Map<String, dynamic>>('live/rooms/$roomId/speakers/$userId/unmute');
+      return Map<String, dynamic>.from(res.data ?? const {});
+    } on DioException catch (e) {
+      throw Exception(_extractError(e, fallback: 'Failed to unmute speaker'));
+    }
+  }
+
   Future<List<LiveGiftItem>> listGifts() async {
     try {
       final res = await api.get<Map<String, dynamic>>('gifts');

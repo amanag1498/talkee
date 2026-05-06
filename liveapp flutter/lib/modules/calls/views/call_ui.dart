@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../app/theme/brand.dart';
+import '../../../app/widgets/keep_awake_scope.dart';
 
 class CallScaffold extends StatelessWidget {
   const CallScaffold({
@@ -15,19 +16,22 @@ class CallScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
-      child: Scaffold(
-      backgroundColor: const Color(0xFF0F0B1C),
-      body: Stack(
-        children: [
-          const _CallBackground(),
-          SafeArea(
-            child: child,
+    return KeepAwakeScope(
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.light,
+        child: Scaffold(
+          backgroundColor: const Color(0xFF0F0B1C),
+          body: Stack(
+            children: [
+              const _CallBackground(),
+              SafeArea(
+                child: child,
+              ),
+            ],
           ),
-        ],
+        ),
       ),
-    ));
+    );
   }
 }
 

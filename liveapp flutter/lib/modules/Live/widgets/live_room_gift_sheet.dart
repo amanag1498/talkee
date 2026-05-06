@@ -14,13 +14,19 @@ class LiveRoomGiftSelection {
 }
 
 class LiveRoomGiftSheet extends StatefulWidget {
-  const LiveRoomGiftSheet({super.key, required this.gifts});
+  const LiveRoomGiftSheet({
+    super.key,
+    required this.gifts,
+    this.balanceCoins,
+  });
 
   final List<LiveGiftItem> gifts;
+  final int? balanceCoins;
 
   static Future<LiveRoomGiftSelection?> show(
     BuildContext context, {
     required List<LiveGiftItem> gifts,
+    int? balanceCoins,
   }) {
     final tokens = getPremiumThemeTokens(
       Get.find<AppSettingsService>().activePremiumThemeVariant,
@@ -32,7 +38,7 @@ class LiveRoomGiftSheet extends StatefulWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (_) => LiveRoomGiftSheet(gifts: gifts),
+      builder: (_) => LiveRoomGiftSheet(gifts: gifts, balanceCoins: balanceCoins),
     );
   }
 
@@ -57,6 +63,7 @@ class _LiveRoomGiftSheetState extends State<LiveRoomGiftSheet> {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
     final selected = _selected;
     final total = selected == null ? 0 : selected.coins * _quantity;
+    final balanceCoins = widget.balanceCoins;
     final tokens = getPremiumThemeTokens(
       Get.find<AppSettingsService>().activePremiumThemeVariant,
     );
@@ -111,7 +118,36 @@ class _LiveRoomGiftSheetState extends State<LiveRoomGiftSheet> {
                         ],
                       ),
                     ),
-                    Icon(Icons.redeem_rounded, color: tokens.dangerColor),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Icon(Icons.redeem_rounded, color: tokens.dangerColor),
+                        if (balanceCoins != null) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: tokens.glassColor.withOpacity(.16),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: tokens.borderColor.withOpacity(.24),
+                              ),
+                            ),
+                            child: Text(
+                              '${_formatCoins(balanceCoins)} coins',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -167,6 +203,7 @@ class _LiveRoomGiftSheetState extends State<LiveRoomGiftSheet> {
                                           width: double.infinity,
                                           height: double.infinity,
                                           fit: BoxFit.contain,
+                                          enableAudio: false,
                                           fallback: const Center(
                                             child: Icon(
                                               Icons.card_giftcard_rounded,
@@ -286,4 +323,16 @@ class _LiveRoomGiftSheetState extends State<LiveRoomGiftSheet> {
       ),
     );
   }
+}
+
+String _formatCoins(int value) {
+  if (value >= 1000000) {
+    final reduced = value / 1000000;
+    return reduced % 1 == 0 ? '${reduced.toStringAsFixed(0)}M' : '${reduced.toStringAsFixed(1)}M';
+  }
+  if (value >= 1000) {
+    final reduced = value / 1000;
+    return reduced % 1 == 0 ? '${reduced.toStringAsFixed(0)}K' : '${reduced.toStringAsFixed(1)}K';
+  }
+  return '$value';
 }

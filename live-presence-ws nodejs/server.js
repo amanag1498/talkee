@@ -1087,6 +1087,7 @@ function audioAliasForSeatEvent(eventName) {
     'speaker:added': 'audio_room:speaker_added',
     'speaker:removed': 'audio_room:speaker_removed',
     'speaker:muted': 'audio_room:speaker_muted',
+    'speaker:unmuted': 'audio_room:speaker_unmuted',
     'speakers:updated': 'audio_room:listener_count_updated',
   };
   return mapping[eventName] || null;

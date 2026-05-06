@@ -428,6 +428,53 @@ class LiveRoomSeatService
         return $state;
     }
 
+    public function unmuteSpeaker(LiveRoom $room, User $targetUser, User $actor): array
+    {
+        $this->assertCanModerate($room, $actor);
+
+        $state = DB::transaction(function () use ($room, $targetUser) {
+            $participant = $this->activeParticipantQuery($room, $targetUser->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$participant) {
+                throw new HttpException(404, 'Speaker participant not found.');
+            }
+
+            if ($participant->role !== 'speaker') {
+                throw new HttpException(409, 'Only active speakers can be unmuted.');
+            }
+
+            if (!(bool) $participant->muted_by_host) {
+                return ['participant' => $participant];
+            }
+
+            $participant->update([
+                'muted_by_host' => false,
+            ]);
+
+            return ['participant' => $participant->fresh()];
+        });
+
+        $freshRoom = $room->fresh();
+        Redis::publish('rooms:seat-events', json_encode([
+            'event' => 'speaker:unmuted',
+            'room_id' => (string) $freshRoom->room_id,
+            'room_type' => (string) ($freshRoom->room_type ?? 'video'),
+            'user_id' => (int) $targetUser->id,
+            'role' => 'speaker',
+            'speaker_count' => $this->activeSpeakerCount($freshRoom),
+            'listener_count' => $this->activeAudienceCount($freshRoom),
+            'participant_count' => $this->activeParticipantCount($freshRoom),
+            'max_speakers' => $this->maxSpeakers($freshRoom),
+            'updated_at' => now()->toIso8601String(),
+        ]));
+
+        $this->audit($room, $actor, $targetUser->id, 'speaker_unmuted', 'speaker', 'speaker', 'muted_by_host');
+
+        return $state;
+    }
+
     public function snapshot(LiveRoom $room, User $actor, array $filters = []): array
     {
         $query = LiveRoomSeatRequest::query()

@@ -180,7 +180,7 @@ class _DashboardPageState extends State<DashboardPage>
           return _SpotlightEntry(
             rank: item.rank,
             avatarUrl: resolveAvatarUrl(api, item.avatar),
-            frameUrl: item.profileFrame,
+            frameUrl: resolveAvatarUrl(api, item.profileFrame),
             title: item.name,
             subtitle: subtitle.isEmpty ? 'User' : subtitle,
             value: _period == _BoardPeriod.weekly
@@ -200,7 +200,7 @@ class _DashboardPageState extends State<DashboardPage>
               (item) => _SpotlightEntry(
                 rank: item.rank,
                 avatarUrl: resolveAvatarUrl(api, item.avatar),
-                frameUrl: item.profileFrame,
+                frameUrl: resolveAvatarUrl(api, item.profileFrame),
                 title: item.name,
                 subtitle:
                     'Gift ${_compact(item.giftCoins)} • Call ${_compact(item.callCoins)}',
@@ -1468,7 +1468,7 @@ class _UserLeaderboardList extends StatelessWidget {
                 (item) => _SpotlightEntry(
                   rank: item.rank,
                   avatarUrl: resolveAvatarUrl(api, item.avatar),
-                  frameUrl: item.profileFrame,
+                  frameUrl: resolveAvatarUrl(api, item.profileFrame),
                   title: item.name,
                   subtitle: weekly
                       ? [
@@ -1496,7 +1496,7 @@ class _UserLeaderboardList extends StatelessWidget {
           return _LeaderboardRow(
             rank: item.rank,
             avatarUrl: resolveAvatarUrl(api, item.avatar),
-            frameUrl: item.profileFrame,
+            frameUrl: resolveAvatarUrl(api, item.profileFrame),
             title: item.name,
             subtitle: weekly
                 ? (weeklyBreakdown.isNotEmpty
@@ -1538,7 +1538,7 @@ class _HostLeaderboardList extends StatelessWidget {
                 (item) => _SpotlightEntry(
                   rank: item.rank,
                   avatarUrl: resolveAvatarUrl(api, item.avatar),
-                  frameUrl: item.profileFrame,
+                  frameUrl: resolveAvatarUrl(api, item.profileFrame),
                   title: item.name,
                   subtitle: 'Gift ${_compact(item.giftCoins)} • Call ${_compact(item.callCoins)}',
                   value: item.totalCoins,
@@ -1552,7 +1552,7 @@ class _HostLeaderboardList extends StatelessWidget {
           return _LeaderboardRow(
             rank: item.rank,
             avatarUrl: resolveAvatarUrl(api, item.avatar),
-            frameUrl: item.profileFrame,
+            frameUrl: resolveAvatarUrl(api, item.profileFrame),
             title: item.name,
             subtitle: 'Gift ${_compact(item.giftCoins)} • Call ${_compact(item.callCoins)}',
             value: item.totalCoins,
@@ -1885,13 +1885,16 @@ class _EntryAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCrownFrame =
+        (frameUrl?.toLowerCase().contains('crown') ?? false);
     return FramedAvatar(
       size: radius * 2,
       label: avatarUrl?.trim().isNotEmpty == true ? '' : _initialFromFallback(fallbackIcon),
       avatarUrl: avatarUrl,
       frameUrl: frameUrl,
       backgroundColor: Colors.white.withOpacity(.12),
-      avatarInset: 0.05,
+      avatarInset: isCrownFrame ? 0.12 : 0.05,
+      frameScale: isCrownFrame ? 1.08 : 1.14,
     );
   }
 }

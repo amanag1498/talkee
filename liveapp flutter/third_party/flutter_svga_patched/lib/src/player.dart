@@ -59,8 +59,12 @@ class SVGAAnimationController extends AnimationController {
   MovieEntity? _videoItem;
   final List<SVGAAudioLayer> _audioLayers = [];
   bool _canvasNeedsClear = false;
+  bool enableAudio;
 
-  SVGAAnimationController({required super.vsync})
+  SVGAAnimationController({
+    required super.vsync,
+    this.enableAudio = true,
+  })
     : super(duration: Duration.zero);
 
   set videoItem(MovieEntity? value) {
@@ -200,6 +204,14 @@ class _SVGAImageState extends State<SVGAImage> {
   }
 
   void handleAudio() {
+    if (!widget._controller.enableAudio) {
+      for (final audio in widget._controller._audioLayers) {
+        if (audio.isPlaying()) {
+          audio.stopAudio();
+        }
+      }
+      return;
+    }
     final audioLayers = widget._controller._audioLayers;
     for (final audio in audioLayers) {
       if (!audio.isPlaying() &&

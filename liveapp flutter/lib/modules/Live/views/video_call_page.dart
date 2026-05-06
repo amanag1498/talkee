@@ -31,10 +31,12 @@ import '../../../app/routes/app_routes.dart';
 import '../../../app/utils/profile_frame_payload.dart';
 import '../../../app/widgets/haptics.dart';
 import '../../../app/widgets/framed_avatar.dart';
+import '../../../app/widgets/keep_awake_scope.dart';
 import '../../../services/app_settings_service.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/live_rooms_ws_service.dart';
 import '../../profile/widgets/public_profile_card_sheet.dart';
+import '../../wallet/services/wallet_api.dart';
 import '../../wallet/widgets/recharge_bottom_sheet.dart';
 import '../dev/live_room_dev_fixtures.dart';
 import '../models/live_gift_item.dart';
@@ -132,6 +134,7 @@ class _VideoCallPageState extends State<VideoCallPage>
   bool _giftBusy = false;
   String? _giftError;
   List<LiveGiftItem> _availableGifts = const [];
+  int? _walletBalanceCoins;
   bool _speakerTransitionBusy = false;
   String? _recentGiftMessage;
   Timer? _recentGiftTimer;
@@ -461,6 +464,7 @@ class _VideoCallPageState extends State<VideoCallPage>
     }
     await _refreshSeatSnapshot();
     await _loadGiftCatalog();
+    await _refreshWalletBalance();
     _bindSeatEvents();
     _bindGiftEvents();
     _bindRoomLifecycleEvents();
@@ -959,7 +963,7 @@ class _VideoCallPageState extends State<VideoCallPage>
     try {
       await _room?.disconnect();
     } catch (_) {}
-    if (mounted) Get.back();
+    _popLivePage();
   }
 
   Future<void> _exitViewerSession() async {
@@ -2499,9 +2503,6 @@ class _VideoCallPageState extends State<VideoCallPage>
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
                         itemBuilder: (_, i) {
                           final participant = participants[i];
-                          final frameTokens = getPremiumThemeTokens(
-                            participant.themeKey,
-                          );
                           return Material(
                             color: Colors.transparent,
                             child: InkWell(
@@ -2531,72 +2532,16 @@ class _VideoCallPageState extends State<VideoCallPage>
                                 ),
                                 child: Row(
                                   children: [
-                                    ThemedRoomFrame(
-                                      themeKey: participant.themeKey,
-                                      isHost: participant.isHost,
-                                      isVip: participant.isVip,
-                                      isSpeaking: participant.speaking,
-                                      borderRadius: 16,
-                                      size: 46,
-                                      enableAnimation: false,
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(16),
-                                        child:
-                                            participant.avatarUrl?.trim().isNotEmpty ==
-                                                    true
-                                                ? Image.network(
-                                                    participant.avatarUrl!.trim(),
-                                                    fit: BoxFit.cover,
-                                                    errorBuilder: (_, __, ___) {
-                                                      return Container(
-                                                        decoration: BoxDecoration(
-                                                          gradient: LinearGradient(
-                                                            colors:
-                                                                frameTokens
-                                                                    .primaryButtonGradient,
-                                                          ),
-                                                        ),
-                                                        alignment: Alignment.center,
-                                                        child: Text(
-                                                          participant.name.isNotEmpty
-                                                              ? participant.name
-                                                                  .characters.first
-                                                                  .toUpperCase()
-                                                              : '?',
-                                                          style: TextStyle(
-                                                            color:
-                                                                frameTokens
-                                                                    .textPrimary,
-                                                            fontWeight:
-                                                                FontWeight.w900,
-                                                          ),
-                                                        ),
-                                                      );
-                                                    },
-                                                  )
-                                                : Container(
-                                                    decoration: BoxDecoration(
-                                                      gradient: LinearGradient(
-                                                        colors:
-                                                            frameTokens
-                                                                .primaryButtonGradient,
-                                                      ),
-                                                    ),
-                                                    alignment: Alignment.center,
-                                                    child: Text(
-                                                      participant.name.isNotEmpty
-                                                          ? participant.name
-                                                              .characters.first
-                                                              .toUpperCase()
-                                                          : '?',
-                                                      style: TextStyle(
-                                                        color: frameTokens
-                                                            .textPrimary,
-                                                        fontWeight:
-                                                            FontWeight.w900,
-                                                      ),
-                                                    ),
-                                                  ),
+                                    SizedBox(
+                                      width: 46,
+                                      height: 46,
+                                      child: FramedAvatar(
+                                        avatarUrl: participant.avatarUrl,
+                                        frameUrl: participant.frameUrl,
+                                        label: participant.name,
+                                        size: 46,
+                                        backgroundColor:
+                                            tokens.primaryButtonGradient.first,
                                       ),
                                     ),
                                     const SizedBox(width: 12),
@@ -3088,6 +3033,14 @@ class _VideoCallPageState extends State<VideoCallPage>
     }
   }
 
+  Future<void> _refreshWalletBalance() async {
+    try {
+      final balance = (await Get.find<WalletApi>().fetchSummary()).balance;
+      if (!mounted) return;
+      setState(() => _walletBalanceCoins = balance);
+    } catch (_) {}
+  }
+
   Future<void> _refreshSeatSnapshot() async {
     try {
       final snapshot = await widget.live.seatSnapshot(widget.room.roomId);
@@ -3387,6 +3340,7 @@ class _VideoCallPageState extends State<VideoCallPage>
       final selection = await LiveRoomGiftSheet.show(
         context,
         gifts: _availableGifts,
+        balanceCoins: _walletBalanceCoins,
       );
       if (selection == null) return;
 
@@ -3404,6 +3358,15 @@ class _VideoCallPageState extends State<VideoCallPage>
           quantity: selection.quantity,
         );
       }
+      if (mounted) {
+        setState(() {
+          if (_walletBalanceCoins != null) {
+            final spend = selection.gift.coins * selection.quantity;
+            final nextBalance = _walletBalanceCoins! - spend;
+            _walletBalanceCoins = nextBalance < 0 ? 0 : nextBalance;
+          }
+        });
+      }
       Haptics.success();
       if (!mounted) return;
       setState(() => _giftError = null);
@@ -3417,6 +3380,7 @@ class _VideoCallPageState extends State<VideoCallPage>
           reasonMessage:
               'You need more coins to send gifts in this room. Recharge your wallet and try again.',
         );
+        await _refreshWalletBalance();
       }
     } finally {
       if (mounted) {
@@ -4521,17 +4485,18 @@ class _VideoCallPageState extends State<VideoCallPage>
     final pkChatTopOffset =
         pkStageTopInset + pkStageHeight + pkRailHeight + pkLeadersHeight;
 
-    return Obx(
-      () => PopScope(
-        canPop: false,
-        onPopInvoked: (didPop) {
-          if (didPop || _handlingBackNavigation) return;
-          unawaited(_handleBackNavigation());
-        },
-        child: Scaffold(
-          backgroundColor: _tokens.backgroundGradient.first,
-          body: Stack(
-            children: [
+    return KeepAwakeScope(
+      child: Obx(
+        () => PopScope(
+          canPop: false,
+          onPopInvoked: (didPop) {
+            if (didPop || _handlingBackNavigation) return;
+            unawaited(_handleBackNavigation());
+          },
+          child: Scaffold(
+            backgroundColor: _tokens.backgroundGradient.first,
+            body: Stack(
+              children: [
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -4805,7 +4770,8 @@ class _VideoCallPageState extends State<VideoCallPage>
                   onRightWin: () => _mockDevResolvePk(-1),
                 ),
               ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -7420,105 +7386,6 @@ class _HostModerationSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          Text(
-            'Participants',
-            style: TextStyle(
-              color: tokens.textPrimary,
-              fontWeight: FontWeight.w900,
-              fontSize: 15,
-            ),
-          ),
-          const SizedBox(height: 10),
-          if (participants.isEmpty)
-            Text(
-              'No active participants detected yet.',
-              style: TextStyle(color: tokens.textSecondary.withOpacity(.74)),
-            )
-          else
-            ...participants.map((participant) {
-              final frameTokens = getPremiumThemeTokens(participant.themeKey);
-              return Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: tokens.glassColor.withOpacity(.08),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: tokens.borderColor.withOpacity(.20),
-                  ),
-                ),
-                child: InkWell(
-                  onTap: busy
-                      ? null
-                      : () {
-                          Navigator.of(context).pop();
-                          onOpenParticipant(participant);
-                        },
-                  borderRadius: BorderRadius.circular(16),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 44,
-                        height: 44,
-                        child: FramedAvatar(
-                          avatarUrl: participant.avatarUrl,
-                          frameUrl: participant.frameUrl,
-                          label: participant.name,
-                          size: 44,
-                          backgroundColor: frameTokens.primaryButtonGradient.first,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    participant.name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: tokens.textPrimary,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ),
-                                if (participant.isHost)
-                                  const _MetaPill(label: 'HOST'),
-                                if (participant.isVip) ...[
-                                  const SizedBox(width: 6),
-                                  const _MetaPill(label: 'VIP'),
-                                ],
-                                if (participant.level != null) ...[
-                                  const SizedBox(width: 6),
-                                  _MetaPill(label: 'LV ${participant.level}'),
-                                ],
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              participant.subtitle,
-                              style: TextStyle(
-                                color: tokens.textSecondary.withOpacity(.82),
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Icon(
-                        Icons.chevron_right_rounded,
-                        color: tokens.textSecondary.withOpacity(.76),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }),
-          const SizedBox(height: 14),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(14),
@@ -7691,104 +7558,113 @@ class _HostModerationSheet extends StatelessWidget {
               style: TextStyle(color: tokens.textSecondary.withOpacity(.74)),
             )
           else
-            ...pendingRequests.map((row) {
-              final requestId =
-                  int.tryParse('${row['request_id'] ?? row['id'] ?? ''}') ?? 0;
-              final user = (row['user'] as Map?) ?? const {};
-              final name = (user['name'] ?? 'Viewer').toString();
-              final level =
-                  int.tryParse('${user['level'] ?? row['level'] ?? ''}');
-              final isVip = user['is_vip'] == true || row['is_vip'] == true;
-              return Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: tokens.glassColor.withOpacity(.08),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: tokens.borderColor.withOpacity(.20),
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: FramedAvatar(
-                        avatarUrl: user['avatar_url']?.toString(),
-                        frameUrl: profileFrameAssetUrlFromPayload(user),
-                        label: name,
-                        size: 44,
-                        backgroundColor: tokens.primaryButtonGradient.first,
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 280),
+              child: ListView.separated(
+                shrinkWrap: true,
+                primary: false,
+                itemCount: pendingRequests.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  final row = pendingRequests[index];
+                  final requestId =
+                      int.tryParse('${row['request_id'] ?? row['id'] ?? ''}') ?? 0;
+                  final user = (row['user'] as Map?) ?? const {};
+                  final name = (user['name'] ?? 'Viewer').toString();
+                  final level =
+                      int.tryParse('${user['level'] ?? row['level'] ?? ''}');
+                  final isVip = user['is_vip'] == true || row['is_vip'] == true;
+                  return Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: tokens.glassColor.withOpacity(.08),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: tokens.borderColor.withOpacity(.20),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  name,
-                                  style: TextStyle(
-                                    color: tokens.textPrimary,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
-                              if (isVip)
-                                _MetaPill(label: 'VIP'),
-                              if (level != null) ...[
-                                const SizedBox(width: 6),
-                                _MetaPill(label: 'LV $level'),
-                              ],
-                            ],
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 44,
+                          height: 44,
+                          child: FramedAvatar(
+                            avatarUrl: user['avatar_url']?.toString(),
+                            frameUrl: profileFrameAssetUrlFromPayload(user),
+                            label: name,
+                            size: 44,
+                            backgroundColor: tokens.primaryButtonGradient.first,
                           ),
-                          const SizedBox(height: 10),
-                          Row(
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(
-                                child: FilledButton(
-                                  onPressed:
-                                      busy || requestId == 0
-                                          ? null
-                                          : () => onAccept(requestId),
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor:
-                                        tokens.primaryButtonGradient.first,
-                                    foregroundColor: tokens.textPrimary,
-                                  ),
-                                  child: const Text('Accept'),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: OutlinedButton(
-                                  onPressed:
-                                      busy || requestId == 0
-                                          ? null
-                                          : () => onReject(requestId),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: tokens.textPrimary,
-                                    side: BorderSide(
-                                      color: tokens.borderColor.withOpacity(.34),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      name,
+                                      style: TextStyle(
+                                        color: tokens.textPrimary,
+                                        fontWeight: FontWeight.w800,
+                                      ),
                                     ),
                                   ),
-                                  child: const Text('Reject'),
-                                ),
+                                  if (isVip)
+                                    _MetaPill(label: 'VIP'),
+                                  if (level != null) ...[
+                                    const SizedBox(width: 6),
+                                    _MetaPill(label: 'LV $level'),
+                                  ],
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: FilledButton(
+                                      onPressed:
+                                          busy || requestId == 0
+                                              ? null
+                                              : () => onAccept(requestId),
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor:
+                                            tokens.primaryButtonGradient.first,
+                                        foregroundColor: tokens.textPrimary,
+                                      ),
+                                      child: const Text('Accept'),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: OutlinedButton(
+                                      onPressed:
+                                          busy || requestId == 0
+                                              ? null
+                                              : () => onReject(requestId),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: tokens.textPrimary,
+                                        side: BorderSide(
+                                          color: tokens.borderColor.withOpacity(.34),
+                                        ),
+                                      ),
+                                      child: const Text('Reject'),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              );
-            }),
+                  );
+                },
+              ),
+            ),
         ],
       ),
     );

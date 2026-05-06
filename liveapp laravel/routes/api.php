@@ -47,6 +47,7 @@ Route::middleware(['auth:sanctum','throttle:240,1'])->group(function () {
     Route::post('/live/rooms/{room_id}/seat-requests/{id}/cancel', [LiveRoomSeatRequestController::class, 'cancel'])->middleware('live_room_feature_enabled');
     Route::post('/live/rooms/{room_id}/speakers/{user_id}/remove', [LiveRoomSeatRequestController::class, 'removeSpeaker'])->middleware('live_room_feature_enabled');
     Route::post('/live/rooms/{room_id}/speakers/{user_id}/mute', [LiveRoomSeatRequestController::class, 'muteSpeaker'])->middleware('live_room_feature_enabled');
+    Route::post('/live/rooms/{room_id}/speakers/{user_id}/unmute', [LiveRoomSeatRequestController::class, 'unmuteSpeaker'])->middleware('live_room_feature_enabled');
     Route::get('/live/rooms/{room_id}/speakers', [LiveRoomSeatRequestController::class, 'speakers'])->middleware('live_room_feature_enabled');
     Route::get('/gifts', [LiveRoomGiftController::class, 'index'])->middleware('feature_enabled:gifts_enabled');
     Route::post('/live/rooms/{room_id}/gifts', [LiveRoomGiftController::class, 'store'])->middleware(['feature_enabled:gifts_enabled', 'live_room_feature_enabled']);

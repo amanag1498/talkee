@@ -133,4 +133,17 @@ class LiveRoomSeatRequestController extends Controller
             'snapshot' => $this->seats->snapshot($room, $request->user()),
         ]);
     }
+
+    public function unmuteSpeaker(Request $request, string $room_id, int $user_id)
+    {
+        $room = LiveRoom::query()->where('room_id', $room_id)->firstOrFail();
+        $target = User::query()->findOrFail($user_id);
+        $result = $this->seats->unmuteSpeaker($room, $target, $request->user());
+
+        return response()->json([
+            'ok' => true,
+            'participant_id' => $result['participant']?->id,
+            'snapshot' => $this->seats->snapshot($room, $request->user()),
+        ]);
+    }
 }

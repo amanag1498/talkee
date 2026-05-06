@@ -14,6 +14,7 @@ class RemoteMediaArt extends StatelessWidget {
     this.fit = BoxFit.contain,
     this.fallback,
     this.borderRadius,
+    this.enableAudio = true,
   });
 
   final String? url;
@@ -23,6 +24,7 @@ class RemoteMediaArt extends StatelessWidget {
   final BoxFit fit;
   final Widget? fallback;
   final BorderRadius? borderRadius;
+  final bool enableAudio;
 
   @override
   Widget build(BuildContext context) {
@@ -42,8 +44,16 @@ class RemoteMediaArt extends StatelessWidget {
             width: width,
             height: height,
             child: isBundled
-                ? SVGAEasyPlayer(assetsName: value, fit: fit)
-                : SVGAEasyPlayer(resUrl: value, fit: fit),
+                ? SVGAEasyPlayer(
+                    assetsName: value,
+                    fit: fit,
+                    enableAudio: enableAudio,
+                  )
+                : SVGAEasyPlayer(
+                    resUrl: value,
+                    fit: fit,
+                    enableAudio: enableAudio,
+                  ),
           ),
         );
       case RemoteMediaKind.svg:

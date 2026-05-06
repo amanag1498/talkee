@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 
 import 'package:get/get.dart';
 
@@ -37,7 +38,18 @@ class DashboardController extends GetxController {
 
   Future<void> _performLoad() async {
     try {
-      leaderboards.value = await _api.fetchLeaderboards();
+      final payload = await _api.fetchLeaderboards();
+      leaderboards.value = payload;
+      final firstWeeklyUser = payload.usersWeekly.isNotEmpty
+          ? payload.usersWeekly.first
+          : null;
+      final firstWeeklyHost = payload.hostsWeekly.isNotEmpty
+          ? payload.hostsWeekly.first
+          : null;
+      debugPrint(
+        '[dashboard][payload] usersWeekly.first.frame=${firstWeeklyUser?.profileFrame} '
+        'hostsWeekly.first.frame=${firstWeeklyHost?.profileFrame}',
+      );
     } catch (e) {
       error.value = e.toString();
     } finally {
