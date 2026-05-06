@@ -24,6 +24,7 @@ Future<void> showPublicProfileCardSheet(
   bool initialSpeaking = false,
   int? initialLevel,
   String? initialAvatarUrl,
+  String? initialProfileFrameUrl,
 }) {
   return showGeneralDialog<void>(
     context: context,
@@ -43,6 +44,7 @@ Future<void> showPublicProfileCardSheet(
             initialSpeaking: initialSpeaking,
             initialLevel: initialLevel,
             initialAvatarUrl: initialAvatarUrl,
+            initialProfileFrameUrl: initialProfileFrameUrl,
           ),
         ),
     transitionBuilder: (_, animation, __, child) {
@@ -138,6 +140,7 @@ class _PublicProfileCardSheet extends StatefulWidget {
     this.initialSpeaking = false,
     this.initialLevel,
     this.initialAvatarUrl,
+    this.initialProfileFrameUrl,
   });
 
   final int userId;
@@ -149,6 +152,7 @@ class _PublicProfileCardSheet extends StatefulWidget {
   final bool initialSpeaking;
   final int? initialLevel;
   final String? initialAvatarUrl;
+  final String? initialProfileFrameUrl;
 
   @override
   State<_PublicProfileCardSheet> createState() => _PublicProfileCardSheetState();
@@ -356,7 +360,9 @@ class _PublicProfileCardSheetState extends State<_PublicProfileCardSheet> {
                                 displayName: displayName,
                                 subtitle: subtitle,
                                 avatarUrl: avatarUrl,
-                                profileFrameUrl: profile?.profileFrame?.assetUrl,
+                                profileFrameUrl:
+                                    profile?.profileFrame?.assetUrl ??
+                                    widget.initialProfileFrameUrl,
                                 isHost: isHost,
                                 isVip: isVip,
                                 isSpeaking: speaking,

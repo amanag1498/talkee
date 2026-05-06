@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../app/theme/brand.dart';
+import '../../../app/utils/profile_frame_payload.dart';
+import '../../../app/widgets/framed_avatar.dart';
 import '../../../services/app_settings_service.dart';
 import '../../profile/widgets/public_profile_card_sheet.dart';
 import '../controllers/live_users_controller.dart';
@@ -393,6 +395,7 @@ class _LiveHostCard extends StatelessWidget {
           (user['avatar_url'] ?? '').toString().trim().isNotEmpty
               ? (user['avatar_url'] ?? '').toString().trim()
               : null,
+      initialProfileFrameUrl: profileFrameAssetUrlFromPayload(user),
     );
   }
 
@@ -402,6 +405,7 @@ class _LiveHostCard extends StatelessWidget {
       Get.find<AppSettingsService>().activePremiumThemeVariant,
     );
     final avatarUrl = (user['avatar_url'] ?? '').toString();
+    final frameUrl = profileFrameAssetUrlFromPayload(user);
     final agency = Map<String, dynamic>.from(
       user['agency'] as Map? ?? const {},
     );
@@ -430,33 +434,11 @@ class _LiveHostCard extends StatelessWidget {
                   InkWell(
                     onTap: () => _openProfileCard(context),
                     borderRadius: BorderRadius.circular(999),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: .16),
-                          width: 1.2,
-                        ),
-                      ),
-                      child: CircleAvatar(
-                        radius: compact ? 22 : 24,
-                        backgroundColor: Colors.white.withValues(alpha: .08),
-                        backgroundImage:
-                            avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
-                        child:
-                            avatarUrl.isNotEmpty
-                                ? null
-                                : Text(
-                                  (user['name'] ?? '?')
-                                      .toString()
-                                      .substring(0, 1)
-                                      .toUpperCase(),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                      ),
+                    child: FramedAvatar(
+                      avatarUrl: avatarUrl,
+                      frameUrl: frameUrl,
+                      size: (compact ? 22 : 24) * 2,
+                      label: (user['name'] ?? '?').toString(),
                     ),
                   ),
                   SizedBox(width: compact ? 10 : 12),

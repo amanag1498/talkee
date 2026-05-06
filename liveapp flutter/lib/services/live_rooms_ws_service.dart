@@ -218,6 +218,7 @@ class RoomsSocketService {
       'speaker:added',
       'speaker:removed',
       'speaker:muted',
+      'speaker:unmuted',
       'speakers:updated',
     ]) {
       _sock!.on(eventName, (data) {

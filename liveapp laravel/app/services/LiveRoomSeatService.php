@@ -506,6 +506,7 @@ class LiveRoomSeatService
                     'name' => $user?->name,
                     'email' => $user?->email,
                     'role' => $participant->role,
+                    'muted_by_host' => (bool) $participant->muted_by_host,
                     'joined_at' => optional($participant->joined_at)?->toIso8601String(),
                     'speaker_since' => data_get($participant->meta, 'speaker_since'),
                     'updated_at' => optional($participant->updated_at)?->toIso8601String(),

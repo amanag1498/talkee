@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
+import '../../../app/utils/profile_frame_payload.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/call_service.dart';
 import '../../profile/controllers/host_follow_controller.dart';
@@ -121,6 +123,12 @@ class LiveUsersController extends GetxController {
               ?.map((e) => Map<String, dynamic>.from(e as Map))
               .toList() ??
           <Map<String, dynamic>>[];
+      final firstUser = list.isNotEmpty ? list.first : null;
+      debugPrint(
+        '[live-users][payload] first.avatar=${firstUser?['avatar_url']} '
+        'first.rawProfileFrame=${firstUser?['profile_frame']} '
+        'first.frame=${profileFrameAssetUrlFromPayload(firstUser)}',
+      );
       if (reset) {
         users.assignAll(list);
       } else {

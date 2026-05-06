@@ -122,6 +122,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
   final GiftAnchorRegistry _giftAnchors = GiftAnchorRegistry();
   final GiftAnimationOverlayManager _giftAnimationOverlay =
       GiftAnimationOverlayManager();
+  final ValueNotifier<int> _speakerSheetTick = ValueNotifier<int>(0);
   Set<String> _trackedParticipantIds = <String>{};
   bool _joinAnimationsArmed = false;
   final ValueNotifier<List<LiveRoomChatMessage>> _chatMessages =
@@ -220,6 +221,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     _joinAnimationOverlay.dispose();
     _giftAnimationOverlay.dispose();
     _giftAnchors.dispose();
+    _speakerSheetTick.dispose();
     _themeSyncWorker?.dispose();
     _leaveSocketRoom();
     _listener?.dispose();
@@ -420,6 +422,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
         _currentRole = role;
         _mutedByHost = mutedByHost;
       });
+      _speakerSheetTick.value++;
     } catch (e) {
       if (!mounted) return;
       setState(() => _seatError = e.toString());
@@ -571,9 +574,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
           }
           Haptics.light();
         } else if (name == 'speaker:unmuted') {
-          if (mounted) {
-            setState(() => _mutedByHost = false);
-          }
+          await _restoreMicAfterHostUnmute();
           Haptics.light();
         }
       }
@@ -1212,6 +1213,20 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     } catch (_) {}
     if (mounted) {
       setState(() => _micOn = false);
+    }
+  }
+
+  Future<void> _restoreMicAfterHostUnmute() async {
+    try {
+      if (_canPublishAudio) {
+        await _room?.localParticipant?.setMicrophoneEnabled(true);
+      }
+    } catch (_) {}
+    if (mounted) {
+      setState(() {
+        _mutedByHost = false;
+        if (_canPublishAudio) _micOn = true;
+      });
     }
   }
 
@@ -2393,20 +2408,27 @@ class _AudioRoomPageState extends State<AudioRoomPage>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder:
-          (_) => _AudioSheet(
-            title: 'Speakers',
-            subtitle: '${_speakerCount + 1}/${_maxSpeakers + 1} on stage',
-            child: Column(
-              children:
-                  _buildSpeakerCards()
-                      .map(
-                        (card) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: SizedBox(width: double.infinity, child: card),
-                        ),
-                      )
-                      .toList(),
-            ),
+          (_) => ValueListenableBuilder<int>(
+            valueListenable: _speakerSheetTick,
+            builder:
+                (_, __, ___) => _AudioSheet(
+                  title: 'Speakers',
+                  subtitle: '${_speakerCount + 1}/${_maxSpeakers + 1} on stage',
+                  child: Column(
+                    children:
+                        _buildSpeakerCards()
+                            .map(
+                              (card) => Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: SizedBox(
+                                  width: double.infinity,
+                                  child: card,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                  ),
+                ),
           ),
     );
   }

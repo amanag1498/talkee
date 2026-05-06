@@ -394,8 +394,15 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
       _handledEvents.add('ended:$callId');
       _stopRingingTimeout();
       callState.value = 'ending';
-      await _callService.endCall(callId, reason: 'ended_by_user');
-      await _handleTerminalState(state: 'ended', message: 'Call ended.');
+      final endedPayload = await _callService.endCall(
+        callId,
+        reason: 'ended_by_user',
+      );
+      await _handleTerminalState(
+        state: 'ended',
+        message: 'Call ended.',
+        payload: endedPayload,
+      );
     } catch (e) {
       _showMessage(_extractMessage(e));
     } finally {
@@ -968,6 +975,10 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
     } else if (destructive) {
       await Haptics.heavy();
     }
+    final summaryPayload =
+        payload != null
+            ? <String, dynamic>{...payload}
+            : (activeCall.value != null ? <String, dynamic>{...activeCall.value!} : null);
     await _disposeRoom();
     _stopTicker();
     incomingCall.value = null;
@@ -980,6 +991,9 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
     _removeIncomingOverlay();
     if (message != null && message.isNotEmpty) {
       _showMessage(message);
+    }
+    if (_shouldShowUserCallSummary(summaryPayload)) {
+      await _showUserCallSummary(summaryPayload!);
     }
     await _safeExitCallRoute();
     _terminalHandling = false;
@@ -1219,25 +1233,266 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
   Future<void> _safeExitCallRoute() async {
     if (_isExitingCall) return;
     _isExitingCall = true;
+    final target =
+        _auth.storage.token?.isNotEmpty == true
+            ? Routes.home
+            : Routes.login;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final navigator = Get.key.currentState;
-      if (navigator == null) {
-        _isExitingCall = false;
-        return;
-      }
-      final closableRoutes = {Routes.activeCall, Routes.outgoingCall, Routes.incomingCall};
       try {
-        navigator.popUntil((route) {
-          final name = route.settings.name;
-          return !closableRoutes.contains(name);
-        });
-        if (closableRoutes.contains(Get.currentRoute)) {
-          Get.offAllNamed(Routes.home);
-        }
+        Get.offAllNamed(target);
       } finally {
         _isExitingCall = false;
       }
     });
+  }
+
+  bool _shouldShowUserCallSummary(Map<String, dynamic>? payload) {
+    if (payload == null) return false;
+    final currentUserId = _auth.currentUser?.id;
+    final callerId = (payload['caller_id'] as num?)?.toInt();
+    if (currentUserId == null || callerId != currentUserId) return false;
+    final durationSeconds = (payload['duration_seconds'] as num?)?.toInt() ?? 0;
+    final billableMinutes = (payload['billable_minutes'] as num?)?.toInt() ?? 0;
+    final chargedCoins = (payload['total_coins_charged'] as num?)?.toInt() ?? 0;
+    return durationSeconds > 0 || billableMinutes > 0 || chargedCoins > 0;
+  }
+
+  Future<void> _showUserCallSummary(Map<String, dynamic> payload) async {
+    final tokens = _tokens;
+    final durationSeconds = (payload['duration_seconds'] as num?)?.toInt() ?? 0;
+    final billableMinutes = (payload['billable_minutes'] as num?)?.toInt() ?? 0;
+    final chargedCoins = (payload['total_coins_charged'] as num?)?.toInt() ?? 0;
+
+    await Get.bottomSheet<void>(
+      SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: tokens.cardGradient,
+            ),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+            border: Border.all(color: tokens.borderColor),
+            boxShadow: [
+              BoxShadow(
+                color: tokens.glowColor.withValues(alpha: .22),
+                blurRadius: 28,
+                offset: const Offset(0, -4),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 46,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: tokens.borderColor.withValues(alpha: .82),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [
+                      tokens.primaryButtonGradient.first.withValues(alpha: .96),
+                      tokens.primaryButtonGradient.last.withValues(alpha: .92),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: tokens.glowColor.withValues(alpha: .28),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  Icons.receipt_long_rounded,
+                  color: tokens.textPrimary,
+                  size: 30,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Call Summary',
+                style: TextStyle(
+                  color: tokens.textPrimary,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Your call has ended. Final charges are shown below.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: tokens.textSecondary.withValues(alpha: .9),
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: _summaryStatCard(
+                      label: 'Duration',
+                      value: _formatDuration(durationSeconds),
+                      icon: Icons.schedule_rounded,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _summaryStatCard(
+                      label: 'Billable',
+                      value: '$billableMinutes min',
+                      icon: Icons.timer_outlined,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      tokens.glassColor.withValues(alpha: .64),
+                      tokens.glassColor.withValues(alpha: .42),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: tokens.borderColor.withValues(alpha: .72),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFD66B).withValues(alpha: .16),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(
+                        Icons.monetization_on_rounded,
+                        color: Color(0xFFFFD66B),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Coins deducted',
+                            style: TextStyle(
+                              color: tokens.textSecondary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '$chargedCoins',
+                            style: TextStyle(
+                              color: tokens.textPrimary,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: tokens.primaryButtonGradient.first,
+                    foregroundColor: tokens.textPrimary,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  onPressed: () => Get.back<void>(),
+                  child: const Text('Done'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      isScrollControlled: false,
+      backgroundColor: Colors.transparent,
+      isDismissible: false,
+      enableDrag: false,
+    );
+  }
+
+  Widget _summaryStatCard({
+    required String label,
+    required String value,
+    required IconData icon,
+  }) {
+    final tokens = _tokens;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      decoration: BoxDecoration(
+        color: tokens.glassColor.withValues(alpha: .46),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: tokens.borderColor.withValues(alpha: .65)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: tokens.glassColor.withValues(alpha: .55),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: tokens.textPrimary, size: 18),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            label,
+            style: TextStyle(
+              color: tokens.textSecondary,
+              fontWeight: FontWeight.w700,
+              fontSize: 12.5,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              color: tokens.textPrimary,
+              fontWeight: FontWeight.w900,
+              fontSize: 18,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _dismissCallPresentationForMinimize() async {

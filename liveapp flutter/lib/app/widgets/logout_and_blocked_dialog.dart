@@ -2,7 +2,10 @@ import 'dart:ui' show ImageFilter;
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:get/get.dart';
 import 'package:liveapp/app/widgets/talkee_logo.dart';
+import 'package:liveapp/app/theme/brand.dart';
+import 'package:liveapp/services/app_settings_service.dart';
 // ⬇️ adjust this path if needed
 
 class LoggedOutDialog extends StatefulWidget {
@@ -14,9 +17,6 @@ class LoggedOutDialog extends StatefulWidget {
 
 class _LoggedOutDialogState extends State<LoggedOutDialog>
     with TickerProviderStateMixin {
-  static const _brand1 = Color(0xFF7B50C5);
-  static const _brand2 = Color(0xFF3E2374);
-
   late final AnimationController _pop;
   late final AnimationController _glow; // logo halo
   late final AnimationController _btn;  // button pulse
@@ -41,6 +41,9 @@ class _LoggedOutDialogState extends State<LoggedOutDialog>
   @override
   Widget build(BuildContext context) {
     final curve = CurvedAnimation(parent: _pop, curve: Curves.easeOutBack);
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
 
     return FadeTransition(
       opacity: curve,
@@ -51,6 +54,7 @@ class _LoggedOutDialogState extends State<LoggedOutDialog>
           backgroundColor: Colors.transparent,
           insetPadding: const EdgeInsets.symmetric(horizontal: 22),
           child: _Frosted(
+            tokens: tokens,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
               child: Column(
@@ -67,7 +71,9 @@ class _LoggedOutDialogState extends State<LoggedOutDialog>
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: _brand1.withOpacity(.24 + .12 * math.sin(t * math.pi)),
+                              color: tokens.glowColor.withOpacity(
+                                .22 + .10 * math.sin(t * math.pi),
+                              ),
                               blurRadius: 26,
                               spreadRadius: 2,
                             ),
@@ -81,8 +87,8 @@ class _LoggedOutDialogState extends State<LoggedOutDialog>
 
                   // Title
                   ShaderMask(
-                    shaderCallback: (r) => const LinearGradient(
-                      colors: [_brand1, _brand2],
+                    shaderCallback: (r) => LinearGradient(
+                      colors: tokens.primaryButtonGradient,
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ).createShader(r),
@@ -102,10 +108,10 @@ class _LoggedOutDialogState extends State<LoggedOutDialog>
 
                   // Body
                   Text(
-                    'You’ve been signed out because your account was used on another device.',
+                    'Your session has ended. Please sign in again to continue.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(.90),
+                      color: tokens.textSecondary.withOpacity(.96),
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -123,8 +129,8 @@ class _LoggedOutDialogState extends State<LoggedOutDialog>
                           width: double.infinity,
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: _brand1,
-                              foregroundColor: Colors.white,
+                              backgroundColor: tokens.primaryButtonGradient.first,
+                              foregroundColor: tokens.textPrimary,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14),
                               ),
@@ -297,21 +303,27 @@ class _BlockedDialogState extends State<BlockedDialog>
 
 // Shared frosted container
 class _Frosted extends StatelessWidget {
-  const _Frosted({required this.child});
+  const _Frosted({required this.child, this.tokens});
   final Widget child;
+  final PremiumThemeTokens? tokens;
 
   @override
   Widget build(BuildContext context) {
+    final activeTokens =
+        tokens ??
+        getPremiumThemeTokens(
+          Get.find<AppSettingsService>().activePremiumThemeVariant,
+        );
     return ClipRRect(
       borderRadius: BorderRadius.circular(22),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
         child: Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF120A24).withOpacity(.58),
-            border: Border.all(color: Colors.white.withOpacity(.10)),
-            gradient: const LinearGradient(
-              colors: [Color(0xFF24143F), Color(0xFF160D2B)],
+            color: activeTokens.glassColor.withOpacity(.58),
+            border: Border.all(color: activeTokens.borderColor.withOpacity(.82)),
+            gradient: LinearGradient(
+              colors: activeTokens.cardGradient,
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),

@@ -960,9 +960,7 @@ class _VideoCallPageState extends State<VideoCallPage>
     _giftAnimationOverlay.clear();
     await _endSessionOnce();
     _leaveSocketRoom();
-    try {
-      await _room?.disconnect();
-    } catch (_) {}
+    _closeTransientOverlays();
     _popLivePage();
   }
 

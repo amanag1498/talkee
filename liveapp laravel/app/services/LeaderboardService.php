@@ -11,6 +11,7 @@ use App\Models\UserProfileFrame;
 use App\Models\WalletTransaction;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -426,7 +427,7 @@ class LeaderboardService
                     return [
                         'id' => (int) $row->id,
                         'name' => (string) $row->name,
-                        'avatar' => $row->avatar_url,
+                        'avatar' => $this->normalizeAvatarUrl($row->avatar_url),
                         'profile_frame' => $frameByUserId[(int) $row->id] ?? null,
                         'level' => $row->level !== null ? (int) $row->level : null,
                         'gift_coins' => (int) ($row->gift_coins ?? 0),
@@ -489,7 +490,7 @@ class LeaderboardService
                         'host_id' => (int) $row->host_id,
                         'host_user_id' => (int) $row->host_user_id,
                         'name' => (string) $row->display_name,
-                        'avatar' => $row->avatar_url,
+                        'avatar' => $this->normalizeAvatarUrl($row->avatar_url),
                         'profile_frame' => $frameByUserId[(int) $row->host_user_id] ?? null,
                         'agency_id' => $row->agency_id !== null ? (int) $row->agency_id : null,
                         'gift_coins' => (int) ($row->gift_coins ?? 0),
@@ -652,6 +653,27 @@ class LeaderboardService
     private function normalizePeriodAlias(string $period): string
     {
         return strtolower(trim($period)) === 'alltime' ? 'alltime' : 'weekly';
+    }
+
+    private function normalizeAvatarUrl(?string $value): ?string
+    {
+        if (!$value) {
+            return null;
+        }
+
+        if (Str::startsWith($value, ['http://', 'https://'])) {
+            return $value;
+        }
+
+        if (Str::startsWith($value, '/storage/avatars/')) {
+            return route('media.avatar', ['path' => ltrim(Str::after($value, '/storage/'), '/')]);
+        }
+
+        if (Str::startsWith($value, 'avatars/')) {
+            return route('media.avatar', ['path' => $value]);
+        }
+
+        return $value;
     }
 
     private function withRanks(Collection $rows, callable $map): array

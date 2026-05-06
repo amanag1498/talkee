@@ -14,6 +14,7 @@ class HostAvailabilityService
     public function __construct(
         private HostFollowService $follows,
         private HostNotificationService $notifications,
+        private ProfileFrameService $frames,
     ) {
     }
 
@@ -159,6 +160,7 @@ class HostAvailabilityService
                 'id' => $hostUser->id,
                 'name' => $host?->stage_name ?: $hostUser->name,
                 'avatar_url' => $hostUser->avatar_url,
+                'profile_frame' => $this->frames->equippedFramePayload($hostUser),
                 'roles' => $hostUser->getRoleNames()->values()->all(),
                 'badge' => 'host',
                 'agency' => $host?->agency ? [

@@ -47,7 +47,10 @@ class DashboardController extends GetxController {
           ? payload.hostsWeekly.first
           : null;
       debugPrint(
-        '[dashboard][payload] usersWeekly.first.frame=${firstWeeklyUser?.profileFrame} '
+        '[dashboard][payload] '
+        'usersWeekly.first.avatar=${firstWeeklyUser?.avatar} '
+        'usersWeekly.first.frame=${firstWeeklyUser?.profileFrame} '
+        'hostsWeekly.first.avatar=${firstWeeklyHost?.avatar} '
         'hostsWeekly.first.frame=${firstWeeklyHost?.profileFrame}',
       );
     } catch (e) {

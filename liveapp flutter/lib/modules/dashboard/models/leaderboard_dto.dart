@@ -1,3 +1,5 @@
+import '../../../app/utils/profile_frame_payload.dart';
+
 class DashboardLeaderboardsDto {
   final List<LeaderboardUserItemDto> usersAlltime;
   final List<LeaderboardUserItemDto> usersWeekly;
@@ -104,7 +106,9 @@ class LeaderboardUserItemDto {
       id: (json['id'] as num?)?.toInt() ?? 0,
       name: (json['name'] ?? '').toString(),
       avatar: json['avatar']?.toString(),
-      profileFrame: json['profile_frame']?.toString(),
+      profileFrame:
+          profileFrameAssetUrlFromPayload(json) ??
+          json['profile_frame']?.toString(),
       level: (json['level'] as num?)?.toInt(),
       lifetimeSpendCoins: (json['lifetime_spend_coins'] as num?)?.toInt() ?? 0,
       giftCoins: (json['gift_coins'] as num?)?.toInt() ?? 0,
@@ -148,7 +152,9 @@ class LeaderboardHostItemDto {
       hostUserId: (json['host_user_id'] as num?)?.toInt() ?? 0,
       name: (json['name'] ?? '').toString(),
       avatar: json['avatar']?.toString(),
-      profileFrame: json['profile_frame']?.toString(),
+      profileFrame:
+          profileFrameAssetUrlFromPayload(json) ??
+          json['profile_frame']?.toString(),
       agencyId: (json['agency_id'] as num?)?.toInt(),
       giftCoins: (json['gift_coins'] as num?)?.toInt() ?? 0,
       callCoins: (json['call_coins'] as num?)?.toInt() ?? 0,
