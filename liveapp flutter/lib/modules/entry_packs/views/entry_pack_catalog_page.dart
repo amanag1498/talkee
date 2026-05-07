@@ -713,6 +713,7 @@ class _EntryCatalogArt extends StatelessWidget {
           explicitType: assetType,
           width: size * .62,
           height: size * .62,
+          enableAudio: false,
           fallback: Icon(
             Icons.auto_awesome_rounded,
             color: tokens.textPrimary,

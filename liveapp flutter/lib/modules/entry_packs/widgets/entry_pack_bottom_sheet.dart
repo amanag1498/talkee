@@ -669,6 +669,7 @@ class _EntryPackArt extends StatelessWidget {
           explicitType: assetType,
           width: size * .6,
           height: size * .6,
+          enableAudio: false,
           fallback: Icon(
             Icons.auto_awesome_rounded,
             color: tokens.textPrimary,

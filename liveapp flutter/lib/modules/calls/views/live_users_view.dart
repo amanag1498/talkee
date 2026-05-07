@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
 import '../../../app/theme/brand.dart';
@@ -406,6 +407,9 @@ class _LiveHostCard extends StatelessWidget {
     );
     final avatarUrl = (user['avatar_url'] ?? '').toString();
     final frameUrl = profileFrameAssetUrlFromPayload(user);
+    debugPrint(
+      '[live-users][render] user=${user['id']} avatar=$avatarUrl frame=$frameUrl',
+    );
     final agency = Map<String, dynamic>.from(
       user['agency'] as Map? ?? const {},
     );
@@ -434,11 +438,16 @@ class _LiveHostCard extends StatelessWidget {
                   InkWell(
                     onTap: () => _openProfileCard(context),
                     borderRadius: BorderRadius.circular(999),
-                    child: FramedAvatar(
-                      avatarUrl: avatarUrl,
-                      frameUrl: frameUrl,
-                      size: (compact ? 22 : 24) * 2,
-                      label: (user['name'] ?? '?').toString(),
+                    child: Padding(
+                      padding: const EdgeInsets.all(2),
+                      child: FramedAvatar(
+                        avatarUrl: avatarUrl,
+                        frameUrl: frameUrl,
+                        size: compact ? 54 : 60,
+                        avatarInset: 0.07,
+                        frameScale: 1.28,
+                        label: (user['name'] ?? '?').toString(),
+                      ),
                     ),
                   ),
                   SizedBox(width: compact ? 10 : 12),
