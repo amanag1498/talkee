@@ -95,23 +95,19 @@ class HostEarningsReportService
 
         $callSummary = [
             'audio_minutes' => (int) $callRows->where('type', 'audio')->sum('billable_minutes'),
-            'audio_earnings' => (int) $callRows->where('type', 'audio')->sum('host_earning'),
+            'audio_earnings' => (int) $callRows->where('type', 'audio')->sum('total_coins_charged'),
             'video_minutes' => (int) $callRows->where('type', 'video')->sum('billable_minutes'),
-            'video_earnings' => (int) $callRows->where('type', 'video')->sum('host_earning'),
+            'video_earnings' => (int) $callRows->where('type', 'video')->sum('total_coins_charged'),
         ];
 
         $audioGiftCoins = 0;
-        $audioGiftEarnings = 0;
         $videoGiftCoins = 0;
-        $videoGiftEarnings = 0;
         foreach ($giftRows as $row) {
             $roomType = strtolower((string) optional($row->room)->room_type);
             if ($roomType === 'audio') {
                 $audioGiftCoins += (int) $row->total_coins;
-                $audioGiftEarnings += (int) $row->host_payout_coins;
             } else {
                 $videoGiftCoins += (int) $row->total_coins;
-                $videoGiftEarnings += (int) $row->host_payout_coins;
             }
         }
 
@@ -134,9 +130,6 @@ class HostEarningsReportService
             }
         }
 
-        $hostPct = (float) ($host->payout_percentage ?? 0);
-        $pkEarnings = (int) floor(($pkCoins * $hostPct) / 100);
-
         return [
             'label' => $label,
             'from' => $from->toIso8601String(),
@@ -148,15 +141,15 @@ class HostEarningsReportService
                 'total_room_gifts_coins' => $audioGiftCoins + $videoGiftCoins,
                 'audio_room_gifts_coins' => $audioGiftCoins,
                 'video_room_gifts_coins' => $videoGiftCoins,
-                'audio_room_gift_earnings' => $audioGiftEarnings,
-                'video_room_gift_earnings' => $videoGiftEarnings,
+                'audio_room_gift_earnings' => $audioGiftCoins,
+                'video_room_gift_earnings' => $videoGiftCoins,
                 'audio_call_minutes' => $callSummary['audio_minutes'],
                 'audio_call_earnings' => $callSummary['audio_earnings'],
                 'video_call_minutes' => $callSummary['video_minutes'],
                 'video_call_earnings' => $callSummary['video_earnings'],
                 'pk_room_count' => $pkBattles->count(),
                 'pk_gift_coins' => $pkCoins,
-                'pk_earnings' => $pkEarnings,
+                'pk_earnings' => $pkCoins,
             ],
         ];
     }

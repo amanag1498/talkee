@@ -217,8 +217,8 @@ class ProfileAndApplicationsApiTest extends TestCase
         $this->getJson('/api/profile/host-earnings-report')
             ->assertOk()
             ->assertJsonPath('data.current_week.summary.audio_call_minutes', 3)
-            ->assertJsonPath('data.current_week.summary.audio_call_earnings', 36)
+            ->assertJsonPath('data.current_week.summary.audio_call_earnings', 60)
             ->assertJsonPath('data.current_week.summary.video_call_minutes', 4)
-            ->assertJsonPath('data.current_week.summary.video_call_earnings', 48);
+            ->assertJsonPath('data.current_week.summary.video_call_earnings', 80);
     }
 }

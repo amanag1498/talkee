@@ -661,7 +661,7 @@ class _ProfilePageState extends State<ProfilePage>
                     icon: Icons.mic_rounded,
                     title: 'Audio Calls',
                     value:
-                        '${summary.audioCallMinutes} min • ${NumberFormat.compact().format(summary.audioCallEarnings)}',
+                        '${summary.audioCallMinutes} min • ${NumberFormat.compact().format(summary.audioCallEarnings)} coins',
                   ),
                 ),
               ],
@@ -674,7 +674,7 @@ class _ProfilePageState extends State<ProfilePage>
                     icon: Icons.video_camera_front_rounded,
                     title: 'Video Calls',
                     value:
-                        '${summary.videoCallMinutes} min • ${NumberFormat.compact().format(summary.videoCallEarnings)}',
+                        '${summary.videoCallMinutes} min • ${NumberFormat.compact().format(summary.videoCallEarnings)} coins',
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -683,7 +683,7 @@ class _ProfilePageState extends State<ProfilePage>
                     icon: Icons.local_fire_department_rounded,
                     title: 'PK Rooms',
                     value:
-                        '${summary.pkRoomCount} • ${NumberFormat.compact().format(summary.pkEarnings)}',
+                        '${summary.pkRoomCount} • ${NumberFormat.compact().format(summary.pkEarnings)} coins',
                   ),
                 ),
               ],
@@ -708,20 +708,20 @@ class _ProfilePageState extends State<ProfilePage>
               value: '${NumberFormat.compact().format(summary.pkGiftCoins)} coins',
             ),
             _HostReportDetailLine(
-              label: 'Audio call earning',
-              value: NumberFormat.compact().format(summary.audioCallEarnings),
+              label: 'Audio call coins',
+              value: '${NumberFormat.compact().format(summary.audioCallEarnings)} coins',
             ),
             _HostReportDetailLine(
-              label: 'Video call earning',
-              value: NumberFormat.compact().format(summary.videoCallEarnings),
+              label: 'Video call coins',
+              value: '${NumberFormat.compact().format(summary.videoCallEarnings)} coins',
             ),
             _HostReportDetailLine(
-              label: 'Audio room gift earning',
-              value: NumberFormat.compact().format(summary.audioRoomGiftEarnings),
+              label: 'Audio room total coins',
+              value: '${NumberFormat.compact().format(summary.audioRoomGiftEarnings)} coins',
             ),
             _HostReportDetailLine(
-              label: 'Video room gift earning',
-              value: NumberFormat.compact().format(summary.videoRoomGiftEarnings),
+              label: 'Video room total coins',
+              value: '${NumberFormat.compact().format(summary.videoRoomGiftEarnings)} coins',
             ),
           ],
         ],
