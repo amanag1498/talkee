@@ -1060,8 +1060,7 @@ class _GiftAnimationSpriteState extends State<_GiftAnimationSprite>
     PremiumThemeTokens senderTheme,
     PremiumThemeTokens receiverTheme,
   ) {
-    final alignment = _alignmentForRect(widget.stageCenterRect, context);
-    final size = math.min(widget.stageCenterRect.width * .86, 360.0);
+    final screenSize = MediaQuery.sizeOf(context);
     final reveal = Curves.easeOutCubic.transform((t * 1.02).clamp(0.0, 1.0));
     final glowOpacity = (.58 * Curves.easeOut.transform(t.clamp(0.0, 1.0)));
     return Stack(
@@ -1131,19 +1130,21 @@ class _GiftAnimationSpriteState extends State<_GiftAnimationSprite>
         ),
         Positioned.fill(
           child: Align(
-            alignment: alignment,
-            child: Transform.scale(
-              scale: .72 + (.28 * Curves.easeOutBack.transform(reveal)),
-              child: Transform.translate(
-                offset: Offset(0, 34 * (1 - reveal)),
+            alignment: Alignment.center,
+            child: Transform.translate(
+              offset: Offset(0, 26 * (1 - reveal)),
+              child: Transform.scale(
+                scale: .82 + (.18 * Curves.easeOutBack.transform(reveal)),
                 child: Transform.rotate(
-                  angle: math.sin(t * math.pi) * 0.012,
-                  child: _GiftAssetCard(
-                    event: event,
-                    tier: event.tier,
-                    size: size,
-                    tokens: senderTheme,
-                    showCombo: true,
+                  angle: math.sin(t * math.pi) * 0.01,
+                  child: SizedBox(
+                    width: screenSize.width,
+                    height: screenSize.height * .82,
+                    child: _LegendaryGiftHero(
+                      event: event,
+                      tokens: senderTheme,
+                      showCombo: true,
+                    ),
                   ),
                 ),
               ),
@@ -1171,6 +1172,73 @@ class _GiftAnimationSpriteState extends State<_GiftAnimationSprite>
     return Alignment(
       dx.clamp(-1.0, 1.0),
       dy.clamp(-1.0, 1.0),
+    );
+  }
+}
+
+class _LegendaryGiftHero extends StatelessWidget {
+  const _LegendaryGiftHero({
+    required this.event,
+    required this.tokens,
+    required this.showCombo,
+  });
+
+  final RoomGiftAnimationEvent event;
+  final PremiumThemeTokens tokens;
+  final bool showCombo;
+
+  @override
+  Widget build(BuildContext context) {
+    final mediaSize = MediaQuery.sizeOf(context);
+    final fallbackSize = math.min(mediaSize.width * .72, mediaSize.height * .52);
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned.fill(
+          child: RemoteMediaArt(
+            url: event.giftAssetUrl,
+            explicitType: switch (event.assetKind) {
+              RemoteMediaKind.svg => 'svg',
+              RemoteMediaKind.svga => 'svga',
+              RemoteMediaKind.gif => 'gif',
+              RemoteMediaKind.image => 'image',
+              RemoteMediaKind.unknown => event.giftType,
+            },
+            width: double.infinity,
+            height: double.infinity,
+            fit: BoxFit.contain,
+            fallback: _GiftAssetFallback(
+              label: event.giftName,
+              size: fallbackSize,
+              tokens: tokens,
+              loading: true,
+            ),
+          ),
+        ),
+        IgnorePointer(
+          child: Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  colors: [
+                    tokens.glowColor.withOpacity(.18),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (showCombo)
+          Positioned(
+            right: 20,
+            top: 20,
+            child: _ComboBadge(
+              count: event.comboCount,
+              tokens: tokens,
+            ),
+          ),
+      ],
     );
   }
 }

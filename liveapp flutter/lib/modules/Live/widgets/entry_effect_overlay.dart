@@ -371,11 +371,10 @@ class _FullscreenEntryEffect extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = _entryTokens();
     final fade =
         progress > .84 ? 1 - ((progress - .84) / .16).clamp(0.0, 1.0) : 1.0;
-    final scale = .92 + (math.min(progress, .6) / .6) * .16;
-    final rotation = (1 - progress) * .06;
+    final scale = .96 + (math.min(progress, .6) / .6) * .04;
+    final mediaSize = MediaQuery.sizeOf(context);
 
     return Stack(
       children: [
@@ -385,81 +384,22 @@ class _FullscreenEntryEffect extends StatelessWidget {
             child: const ColoredBox(color: Colors.black),
           ),
         ),
-        Center(
+        Positioned.fill(
           child: Opacity(
             opacity: fade.clamp(0.0, 1.0),
-            child: Transform.rotate(
-              angle: rotation,
-              child: Transform.scale(
-                scale: scale,
-                child: Container(
-                  width: 320,
-                  padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(32),
-                    gradient: LinearGradient(
-                      colors: [
-                        tokens.cardGradient.first,
-                        tokens.primaryButtonGradient.last.withValues(
-                          alpha: .88,
-                        ),
-                        tokens.backgroundGradient.first,
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    border: Border.all(
-                      color: tokens.borderColor.withOpacity(.28),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: tokens.glowColor.withOpacity(
-                          .18 + (pulse * .16),
-                        ),
-                        blurRadius: 32 + (pulse * 12),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'PREMIUM ENTRY',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(.72),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      _EffectArt(
-                        assetUrl: event.svgUrl,
-                        assetType: event.assetType,
-                        size: 160,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        event.userName,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        event.entryPackName,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(.8),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+            child: Transform.scale(
+              scale: scale,
+              child: RemoteMediaArt(
+                url: event.svgUrl,
+                explicitType: event.assetType,
+                width: mediaSize.width,
+                height: mediaSize.height,
+                fit: BoxFit.cover,
+                fallback: _EffectArt(
+                  assetUrl: event.svgUrl,
+                  assetType: event.assetType,
+                  size: math.max(mediaSize.width, mediaSize.height),
+                )._fallback(math.max(mediaSize.width, mediaSize.height)),
               ),
             ),
           ),
