@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Models\CallEarningLedger;
+use App\Models\CallSession;
 use App\Models\Host;
 use App\Models\LiveRoom;
 use App\Models\LiveRoomGiftEarningLedger;
@@ -43,9 +43,10 @@ class HostEarningsReportService
 
     private function buildPeriodPayload(Host $host, Carbon $from, Carbon $to, string $label): array
     {
-        $callRows = CallEarningLedger::query()
+        $callRows = CallSession::query()
             ->where('host_id', $host->id)
-            ->whereBetween('created_at', [$from, $to])
+            ->whereNotNull('ended_at')
+            ->whereBetween('ended_at', [$from, $to])
             ->get();
 
         $giftRows = LiveRoomGiftEarningLedger::query()

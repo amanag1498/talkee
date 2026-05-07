@@ -86,6 +86,7 @@ class ProfileController extends GetxController {
     try {
       final data = await api.fetchHostEarningsReport();
       if (isClosed) return;
+      _debugHostReport(data);
       hostReport.value = data;
     } catch (e) {
       if (!isClosed) {
@@ -241,5 +242,35 @@ class ProfileController extends GetxController {
     final text = error.toString().replaceFirst('Exception: ', '');
     debugPrint('[profile] $text');
     return text;
+  }
+
+  void _debugHostReport(HostEarningsReportDto data) {
+    final today = data.today.summary;
+    final currentWeek = data.currentWeek.summary;
+    final lastWeek = data.lastWeek.summary;
+    debugPrint(
+      '[profile][host-report] '
+      'today={audio_call_minutes:${today.audioCallMinutes}, '
+      'audio_call_earnings:${today.audioCallEarnings}, '
+      'video_call_minutes:${today.videoCallMinutes}, '
+      'video_call_earnings:${today.videoCallEarnings}, '
+      'audio_room_gift_coins:${today.audioRoomGiftsCoins}, '
+      'video_room_gift_coins:${today.videoRoomGiftsCoins}, '
+      'pk_gift_coins:${today.pkGiftCoins}} '
+      'current_week={audio_call_minutes:${currentWeek.audioCallMinutes}, '
+      'audio_call_earnings:${currentWeek.audioCallEarnings}, '
+      'video_call_minutes:${currentWeek.videoCallMinutes}, '
+      'video_call_earnings:${currentWeek.videoCallEarnings}, '
+      'audio_room_gift_coins:${currentWeek.audioRoomGiftsCoins}, '
+      'video_room_gift_coins:${currentWeek.videoRoomGiftsCoins}, '
+      'pk_gift_coins:${currentWeek.pkGiftCoins}} '
+      'last_week={audio_call_minutes:${lastWeek.audioCallMinutes}, '
+      'audio_call_earnings:${lastWeek.audioCallEarnings}, '
+      'video_call_minutes:${lastWeek.videoCallMinutes}, '
+      'video_call_earnings:${lastWeek.videoCallEarnings}, '
+      'audio_room_gift_coins:${lastWeek.audioRoomGiftsCoins}, '
+      'video_room_gift_coins:${lastWeek.videoRoomGiftsCoins}, '
+      'pk_gift_coins:${lastWeek.pkGiftCoins}}',
+    );
   }
 }

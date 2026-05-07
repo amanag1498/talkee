@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Agency;
 use App\Models\AgencyRequest;
+use App\Models\CallSession;
 use App\Models\Host;
 use App\Models\HostEnrollRequest;
 use App\Models\HostRequest;
@@ -155,5 +156,69 @@ class ProfileAndApplicationsApiTest extends TestCase
 
         $this->assertStringStartsWith('avatars/avatar_', $rawAvatar);
         Storage::disk('public')->assertExists($rawAvatar);
+    }
+
+    public function test_host_earnings_report_uses_completed_call_sessions_for_call_metrics(): void
+    {
+        $hostUser = User::factory()->create();
+        $hostUser->assignRole('host');
+        $caller = User::factory()->create();
+        $caller->assignRole('user');
+
+        $host = Host::query()->create([
+            'user_id' => $hostUser->id,
+            'stage_name' => 'Nova',
+        ]);
+
+        CallSession::query()->create([
+            'caller_id' => $caller->id,
+            'receiver_id' => $hostUser->id,
+            'host_id' => $host->id,
+            'agency_id' => null,
+            'type' => 'audio',
+            'status' => 'ended',
+            'started_at' => now()->startOfWeek()->addDay()->setHour(12),
+            'accepted_at' => now()->startOfWeek()->addDay()->setHour(12),
+            'ended_at' => now()->startOfWeek()->addDay()->setHour(12)->addMinutes(3),
+            'duration_seconds' => 180,
+            'billable_minutes' => 3,
+            'coin_rate_per_minute' => 20,
+            'total_coins_charged' => 60,
+            'host_earning' => 36,
+            'agency_earning' => 0,
+            'platform_earning' => 24,
+            'end_reason' => 'completed',
+            'billing_processed_at' => now()->startOfWeek()->addDay()->setHour(12)->addMinutes(3),
+        ]);
+
+        CallSession::query()->create([
+            'caller_id' => $caller->id,
+            'receiver_id' => $hostUser->id,
+            'host_id' => $host->id,
+            'agency_id' => null,
+            'type' => 'video',
+            'status' => 'ended',
+            'started_at' => now()->startOfWeek()->addDays(2)->setHour(15),
+            'accepted_at' => now()->startOfWeek()->addDays(2)->setHour(15),
+            'ended_at' => now()->startOfWeek()->addDays(2)->setHour(15)->addMinutes(4),
+            'duration_seconds' => 240,
+            'billable_minutes' => 4,
+            'coin_rate_per_minute' => 20,
+            'total_coins_charged' => 80,
+            'host_earning' => 48,
+            'agency_earning' => 0,
+            'platform_earning' => 32,
+            'end_reason' => 'completed',
+            'billing_processed_at' => now()->startOfWeek()->addDays(2)->setHour(15)->addMinutes(4),
+        ]);
+
+        Sanctum::actingAs($hostUser);
+
+        $this->getJson('/api/profile/host-earnings-report')
+            ->assertOk()
+            ->assertJsonPath('data.current_week.summary.audio_call_minutes', 3)
+            ->assertJsonPath('data.current_week.summary.audio_call_earnings', 36)
+            ->assertJsonPath('data.current_week.summary.video_call_minutes', 4)
+            ->assertJsonPath('data.current_week.summary.video_call_earnings', 48);
     }
 }

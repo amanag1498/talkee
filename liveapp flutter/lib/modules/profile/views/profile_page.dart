@@ -694,18 +694,34 @@ class _ProfilePageState extends State<ProfilePage>
               value: NumberFormat.compact().format(summary.totalRoomGiftsCoins),
             ),
             _HostReportDetailLine(
-              label: 'Audio room gifts',
+              label: 'Audio room gift coins',
               value:
-                  '${NumberFormat.compact().format(summary.audioRoomGiftsCoins)} coins • earn ${NumberFormat.compact().format(summary.audioRoomGiftEarnings)}',
+                  '${NumberFormat.compact().format(summary.audioRoomGiftsCoins)} coins',
             ),
             _HostReportDetailLine(
-              label: 'Video room gifts',
+              label: 'Video room gift coins',
               value:
-                  '${NumberFormat.compact().format(summary.videoRoomGiftsCoins)} coins • earn ${NumberFormat.compact().format(summary.videoRoomGiftEarnings)}',
+                  '${NumberFormat.compact().format(summary.videoRoomGiftsCoins)} coins',
             ),
             _HostReportDetailLine(
               label: 'PK gift coins',
-              value: NumberFormat.compact().format(summary.pkGiftCoins),
+              value: '${NumberFormat.compact().format(summary.pkGiftCoins)} coins',
+            ),
+            _HostReportDetailLine(
+              label: 'Audio call earning',
+              value: NumberFormat.compact().format(summary.audioCallEarnings),
+            ),
+            _HostReportDetailLine(
+              label: 'Video call earning',
+              value: NumberFormat.compact().format(summary.videoCallEarnings),
+            ),
+            _HostReportDetailLine(
+              label: 'Audio room gift earning',
+              value: NumberFormat.compact().format(summary.audioRoomGiftEarnings),
+            ),
+            _HostReportDetailLine(
+              label: 'Video room gift earning',
+              value: NumberFormat.compact().format(summary.videoRoomGiftEarnings),
             ),
           ],
         ],
