@@ -398,6 +398,8 @@ class LiveService {
   Future<Map<String, dynamic>> blockUser({
     required int userId,
     String? reason,
+    String? roomId,
+    String? roomType,
   }) async {
     try {
       final res = await api.post<Map<String, dynamic>>(
@@ -405,6 +407,9 @@ class LiveService {
         data: {
           'user_id': userId,
           if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+          if (roomId != null && roomId.trim().isNotEmpty) 'room_id': roomId.trim(),
+          if (roomType != null && roomType.trim().isNotEmpty)
+            'room_type': roomType.trim(),
         },
       );
       return _extractMapData(res.data, fallback: 'Failed to block user');

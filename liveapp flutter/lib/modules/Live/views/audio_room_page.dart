@@ -2772,7 +2772,12 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     );
     if (reason == null) return;
     try {
-      await widget.live.blockUser(userId: userId, reason: reason);
+      await widget.live.blockUser(
+        userId: userId,
+        reason: reason,
+        roomId: widget.room.roomId,
+        roomType: widget.room.roomType,
+      );
       if (!mounted) return;
       _appendSystemChatMessage('$name was blocked by host');
       Get.snackbar(

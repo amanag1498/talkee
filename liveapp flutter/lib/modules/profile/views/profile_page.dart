@@ -579,6 +579,12 @@ class _ProfilePageState extends State<ProfilePage>
       _HostReportRange.lastWeek => report?.lastWeek,
     };
     final summary = period?.summary;
+    final grandTotalCoins =
+        summary == null
+            ? 0
+            : summary.totalGiftedCoins +
+                summary.audioCallEarnings +
+                summary.videoCallEarnings;
 
     return _GlassSection(
       title: 'Earnings Report',
@@ -690,10 +696,6 @@ class _ProfilePageState extends State<ProfilePage>
             ),
             const SizedBox(height: 14),
             _HostReportDetailLine(
-              label: 'Room gift coins',
-              value: NumberFormat.compact().format(summary.totalRoomGiftsCoins),
-            ),
-            _HostReportDetailLine(
               label: 'Audio room gift coins',
               value:
                   '${NumberFormat.compact().format(summary.audioRoomGiftsCoins)} coins',
@@ -708,20 +710,16 @@ class _ProfilePageState extends State<ProfilePage>
               value: '${NumberFormat.compact().format(summary.pkGiftCoins)} coins',
             ),
             _HostReportDetailLine(
-              label: 'Audio call coins',
+              label: 'Audio call earning',
               value: '${NumberFormat.compact().format(summary.audioCallEarnings)} coins',
             ),
             _HostReportDetailLine(
-              label: 'Video call coins',
+              label: 'Video call earning',
               value: '${NumberFormat.compact().format(summary.videoCallEarnings)} coins',
             ),
             _HostReportDetailLine(
-              label: 'Audio room total coins',
-              value: '${NumberFormat.compact().format(summary.audioRoomGiftEarnings)} coins',
-            ),
-            _HostReportDetailLine(
-              label: 'Video room total coins',
-              value: '${NumberFormat.compact().format(summary.videoRoomGiftEarnings)} coins',
+              label: 'Grand total',
+              value: '${NumberFormat.compact().format(grandTotalCoins)} coins',
             ),
           ],
         ],
