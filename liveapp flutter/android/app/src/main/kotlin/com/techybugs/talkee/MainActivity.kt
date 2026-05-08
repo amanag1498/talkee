@@ -1,9 +1,9 @@
-package com.example.liveapp
+package com.techybugs.talkee
 
 import android.os.Bundle
-import io.flutter.embedding.android.FlutterActivity
 import android.provider.Settings
 import android.view.WindowManager
+import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
@@ -33,6 +33,7 @@ class MainActivity : FlutterActivity() {
                             result.error("DEVICE_ID_ERROR", e.message, null)
                         }
                     }
+
                     else -> result.notImplemented()
                 }
             }

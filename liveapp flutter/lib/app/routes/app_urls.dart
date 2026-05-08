@@ -34,7 +34,11 @@ class AppUrls {
   static String get wsCalls => '$socketOrigin/calls';
   static String get privacyPolicyUrl => '$websiteOrigin/privacy-policy';
   static String get termsOfServiceUrl => '$websiteOrigin/terms-of-service';
+  static String get accountDeletionUrl => '$websiteOrigin/account-deletion';
   static String get supportUrl => websiteOrigin;
+  static const String supportEmail = 'admin@talkee.in';
+  static String get deactivateAccountMailto =>
+      'mailto:$supportEmail?subject=${Uri.encodeComponent('Talkee account deactivation request')}';
 
   static String _buildOrigin(String scheme, String host, int port) {
     final normalizedScheme = scheme.trim().toLowerCase();

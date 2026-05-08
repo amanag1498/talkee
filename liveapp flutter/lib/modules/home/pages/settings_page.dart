@@ -321,6 +321,13 @@ class _SettingsPageState extends State<SettingsPage>
                       subtitle: 'Get assistance if something is wrong',
                       onTap: () => _openExternal(AppUrls.supportUrl),
                     ),
+                    _PremiumSettingTile(
+                      icon: Icons.delete_forever_rounded,
+                      title: 'Account Deletion',
+                      subtitle: 'Open the public account deletion request page',
+                      tint: const Color(0xFFE45C30),
+                      onTap: () => _openExternal(AppUrls.accountDeletionUrl),
+                    ),
                   ],
                 ),
               ),
@@ -331,6 +338,14 @@ class _SettingsPageState extends State<SettingsPage>
                   title: 'Session',
                   subtitle: 'Account access on this device',
                   children: [
+                    _PremiumSettingTile(
+                      icon: Icons.person_off_rounded,
+                      title: 'Deactivate Account',
+                      subtitle:
+                          'Request deactivation without permanently deleting your Talkee account',
+                      tint: const Color(0xFFFF8A3D),
+                      onTap: _confirmDeactivateAccount,
+                    ),
                     _PremiumSettingTile(
                       icon: Icons.logout_rounded,
                       title: 'Logout',
@@ -352,6 +367,149 @@ class _SettingsPageState extends State<SettingsPage>
   static Future<void> _openExternal(String raw) async {
     final uri = Uri.parse(raw);
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _confirmDeactivateAccount() async {
+    final tokens = _settingsTokens();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withOpacity(.55),
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  tokens.cardGradient.first,
+                  tokens.cardGradient.last,
+                ],
+              ),
+              border: Border.all(color: tokens.borderColor),
+              boxShadow: [
+                BoxShadow(
+                  color: tokens.glowColor.withOpacity(.16),
+                  blurRadius: 24,
+                  offset: const Offset(0, 14),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFFFF8A3D).withOpacity(.14),
+                          border: Border.all(
+                            color: const Color(0xFFFF8A3D).withOpacity(.32),
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.person_off_rounded,
+                          color: Color(0xFFFF8A3D),
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Deactivate account?',
+                          style: TextStyle(
+                            color: tokens.textPrimary,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 20,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'This sends you to support so you can request account deactivation. Your account is not permanently deleted by this action.',
+                    style: TextStyle(
+                      color: tokens.textSecondary,
+                      fontWeight: FontWeight.w600,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Support email: ${AppUrls.supportEmail}',
+                    style: TextStyle(
+                      color: tokens.textSecondary.withOpacity(.9),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: tokens.textSecondary,
+                            side: BorderSide(color: tokens.borderColor),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          onPressed: () => Navigator.of(dialogContext).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            gradient: const LinearGradient(
+                              colors: [
+                                Color(0xFFFF8A3D),
+                                Color(0xFFE45C30),
+                              ],
+                            ),
+                          ),
+                          child: FilledButton(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              shadowColor: Colors.transparent,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            onPressed: () => Navigator.of(dialogContext).pop(true),
+                            child: const Text('Continue'),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (confirmed == true) {
+      await _openExternal(AppUrls.deactivateAccountMailto);
+    }
   }
 
   Future<void> _confirmLogout(AuthService auth) async {
