@@ -27,10 +27,14 @@ class AppUrls {
   static String get apiOrigin => _buildOrigin(apiScheme, apiHost, apiPort);
   static String get socketOrigin =>
       _buildOrigin(socketScheme, socketHost, wsPort);
+  static String get websiteOrigin => apiOrigin;
   static String get apiBase => '$apiOrigin/api';
   static String get wsPresence => '$socketOrigin/presence';
   static String get wsRooms => '$socketOrigin/rooms';
   static String get wsCalls => '$socketOrigin/calls';
+  static String get privacyPolicyUrl => '$websiteOrigin/privacy-policy';
+  static String get termsOfServiceUrl => '$websiteOrigin/terms-of-service';
+  static String get supportUrl => websiteOrigin;
 
   static String _buildOrigin(String scheme, String host, int port) {
     final normalizedScheme = scheme.trim().toLowerCase();

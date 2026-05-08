@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../banners/models/banner_item.dart';
 import '../../banners/services/banner_service.dart';
+import '../../../app/routes/app_urls.dart';
 import '../../../app/routes/app_routes.dart';
 import '../../../app/widgets/framed_avatar.dart';
 import '../../../app/widgets/haptics.dart';
@@ -306,19 +307,19 @@ class _SettingsPageState extends State<SettingsPage>
                       icon: Icons.privacy_tip_rounded,
                       title: 'Privacy Policy',
                       subtitle: 'Read how Talkee handles your data',
-                      onTap: () => _openExternal('https://example.com/privacy'),
+                      onTap: () => _openExternal(AppUrls.privacyPolicyUrl),
                     ),
                     _PremiumSettingTile(
                       icon: Icons.article_rounded,
                       title: 'Terms & Conditions',
                       subtitle: 'Review the service terms',
-                      onTap: () => _openExternal('https://example.com/terms'),
+                      onTap: () => _openExternal(AppUrls.termsOfServiceUrl),
                     ),
                     _PremiumSettingTile(
                       icon: Icons.support_agent_rounded,
                       title: 'Help / Support',
                       subtitle: 'Get assistance if something is wrong',
-                      onTap: () => _openExternal('https://example.com/help'),
+                      onTap: () => _openExternal(AppUrls.supportUrl),
                     ),
                   ],
                 ),

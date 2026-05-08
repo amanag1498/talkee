@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../app/routes/app_urls.dart';
 import '../../../app/theme/brand.dart'; // talkeeDarkTheme(), kTalkeePrimary, etc.
 import '../../../app/widgets/animated_background.dart';
 import '../../../app/widgets/entrance_fader.dart';
@@ -225,7 +226,7 @@ class _LoginDarkOnly extends GetView<AuthController> {
                                           color: tokens.textPrimary,
                                         ),
                                         recognizer: TapGestureRecognizer()
-                                          ..onTap = () => openUrl('https://example.com/terms'),
+                                          ..onTap = () => openUrl(AppUrls.termsOfServiceUrl),
                                       ),
                                       const TextSpan(text: ' & '),
                                       TextSpan(
@@ -236,7 +237,7 @@ class _LoginDarkOnly extends GetView<AuthController> {
                                           color: tokens.textPrimary,
                                         ),
                                         recognizer: TapGestureRecognizer()
-                                          ..onTap = () => openUrl('https://example.com/privacy'),
+                                          ..onTap = () => openUrl(AppUrls.privacyPolicyUrl),
                                       ),
                                       const TextSpan(text: '.'),
                                     ],
@@ -244,7 +245,7 @@ class _LoginDarkOnly extends GetView<AuthController> {
                                 ),
                                 const SizedBox(height: 10),
                                 TextButton(
-                                  onPressed: () => openUrl('https://example.com/help'),
+                                  onPressed: () => openUrl(AppUrls.supportUrl),
                                   style: TextButton.styleFrom(
                                     foregroundColor: tokens.textSecondary.withOpacity(.88),
                                     textStyle: theme.textTheme.labelMedium?.copyWith(
