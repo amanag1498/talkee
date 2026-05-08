@@ -4,9 +4,11 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 
 import '../../../app/theme/brand.dart';
 import '../../../services/app_settings_service.dart';
+import '../../wallet/services/wallet_api.dart';
 import '../models/subscription_plan_dto.dart';
 
 PremiumThemeTokens _choosePlanTokens() => getPremiumThemeTokens(
@@ -46,6 +48,7 @@ class _ChoosePlanSheetState extends State<ChoosePlanSheet>
   late final AnimationController _ctaPulse;   // CTA micro pulse
 
   int? _selectedId;
+  int? _walletBalanceCoins;
 
   @override
   void initState() {
@@ -56,6 +59,17 @@ class _ChoosePlanSheetState extends State<ChoosePlanSheet>
     _shineCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 5))..repeat();
     _ctaPulse  = AnimationController(vsync: this, duration: const Duration(milliseconds: 1300))
       ..repeat(reverse: true);
+    _loadWalletBalance();
+  }
+
+  Future<void> _loadWalletBalance() async {
+    try {
+      final summary = await Get.find<WalletApi>().fetchSummary();
+      if (!mounted) return;
+      setState(() => _walletBalanceCoins = summary.balance);
+    } catch (_) {
+      // Balance is contextual metadata for the sheet; keep the flow working if it fails.
+    }
   }
 
   @override
@@ -146,6 +160,13 @@ class _ChoosePlanSheetState extends State<ChoosePlanSheet>
                               fontWeight: FontWeight.w600,
                             ),
                           ),
+                          if (_walletBalanceCoins != null) ...[
+                            const SizedBox(height: 12),
+                            _BalancePill(
+                              label:
+                                  '${NumberFormat.compact().format(_walletBalanceCoins)} coins available',
+                            ),
+                          ],
                           const SizedBox(height: 16),
 
                           // LIST (previous design) with premium visuals
@@ -268,6 +289,43 @@ class _Header extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _BalancePill extends StatelessWidget {
+  const _BalancePill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = _choosePlanTokens();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: tokens.chipColor.withOpacity(.82),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: tokens.borderColor.withOpacity(.9)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.account_balance_wallet_rounded,
+            size: 16,
+            color: tokens.primaryButtonGradient.first,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: tokens.textPrimary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

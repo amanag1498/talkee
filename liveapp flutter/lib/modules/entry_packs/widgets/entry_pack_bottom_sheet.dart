@@ -9,6 +9,7 @@ import '../../../app/theme/brand.dart';
 import '../../../app/widgets/remote_media_art.dart';
 import '../../../app/widgets/haptics.dart';
 import '../../../services/app_settings_service.dart';
+import '../../wallet/services/wallet_api.dart';
 import '../../wallet/widgets/recharge_bottom_sheet.dart';
 import '../models/entry_pack_dto.dart';
 import '../models/user_entry_pack_dto.dart';
@@ -28,9 +29,11 @@ class EntryPackBottomSheet extends StatefulWidget {
 
 class _EntryPackBottomSheetState extends State<EntryPackBottomSheet> {
   late final EntryPackApi _api;
+  late final WalletApi _walletApi;
   bool _loading = true;
   bool _submitting = false;
   String? _error;
+  int? _walletBalanceCoins;
   List<EntryPackDto> _packs = const <EntryPackDto>[];
   EntryPackStateDto? _state;
 
@@ -84,6 +87,7 @@ class _EntryPackBottomSheetState extends State<EntryPackBottomSheet> {
   void initState() {
     super.initState();
     _api = Get.find<EntryPackApi>();
+    _walletApi = Get.find<WalletApi>();
     if (!Get.find<AppSettingsService>().entryEffectsEnabled) {
       _loading = false;
       _error = 'Entry effects are currently unavailable.';
@@ -101,13 +105,16 @@ class _EntryPackBottomSheetState extends State<EntryPackBottomSheet> {
       final results = await Future.wait<dynamic>([
         _api.fetchPacks(),
         _api.fetchMine(),
+        _walletApi.fetchSummary(),
       ]);
       final packs = results[0] as List<EntryPackDto>;
       final state = results[1] as EntryPackStateDto;
+      final balance = (results[2] as dynamic).balance as int;
       if (!mounted) return;
       setState(() {
         _state = state;
         _packs = _mergePackState(packs, state);
+        _walletBalanceCoins = balance;
         _loading = false;
       });
     } catch (e) {
@@ -147,6 +154,9 @@ class _EntryPackBottomSheetState extends State<EntryPackBottomSheet> {
           reasonMessage:
               'You need more coins to unlock ${pack.name}. Recharge your wallet and try again.',
         );
+        if (mounted) {
+          await _load();
+        }
       } else {
         Get.snackbar(
           'Entry pack',
@@ -274,6 +284,12 @@ class _EntryPackBottomSheetState extends State<EntryPackBottomSheet> {
                         physics: const BouncingScrollPhysics(),
                         children: [
                           _EntryHeroPanel(active: active, buying: _submitting),
+                          if (_walletBalanceCoins != null) ...[
+                            const SizedBox(height: 12),
+                            _EntryWalletPill(
+                              balanceCoins: _walletBalanceCoins!,
+                            ),
+                          ],
                           const SizedBox(height: 18),
                           const _EntrySectionTitle(
                             title: 'Featured Packs',
@@ -674,6 +690,46 @@ class _EntryPackArt extends StatelessWidget {
             Icons.auto_awesome_rounded,
             color: tokens.textPrimary,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EntryWalletPill extends StatelessWidget {
+  const _EntryWalletPill({required this.balanceCoins});
+
+  final int balanceCoins;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = _entryPackTokens();
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: tokens.chipColor.withOpacity(.82),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: tokens.borderColor.withOpacity(.9)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.account_balance_wallet_rounded,
+              size: 16,
+              color: tokens.primaryButtonGradient.first,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${NumberFormat.compact().format(balanceCoins)} coins available',
+              style: TextStyle(
+                color: tokens.textPrimary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
         ),
       ),
     );

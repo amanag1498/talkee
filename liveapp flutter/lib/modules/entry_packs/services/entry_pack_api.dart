@@ -9,6 +9,25 @@ class EntryPackApi {
 
   EntryPackApi(this._api);
 
+  Never _rethrowFriendlyError(DioException e) {
+    final body = e.response?.data;
+    if (body is Map) {
+      final map = Map<String, dynamic>.from(body);
+      final error = map['error']?.toString().trim();
+      final message =
+          map['message']?.toString().trim() ??
+          map['data']?['message']?.toString().trim();
+
+      if (error != null && error.isNotEmpty) {
+        throw error;
+      }
+      if (message != null && message.isNotEmpty) {
+        throw message;
+      }
+    }
+    throw e.message ?? 'NETWORK_ERROR';
+  }
+
   Future<List<EntryPackDto>> fetchPacks() async {
     final Response<Map<String, dynamic>> response =
         await _api.get<Map<String, dynamic>>('entry-packs');
@@ -31,15 +50,23 @@ class EntryPackApi {
   }
 
   Future<void> purchase(int packId) async {
-    await _api.post<Map<String, dynamic>>(
-      'entry-packs/$packId/purchase',
-      headers: <String, String>{
-        'Idempotency-Key': 'entry-pack-$packId-${DateTime.now().millisecondsSinceEpoch}',
-      },
-    );
+    try {
+      await _api.post<Map<String, dynamic>>(
+        'entry-packs/$packId/purchase',
+        headers: <String, String>{
+          'Idempotency-Key': 'entry-pack-$packId-${DateTime.now().millisecondsSinceEpoch}',
+        },
+      );
+    } on DioException catch (e) {
+      _rethrowFriendlyError(e);
+    }
   }
 
   Future<void> activate(int packId) async {
-    await _api.post<Map<String, dynamic>>('me/entry-pack/$packId/activate');
+    try {
+      await _api.post<Map<String, dynamic>>('me/entry-pack/$packId/activate');
+    } on DioException catch (e) {
+      _rethrowFriendlyError(e);
+    }
   }
 }

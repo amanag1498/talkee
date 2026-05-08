@@ -9,6 +9,7 @@ import '../../../app/theme/brand.dart';
 import '../../../app/widgets/remote_media_art.dart';
 import '../../../app/widgets/haptics.dart';
 import '../../../services/app_settings_service.dart';
+import '../../wallet/services/wallet_api.dart';
 import '../../wallet/widgets/recharge_bottom_sheet.dart';
 import '../models/entry_pack_dto.dart';
 import '../models/user_entry_pack_dto.dart';
@@ -38,9 +39,11 @@ PremiumThemeTokens _entryCatalogTokens() => getPremiumThemeTokens(
 
 class _EntryPackCatalogPageState extends State<EntryPackCatalogPage> {
   late final EntryPackApi _api;
+  late final WalletApi _walletApi;
   bool _loading = true;
   bool _submitting = false;
   String? _error;
+  int? _walletBalanceCoins;
   List<EntryPackDto> _packs = const <EntryPackDto>[];
   EntryPackStateDto? _state;
   _EntryCatalogFilter _filter = _EntryCatalogFilter.all;
@@ -49,6 +52,7 @@ class _EntryPackCatalogPageState extends State<EntryPackCatalogPage> {
   void initState() {
     super.initState();
     _api = Get.find<EntryPackApi>();
+    _walletApi = Get.find<WalletApi>();
     if (!Get.find<AppSettingsService>().entryEffectsEnabled) {
       _loading = false;
       _error = 'Entry effects are currently unavailable.';
@@ -103,13 +107,16 @@ class _EntryPackCatalogPageState extends State<EntryPackCatalogPage> {
       final results = await Future.wait<dynamic>([
         _api.fetchPacks(),
         _api.fetchMine(),
+        _walletApi.fetchSummary(),
       ]);
       final packs = results[0] as List<EntryPackDto>;
       final state = results[1] as EntryPackStateDto;
+      final summary = results[2];
       if (!mounted) return;
       setState(() {
         _state = state;
         _packs = _mergePackState(packs, state);
+        _walletBalanceCoins = summary.balance as int;
         _loading = false;
       });
     } catch (e) {
@@ -149,6 +156,9 @@ class _EntryPackCatalogPageState extends State<EntryPackCatalogPage> {
           reasonMessage:
               'You need more coins to unlock ${pack.name}. Recharge your wallet and try again.',
         );
+        if (mounted) {
+          await _load();
+        }
       } else {
         Get.snackbar(
           'Entry pack',
@@ -281,6 +291,7 @@ class _EntryPackCatalogPageState extends State<EntryPackCatalogPage> {
                                 active: active,
                                 totalCount: _packs.length,
                                 ownedCount: ownedCount,
+                                walletBalanceCoins: _walletBalanceCoins,
                                 submitting: _submitting,
                               ),
                             ),
@@ -411,12 +422,14 @@ class _EntryCatalogHero extends StatelessWidget {
     required this.active,
     required this.totalCount,
     required this.ownedCount,
+    required this.walletBalanceCoins,
     required this.submitting,
   });
 
   final UserEntryPackDto? active;
   final int totalCount;
   final int ownedCount;
+  final int? walletBalanceCoins;
   final bool submitting;
 
   @override
@@ -476,6 +489,12 @@ class _EntryCatalogHero extends StatelessWidget {
                 icon: Icons.inventory_2_rounded,
                 label: '$ownedCount owned',
               ),
+              if (walletBalanceCoins != null)
+                _EntryCatalogPill(
+                  icon: Icons.account_balance_wallet_rounded,
+                  label:
+                      '${NumberFormat.compact().format(walletBalanceCoins)} coins',
+                ),
               if (pack != null)
                 _EntryCatalogPill(
                   icon: Icons.auto_awesome_rounded,

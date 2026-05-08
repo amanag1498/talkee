@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../../app/theme/brand.dart';
 import '../../../services/api_client.dart';
 import '../../../services/app_settings_service.dart';
+import '../../wallet/services/wallet_api.dart';
 import '../../wallet/widgets/recharge_bottom_sheet.dart';
 import '../models/subscription_plan_dto.dart';
 import '../models/user_subscription_dto.dart';
@@ -24,11 +25,13 @@ class SubscriptionsPage extends StatefulWidget {
 class _SubscriptionsPageState extends State<SubscriptionsPage>
     with SingleTickerProviderStateMixin {
   late final SubscriptionsApi _api;
+  late final WalletApi _walletApi;
   late final AnimationController _bgMotion;
 
   bool _loading = true;
   bool _buying = false;
   String? _error;
+  int? _walletBalanceCoins;
   List<SubscriptionPlanDto> _plans = const <SubscriptionPlanDto>[];
   List<UserSubscriptionDto> _subscriptions = const <UserSubscriptionDto>[];
 
@@ -36,6 +39,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage>
   void initState() {
     super.initState();
     _api = SubscriptionsApi(Get.find<ApiClient>());
+    _walletApi = Get.find<WalletApi>();
     _bgMotion = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 18),
@@ -64,12 +68,14 @@ class _SubscriptionsPageState extends State<SubscriptionsPage>
       final results = await Future.wait([
         _api.fetchPlans(),
         _api.mySubscriptions(),
+        _walletApi.fetchSummary(),
       ]);
 
       if (!mounted) return;
       setState(() {
         _plans = results[0] as List<SubscriptionPlanDto>;
         _subscriptions = results[1] as List<UserSubscriptionDto>;
+        _walletBalanceCoins = (results[2] as dynamic).balance as int;
       });
     } catch (e) {
       if (!mounted) return;
@@ -127,6 +133,9 @@ class _SubscriptionsPageState extends State<SubscriptionsPage>
           reasonMessage:
               'You need more coins to buy ${plan.name}. Recharge your wallet and try again.',
         );
+        if (mounted) {
+          await _load();
+        }
       }
       ScaffoldMessenger.of(
         context,
@@ -207,6 +216,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage>
                 children: [
                 _HeroPanel(
                   active: active,
+                  walletBalanceCoins: _walletBalanceCoins,
                   buying: _buying,
                   hasPlans: activePlans.isNotEmpty,
                   onChoosePlan: _openPlanSheet,
@@ -269,12 +279,14 @@ class _SubscriptionsPageState extends State<SubscriptionsPage>
 
 class _HeroPanel extends StatelessWidget {
   final UserSubscriptionDto? active;
+  final int? walletBalanceCoins;
   final bool buying;
   final bool hasPlans;
   final VoidCallback onChoosePlan;
 
   const _HeroPanel({
     required this.active,
+    required this.walletBalanceCoins,
     required this.buying,
     required this.hasPlans,
     required this.onChoosePlan,
@@ -363,6 +375,12 @@ class _HeroPanel extends StatelessWidget {
                   icon: Icons.event_rounded,
                   label:
                       'Ends ${DateFormat.yMMMd().format(active!.endsAt!.toLocal())}',
+                ),
+              if (walletBalanceCoins != null)
+                _HeroPill(
+                  icon: Icons.account_balance_wallet_rounded,
+                  label:
+                      '${NumberFormat.compact().format(walletBalanceCoins)} coins',
                 ),
             ],
           ),
