@@ -48,6 +48,8 @@ use App\Http\Controllers\Agency\ProfileController as AgencyProfileController;
 
 
 Route::view('/', 'welcome')->name('home');
+Route::view('/privacy-policy', 'privacy-policy')->name('privacy-policy');
+Route::view('/terms-of-service', 'terms-of-service')->name('terms-of-service');
 Route::get('/media/avatar/{path}', [MediaController::class, 'avatar'])
     ->where('path', '.*')
     ->name('media.avatar');
