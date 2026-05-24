@@ -687,13 +687,13 @@ class _LiveBannerStripState extends State<_LiveBannerStrip>
     final tokens = widget.tokens;
     if (_loading && banners.isEmpty) {
       return const Padding(
-        padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+        padding: EdgeInsets.fromLTRB(8, 8, 8, 4),
         child: SizedBox(height: 132),
       );
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
       child: SizedBox(
         height: 104,
         child: Stack(

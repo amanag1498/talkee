@@ -69,15 +69,37 @@ class BannerController extends Controller
             $banners = $ordered(Banner::query()->visible())->get();
         }
 
-        // Normalize image URL for mobile clients: always return absolute URL.
+        // Normalize image URL for mobile clients: always return a usable absolute URL.
         return $banners->map(function ($banner) use ($request) {
-            $img = (string) ($banner->image_url ?? '');
-            if ($img !== '' && !Str::startsWith($img, ['http://', 'https://'])) {
-                $path = Str::startsWith($img, '/') ? $img : '/' . ltrim($img, '/');
-                $banner->image_url = rtrim($request->getSchemeAndHttpHost(), '/') . $path;
-            }
+            $banner->image_url = $this->normalizeImageUrl(
+                (string) ($banner->image_url ?? ''),
+                $request
+            );
             return $banner;
         });
+    }
+
+    private function normalizeImageUrl(string $value, Request $request): string
+    {
+        $img = trim($value);
+        if ($img === '') {
+            return '';
+        }
+
+        $hostRoot = rtrim(config('app.url') ?: $request->getSchemeAndHttpHost(), '/');
+        $path = parse_url($img, PHP_URL_PATH);
+
+        // Uploaded local banners are stored under /storage/... . Rebuild them
+        // against the current app host even if an older absolute host was saved.
+        if (is_string($path) && Str::startsWith($path, '/storage/')) {
+            return $hostRoot . $path;
+        }
+
+        if (Str::startsWith($img, ['http://', 'https://'])) {
+            return $img;
+        }
+
+        return $hostRoot . '/' . ltrim($img, '/');
     }
 
     private function normalizePlacement(string $placement): string

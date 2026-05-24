@@ -1762,42 +1762,41 @@ class _VideoCallPageState extends State<VideoCallPage>
       return actions;
     }
 
-    if (showGiftInChatFooter) {
-      final giftAction = _FooterCircleAction(
-        icon:
-            _giftBusy ? Icons.hourglass_top_rounded : Icons.redeem_rounded,
-        onTap: _giftBusy ? null : _openGiftSheet,
-        accent: const Color(0xFFFF8BC2),
-        busy: _giftBusy,
-      );
-      actions.add(
-        _pkActive
-            ? giftAction
-            : KeyedSubtree(
-              key: _giftAnchors.keyFor(GiftAnchorRegistry.giftButton),
-              child: giftAction,
-            ),
-      );
-    }
     return actions;
   }
 
-  List<Widget> _buildChatFooterActions() {
+  List<Widget> _buildChatInputActions() {
     if (_isHost || _currentRole == 'speaker' || _pkActive) {
       return const <Widget>[];
     }
 
+    const showGiftInChatFooter = true;
     final pending = _pendingRequestId != null && _requestStatus == 'pending';
     return <Widget>[
-      _FooterPillAction(
+      if (showGiftInChatFooter)
+        KeyedSubtree(
+          key: _giftAnchors.keyFor(GiftAnchorRegistry.giftButton),
+          child: _ResponsiveChatInputAction(
+            icon:
+                _giftBusy ? Icons.hourglass_top_rounded : Icons.redeem_rounded,
+            label: 'Gift',
+            onTap: _giftBusy ? null : _openGiftSheet,
+            accent: const Color(0xFFFF8BC2),
+            busy: _giftBusy,
+            iconOnlyBelowWidth: 430,
+          ),
+        ),
+      _ResponsiveChatInputAction(
         icon: pending ? Icons.close_rounded : Icons.video_call_rounded,
         label: pending ? 'Cancel Join Call Request' : 'Join Call',
+        compactLabel: pending ? 'Cancel Join' : 'Join',
         onTap:
             _seatActionBusy
                 ? null
                 : (pending ? _cancelJoinRequest : _requestToJoinAsSpeaker),
         accent: const Color(0xFF5D8BFF),
         busy: _seatActionBusy,
+        iconOnlyBelowWidth: 350,
       ),
     ];
   }
@@ -4664,8 +4663,7 @@ class _VideoCallPageState extends State<VideoCallPage>
                   showEmptyPrompt: false,
                   stickMessagesToBottom: false,
                   compactBubbles: _pkCapable && _pkActive,
-                  footerActions: _buildChatFooterActions(),
-                  trailingActions: _buildChatTrailingActions(),
+                  inputActions: _buildChatInputActions(),
                   showSendButton: false,
                   onSend: _sendChatMessage,
                   onMessageSenderTap: (message) {
@@ -5480,6 +5478,121 @@ class _FooterPillAction extends StatelessWidget {
                 )
                 : Icon(icon, size: 16),
         label: Text(label),
+      ),
+    );
+  }
+}
+
+class _ResponsiveChatInputAction extends StatelessWidget {
+  const _ResponsiveChatInputAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.compactLabel,
+    this.busy = false,
+    this.accent,
+    this.iconOnlyBelowWidth = 0,
+  });
+
+  final IconData icon;
+  final String label;
+  final String? compactLabel;
+  final VoidCallback? onTap;
+  final bool busy;
+  final Color? accent;
+  final double iconOnlyBelowWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    final screenWidth = MediaQuery.of(context).size.width;
+    final iconOnly = iconOnlyBelowWidth > 0 && screenWidth <= iconOnlyBelowWidth;
+    final resolvedLabel =
+        !iconOnly && compactLabel != null && screenWidth < 390
+            ? compactLabel!
+            : label;
+    final tint = accent ?? tokens.primaryButtonGradient.first;
+    final enabled = onTap != null && !busy;
+    const controlSize = 46.0;
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 6),
+      child: Tooltip(
+        message: label,
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(999),
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 180),
+            opacity: enabled ? 1 : .46,
+            child: Container(
+              width: iconOnly ? controlSize : null,
+              height: iconOnly ? controlSize : null,
+              padding:
+                  iconOnly
+                      ? EdgeInsets.zero
+                      : const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: tokens.chipColor.withOpacity(.82),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: tokens.borderColor.withOpacity(.26)),
+                boxShadow: [
+                  BoxShadow(
+                    color: tint.withOpacity(.14),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child:
+                  iconOnly
+                      ? Center(
+                        child:
+                            busy
+                                ? SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      tokens.textPrimary,
+                                    ),
+                                  ),
+                                )
+                                : Icon(icon, size: 18, color: tint),
+                      )
+                      : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (busy)
+                            SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  tokens.textPrimary,
+                                ),
+                              ),
+                            )
+                          else
+                            Icon(icon, size: 15, color: tint),
+                          const SizedBox(width: 6),
+                          Text(
+                            resolvedLabel,
+                            style: TextStyle(
+                              color: tokens.textPrimary,
+                              fontSize: 11.6,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+            ),
+          ),
+        ),
       ),
     );
   }

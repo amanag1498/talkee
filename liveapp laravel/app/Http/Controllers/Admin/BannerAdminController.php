@@ -85,12 +85,16 @@ class BannerAdminController extends Controller
         }
 
         $banners->setCollection(
-            $banners->getCollection()->map(function ($banner) use ($pageMetrics) {
+            $banners->getCollection()->map(function ($banner) use ($pageMetrics, $request) {
                 $m = $pageMetrics->get($banner->id);
                 $banner->unique_impressions_count = (int) ($m->unique_impressions_count ?? 0);
                 $banner->unique_clicks_count = (int) ($m->unique_clicks_count ?? 0);
                 $banner->last_impression_at = $m->last_impression_at ?? null;
                 $banner->last_click_at = $m->last_click_at ?? null;
+                $banner->preview_url = $this->normalizePreviewUrl(
+                    (string) ($banner->image_url ?? ''),
+                    $request
+                );
                 return $banner;
             })
         );
@@ -143,10 +147,10 @@ class BannerAdminController extends Controller
 
     public function edit(Banner $banner)
     {
-        $img = (string) ($banner->image_url ?? '');
-        $previewUrl = $img === ''
-            ? ''
-            : (Str::startsWith($img, ['http://', 'https://', '/']) ? $img : Storage::url($img));
+        $previewUrl = $this->normalizePreviewUrl(
+            (string) ($banner->image_url ?? ''),
+            request()
+        );
 
         return view('admin.banners.edit', [
             'banner' => $banner,
@@ -223,6 +227,31 @@ class BannerAdminController extends Controller
         }
 
         return (string) ($banner?->image_url ?? '');
+    }
+
+    private function normalizePreviewUrl(string $value, Request $request): string
+    {
+        $img = trim($value);
+        if ($img === '') {
+            return '';
+        }
+
+        $hostRoot = rtrim(config('app.url') ?: $request->getSchemeAndHttpHost(), '/');
+        $path = parse_url($img, PHP_URL_PATH);
+
+        if (is_string($path) && Str::startsWith($path, '/storage/')) {
+            return $hostRoot . $path;
+        }
+
+        if (Str::startsWith($img, ['http://', 'https://'])) {
+            return $img;
+        }
+
+        if (Str::startsWith($img, '/')) {
+            return $hostRoot . $img;
+        }
+
+        return $hostRoot . '/' . ltrim($img, '/');
     }
 
     private function deleteLocalBannerImage(?string $url): void

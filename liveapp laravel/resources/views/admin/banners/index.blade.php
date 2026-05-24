@@ -78,10 +78,7 @@
       <tbody>
       @forelse($banners as $b)
         @php
-          $img = (string) ($b->image_url ?? '');
-          $previewUrl = $img === ''
-            ? ''
-            : (\Illuminate\Support\Str::startsWith($img, ['http://', 'https://', '/']) ? $img : \Illuminate\Support\Facades\Storage::url($img));
+          $previewUrl = (string) ($b->preview_url ?? '');
         @endphp
         <tr>
           <td>{{ $b->id }}</td>
