@@ -113,6 +113,32 @@ class RechargeOrderApiTest extends TestCase
         $this->assertSame(50, Wallet::query()->where('user_id', $user->id)->value('balance'));
     }
 
+    public function test_failed_verify_is_idempotent_for_closed_order(): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole('user');
+        Wallet::query()->updateOrCreate(['user_id' => $user->id], ['balance' => 50]);
+        Sanctum::actingAs($user);
+
+        $plan = RechargePlan::query()->firstOrFail();
+        $orderId = $this->postJson('/api/recharge/orders', ['plan_id' => $plan->id])->json('data.order_id');
+
+        $this->postJson("/api/recharge/orders/{$orderId}/verify", ['result' => 'failed'])
+            ->assertOk()
+            ->assertJsonPath('data.order.status', 'failed')
+            ->assertJsonPath('data.already_processed', false);
+
+        $this->postJson("/api/recharge/orders/{$orderId}/verify", ['result' => 'failed'])
+            ->assertOk()
+            ->assertJsonPath('data.order.status', 'failed')
+            ->assertJsonPath('data.already_processed', true);
+
+        $this->assertDatabaseMissing('wallet_transactions', [
+            'category' => 'recharge',
+        ]);
+        $this->assertSame(50, Wallet::query()->where('user_id', $user->id)->value('balance'));
+    }
+
     public function test_wallet_transactions_endpoint_includes_recharge_entries_and_filters(): void
     {
         $user = User::factory()->create();

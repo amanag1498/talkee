@@ -164,13 +164,18 @@ class RechargeOrderService
                 ];
             }
 
-            if (in_array($order->status, ['failed', 'cancelled'], true)) {
-                throw new InvalidArgumentException('Recharge order is not payable.');
-            }
-
             $result = strtolower((string) ($payload['result'] ?? 'success'));
             $gatewayPaymentId = $payload['gateway_payment_id'] ?? null;
             $gatewayResponse = $payload['gateway_response'] ?? [];
+
+            if (in_array($order->status, ['failed', 'cancelled'], true)) {
+                return [
+                    'order' => $order->fresh(),
+                    'wallet' => $wallet->fresh(),
+                    'transaction' => null,
+                    'already_processed' => true,
+                ];
+            }
 
             if (!config('services.mock_payments.enabled', true) && $order->gateway === 'mock') {
                 throw new InvalidArgumentException('Mock payments are disabled.');
