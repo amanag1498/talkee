@@ -16,7 +16,7 @@ import 'video_call_page.dart';
 
 Future<void> showLivePreflightSheet(
   BuildContext context, {
-  String initialTitle = 'Live on Talkee',
+  String initialTitle = 'Live on Talkieo',
 }) async {
   final live = Get.find<LiveService>();
   final appSettings = Get.find<AppSettingsService>();

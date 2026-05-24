@@ -143,6 +143,11 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     Get.find<AppSettingsService>().activePremiumThemeVariant,
   );
 
+  String _sheetSubtitleWithUserId(String base, int? userId) {
+    if (userId == null || userId <= 0) return base;
+    return '$base • ID: $userId';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -2462,7 +2467,10 @@ class _AudioRoomPageState extends State<AudioRoomPage>
                             final metadata = _participantMetadata(participant);
                             return _AudienceTile(
                               label: _participantLabel(participant),
-                              subtitle: 'Listening',
+                              subtitle: _sheetSubtitleWithUserId(
+                                'Listening',
+                                _joinSafeInt(metadata['user_id']),
+                              ),
                               speaking: _isParticipantSpeaking(participant),
                               avatarUrl:
                                   metadata['avatar_url']?.toString() ??
@@ -2748,7 +2756,6 @@ class _AudioRoomPageState extends State<AudioRoomPage>
         userId: userId,
       );
       if (!mounted) return;
-      _appendSystemChatMessage('$name was removed by host');
       Get.snackbar(
         'Moderation',
         '$name was removed from the room.',
@@ -2779,7 +2786,6 @@ class _AudioRoomPageState extends State<AudioRoomPage>
         roomType: widget.room.roomType,
       );
       if (!mounted) return;
-      _appendSystemChatMessage('$name was blocked by host');
       Get.snackbar(
         'Moderation',
         '$name was blocked.',
@@ -2805,7 +2811,6 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     try {
       await widget.live.unblockUser(userId: userId);
       if (!mounted) return;
-      _appendSystemChatMessage('$name was unblocked by host');
       Get.snackbar(
         'Moderation',
         '$name was unblocked.',
@@ -3078,11 +3083,19 @@ class _AudioRoomPageState extends State<AudioRoomPage>
                     : (_requestStatus == 'pending'
                         ? _cancelMicRequest
                         : _requestMic)),
-        iconOnly: true,
+        label:
+            _pkCapable && _pkActive
+                ? 'Join Call Locked'
+                : (_requestStatus == 'pending'
+                    ? 'Join Call Pending'
+                    : 'Join Call'),
+        iconOnly: false,
         tooltip:
             _pkCapable && _pkActive
-                ? 'PK Locked'
-                : (_requestStatus == 'pending' ? 'Pending' : 'Request Mic'),
+                ? 'Join Call Locked'
+                : (_requestStatus == 'pending'
+                    ? 'Join Call Pending'
+                    : 'Join Call'),
       ),
     );
     return actions;
@@ -3357,7 +3370,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     final cards = <Widget>[
       _SpeakerCard(
         name: _isHost ? 'You' : (_hostName ?? 'Host'),
-        subtitle: 'Host',
+        subtitle: _sheetSubtitleWithUserId('Host', _hostUserId),
         highlighted: true,
         speaking:
             _room?.activeSpeakers.any(
@@ -3404,7 +3417,10 @@ class _AudioRoomPageState extends State<AudioRoomPage>
       cards.add(
         _SpeakerCard(
           name: isMe ? 'You' : (speaker['name']?.toString() ?? 'Speaker'),
-          subtitle: isMe && mutedByHost ? 'Muted by host' : 'Speaker',
+          subtitle: _sheetSubtitleWithUserId(
+            isMe && mutedByHost ? 'Muted by host' : 'Speaker',
+            userId,
+          ),
           highlighted: isMe,
           speaking:
               !muted &&
@@ -6089,12 +6105,14 @@ class _ControlDock extends StatelessWidget {
                             : Icons.record_voice_over_rounded),
                 label:
                     pkLocked
-                        ? 'PK Locked'
-                        : (pending ? 'Pending' : 'Request Mic'),
+                        ? 'Join Call Locked'
+                        : (pending ? 'Join Call Pending' : 'Join Call'),
                 caption:
                     pkLocked
-                        ? 'Mic requests paused'
-                        : (pending ? 'Cancel request' : 'Join stage'),
+                        ? 'Requests paused'
+                        : (pending
+                            ? 'Tap to cancel request'
+                            : 'Request host approval'),
                 onTap:
                     pkLocked
                         ? null

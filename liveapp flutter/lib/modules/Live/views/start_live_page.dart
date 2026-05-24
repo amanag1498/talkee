@@ -94,7 +94,7 @@ class _LiveWaitingPageState extends State<LiveWaitingPage>
       final created = await live.createOrStart(
         title: (widget.initialTitle ?? '').trim().isNotEmpty
             ? widget.initialTitle!.trim()
-            : 'Live on Talkee',
+            : 'Live on Talkieo',
       );
       // // Pretty-print what we got back from the server
       // final pretty = const JsonEncoder.withIndent('  ').convert({
@@ -280,7 +280,7 @@ class _LiveWaitingPageState extends State<LiveWaitingPage>
                                   Opacity(
                                     opacity: .95,
                                     child: Text(
-                                      (room!.title ?? 'Live on Talkee'),
+                                      (room!.title ?? 'Live on Talkieo'),
                                       textAlign: TextAlign.center,
                                       style: const TextStyle(
                                         color: Colors.white,

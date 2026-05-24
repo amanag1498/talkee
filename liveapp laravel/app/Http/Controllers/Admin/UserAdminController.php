@@ -44,10 +44,14 @@ class UserAdminController extends Controller
         $q = User::query()
             ->with(['roles', 'host.agency', 'wallet', 'level']);
 
-        if ($s = $request->get('s')) {
-            $q->where(function($qq) use ($s) {
-                $qq->where('name','like',"%$s%")
-                   ->orWhere('email','like',"%$s%");
+        if ($s = trim((string) $request->get('s'))) {
+            $q->where(function ($qq) use ($s) {
+                $qq->where('name', 'like', "%{$s}%")
+                   ->orWhere('email', 'like', "%{$s}%");
+
+                if (ctype_digit($s)) {
+                    $qq->orWhere('id', (int) $s);
+                }
             });
         }
 

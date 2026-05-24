@@ -115,7 +115,7 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
     if (call['caller_name'] != null && call['caller_name'].toString().trim().isNotEmpty) {
       return call['caller_name'].toString();
     }
-    return 'Talkee User';
+    return 'Talkieo User';
   }
 
   String get remoteAvatarUrl {

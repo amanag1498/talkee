@@ -57,6 +57,7 @@ class RechargeBottomSheet extends StatefulWidget {
 }
 
 class _RechargeBottomSheetState extends State<RechargeBottomSheet> {
+  static const bool _mockRechargeEnabled = false;
   WalletSummaryDto? _summary;
   bool _loading = true;
   bool _submitting = false;
@@ -128,6 +129,19 @@ class _RechargeBottomSheetState extends State<RechargeBottomSheet> {
     try {
       final api = Get.find<WalletApi>();
       final order = await api.createRechargeOrder(plan.id);
+
+      if (!_mockRechargeEnabled) {
+        if (!mounted) return;
+        setState(() => _submitting = false);
+        Haptics.warning();
+        Get.snackbar(
+          'Recharge unavailable',
+          'Payment gateway access is hidden in this build.',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+        return;
+      }
+
       final result = await _showMockPaymentDialog(order);
 
       if (result == null) {
@@ -405,6 +419,10 @@ class _RechargeBottomSheetState extends State<RechargeBottomSheet> {
                         const SizedBox(height: 16),
                         _BalanceCard(balance: _summary?.balance ?? 0),
                         const SizedBox(height: 14),
+                        if (!_mockRechargeEnabled) ...[
+                          const _ReleaseRechargeNotice(),
+                          const SizedBox(height: 14),
+                        ],
                         //  _PaymentNotice(summary: _summary),
                         //  const SizedBox(height: 14),
                         Expanded(child: _buildBody()),
@@ -413,6 +431,7 @@ class _RechargeBottomSheetState extends State<RechargeBottomSheet> {
                           submitting: _submitting,
                           selectedPlan: _selectedPlan,
                           paymentReady: _summary?.paymentReady ?? false,
+                          mockRechargeEnabled: _mockRechargeEnabled,
                           onContinue: _startRecharge,
                         ),
                       ],
@@ -633,20 +652,28 @@ class _FooterBar extends StatelessWidget {
     required this.submitting,
     required this.selectedPlan,
     required this.paymentReady,
+    required this.mockRechargeEnabled,
     required this.onContinue,
   });
 
   final bool submitting;
   final WalletPackDto? selectedPlan;
   final bool paymentReady;
+  final bool mockRechargeEnabled;
   final VoidCallback onContinue;
 
   @override
   Widget build(BuildContext context) {
-    final enabled = !submitting && paymentReady && selectedPlan != null;
+    final enabled =
+        !submitting &&
+        paymentReady &&
+        selectedPlan != null &&
+        mockRechargeEnabled;
     final label =
         submitting
             ? 'Processing...'
+            : !mockRechargeEnabled
+            ? 'Gateway Coming Soon'
             : !paymentReady
             ? 'Payment Setup Required'
             : selectedPlan == null
@@ -690,7 +717,9 @@ class _FooterBar extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(label),
-                            if (secondaryLabel != null && paymentReady)
+                            if (secondaryLabel != null &&
+                                paymentReady &&
+                                mockRechargeEnabled)
                               Text(
                                 secondaryLabel,
                                 style: TextStyle(
@@ -703,6 +732,38 @@ class _FooterBar extends StatelessWidget {
                               ),
                           ],
                         ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReleaseRechargeNotice extends StatelessWidget {
+  const _ReleaseRechargeNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return _GlassShell(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.lock_outline_rounded,
+            color: Color(0xFFFFD36E),
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Recharge simulation is hidden until the live payment gateway is connected.',
+              style: TextStyle(
+                color: const Color(0xFFFFE2A3),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),

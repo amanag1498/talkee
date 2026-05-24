@@ -26,7 +26,7 @@ class AppRuntimeGate extends StatelessWidget {
         return const _BlockingStateScreen(
           icon: Icons.build_circle_rounded,
           eyebrow: 'Maintenance mode',
-          title: 'Talkee is temporarily unavailable.',
+          title: 'Talkieo is temporarily unavailable.',
           message:
               'The platform is under maintenance. Please try again shortly.',
         );

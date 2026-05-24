@@ -112,7 +112,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
         'active_theme_token_source': 'local',
         'android_min_version_code': 1,
         'android_min_version_name': '1.0.0',
-        'android_update_message': 'Please update Talkee to continue using the app.',
+        'android_update_message': 'Please update Talkieo to continue using the app.',
         'features': const <String, dynamic>{},
       });
       _syncRemoteThemeRegistration(payload.value);
@@ -198,7 +198,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   String get forceUpgradeMessage =>
       payload.value?.androidUpdateMessage ??
-      'Please update Talkee to continue using the app.';
+      'Please update Talkieo to continue using the app.';
 
   bool get audioRoomsEnabled =>
       payload.value?.features.audioRoomsEnabled ?? true;
@@ -290,7 +290,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       'android_min_version_code': 1,
       'android_min_version_name': '1.0.0',
       'android_update_message':
-          'Please update Talkee to continue using the app.',
+          'Please update Talkieo to continue using the app.',
       'host_goals': const <String, dynamic>{
         'followers': <int>[25, 50, 100, 250, 500, 1000, 2500],
         'weekly_live_minutes': <int>[60, 180, 300, 600, 900, 1200],
@@ -466,7 +466,7 @@ class AppSettingsPayload {
           (json['android_update_message']?.toString().trim().isNotEmpty ??
                   false)
               ? json['android_update_message'].toString().trim()
-              : 'Please update Talkee to continue using the app.',
+              : 'Please update Talkieo to continue using the app.',
       hostGoals: AppHostGoalSettings.fromJson(
         Map<String, dynamic>.from(json['host_goals'] as Map? ?? const {}),
       ),

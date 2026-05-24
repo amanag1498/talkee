@@ -130,7 +130,7 @@ class _ApplyHostPageState extends State<ApplyHostPage>
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Apply to go live, build your audience, and access the existing host onboarding flow already wired in Talkee.',
+                        'Apply to go live, build your audience, and access the existing host onboarding flow already wired in Talkieo.',
                         style: TextStyle(
                           color: tokens.textSecondary.withOpacity(.82),
                           height: 1.4,

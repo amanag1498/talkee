@@ -6,7 +6,7 @@
   <div class="card-header d-flex align-items-center justify-content-between">
     <h5 class="mb-0"><i class="ti ti-users me-2"></i>Users</h5>
     <form class="d-flex gap-2" method="get">
-      <input class="form-control" name="s" value="{{ request('s') }}" placeholder="Search name/email">
+      <input class="form-control" name="s" value="{{ request('s') }}" placeholder="Search user ID, name, or email">
       <button class="btn btn-light border">Search</button>
     </form>
   </div>

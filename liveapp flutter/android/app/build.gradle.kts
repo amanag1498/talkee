@@ -55,6 +55,13 @@ android {
             signingConfig = signingConfigs.getByName("release")
         }
     }
+
+    lint {
+        // Work around local JBR/UAST crashes during release bundle generation.
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+
 }
 
 dependencies {

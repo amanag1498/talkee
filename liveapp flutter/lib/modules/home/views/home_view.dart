@@ -41,7 +41,7 @@ class HomeView extends GetView<HomeController> {
       },
       onGoLive: () async {
         Haptics.medium();
-        await showLivePreflightSheet(context, initialTitle: 'Live on Talkee');
+        await showLivePreflightSheet(context, initialTitle: 'Live on Talkieo');
       },
     );
   }
@@ -242,7 +242,7 @@ class _HomeShellState extends State<_HomeShell> {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'Exit Talkee?',
+                      'Exit Talkieo?',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         color: tokens.textPrimary,
                         fontWeight: FontWeight.w900,

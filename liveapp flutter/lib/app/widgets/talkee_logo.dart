@@ -189,7 +189,7 @@ class _TalkeeLogoState extends State<TalkeeLogo> with TickerProviderStateMixin {
               end: Alignment.bottomRight,
             ).createShader(r),
         child: Text(
-          'Talkee',
+          'Talkieo',
           style:
               (widget.wordmarkStyle ?? Theme.of(context).textTheme.headlineSmall)
                   ?.copyWith(

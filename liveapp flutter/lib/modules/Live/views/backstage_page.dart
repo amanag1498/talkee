@@ -84,7 +84,7 @@ class _BackstagePageState extends State<BackstagePage>
       final created = await live.createOrStart(
         title: (widget.initialTitle ?? '').trim().isNotEmpty
             ? widget.initialTitle!.trim()
-            : 'Live on Talkee',
+            : 'Live on Talkieo',
       );
 
       if (!mounted) return;

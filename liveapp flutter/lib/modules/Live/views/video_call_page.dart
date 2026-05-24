@@ -1232,7 +1232,7 @@ class _VideoCallPageState extends State<VideoCallPage>
     final fallback =
         widget.room.title?.trim().isNotEmpty == true
             ? widget.room.title!.trim()
-            : 'Talkee Host';
+            : 'Talkieo Host';
     if (_isHost) {
       final currentUser = Get.find<AuthService>().currentUser;
       final hostStageName = currentUser?.hostProfile?.stageName?.trim();
@@ -1779,35 +1779,27 @@ class _VideoCallPageState extends State<VideoCallPage>
             ),
       );
     }
-    if (!_pkActive) {
-      actions.add(
-        _ExpandableFooterCluster(
-          primaryIcon:
-              (_pendingRequestId != null && _requestStatus == 'pending')
-                  ? Icons.hourglass_top_rounded
-                  : Icons.record_voice_over_rounded,
-          primaryAccent: const Color(0xFF5D8BFF),
-          primaryBusy: _seatActionBusy,
-          actions: [
-            _FooterActionItem(
-              icon:
-                  (_pendingRequestId != null && _requestStatus == 'pending')
-                      ? Icons.close_rounded
-                      : Icons.record_voice_over_rounded,
-              onTap:
-                  _seatActionBusy
-                      ? null
-                      : ((_pendingRequestId != null && _requestStatus == 'pending')
-                          ? _cancelJoinRequest
-                          : _requestToJoinAsSpeaker),
-              accent: const Color(0xFF5D8BFF),
-              busy: _seatActionBusy,
-            ),
-          ],
-        ),
-      );
-    }
     return actions;
+  }
+
+  List<Widget> _buildChatFooterActions() {
+    if (_isHost || _currentRole == 'speaker' || _pkActive) {
+      return const <Widget>[];
+    }
+
+    final pending = _pendingRequestId != null && _requestStatus == 'pending';
+    return <Widget>[
+      _FooterPillAction(
+        icon: pending ? Icons.close_rounded : Icons.video_call_rounded,
+        label: pending ? 'Cancel Join Call Request' : 'Join Call',
+        onTap:
+            _seatActionBusy
+                ? null
+                : (pending ? _cancelJoinRequest : _requestToJoinAsSpeaker),
+        accent: const Color(0xFF5D8BFF),
+        busy: _seatActionBusy,
+      ),
+    ];
   }
 
   void _appendChatMessage(LiveRoomChatMessage message) {
@@ -2030,7 +2022,6 @@ class _VideoCallPageState extends State<VideoCallPage>
         userId: userId,
       );
       if (!mounted) return;
-      _appendSystemChatMessage('$name was removed by host');
       Get.snackbar(
         'Moderation',
         '$name was removed from the room.',
@@ -2061,7 +2052,6 @@ class _VideoCallPageState extends State<VideoCallPage>
         roomType: widget.room.roomType,
       );
       if (!mounted) return;
-      _appendSystemChatMessage('$name was blocked by host');
       Get.snackbar(
         'Moderation',
         '$name was blocked.',
@@ -2086,7 +2076,6 @@ class _VideoCallPageState extends State<VideoCallPage>
     try {
       await widget.live.unblockUser(userId: userId);
       if (!mounted) return;
-      _appendSystemChatMessage('$name was unblocked by host');
       Get.snackbar(
         'Moderation',
         '$name was unblocked.',
@@ -2565,7 +2554,9 @@ class _VideoCallPageState extends State<VideoCallPage>
                                           ),
                                           const SizedBox(height: 3),
                                           Text(
-                                            participant.subtitle,
+                                            participant.userId > 0
+                                                ? '${participant.subtitle} • ID: ${participant.userId}'
+                                                : participant.subtitle,
                                             style: TextStyle(
                                               color: tokens.textSecondary
                                                   .withOpacity(.84),
@@ -4464,7 +4455,7 @@ class _VideoCallPageState extends State<VideoCallPage>
 
   @override
   Widget build(BuildContext context) {
-    final title = widget.room.title ?? 'Live on Talkee';
+    final title = widget.room.title ?? 'Live on Talkieo';
     final media = MediaQuery.of(context);
     final pad = media.padding;
     final isCompactDevice =
@@ -4673,6 +4664,7 @@ class _VideoCallPageState extends State<VideoCallPage>
                   showEmptyPrompt: false,
                   stickMessagesToBottom: false,
                   compactBubbles: _pkCapable && _pkActive,
+                  footerActions: _buildChatFooterActions(),
                   trailingActions: _buildChatTrailingActions(),
                   showSendButton: false,
                   onSend: _sendChatMessage,
@@ -5428,6 +5420,67 @@ class _FooterCircleAction extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _FooterPillAction extends StatelessWidget {
+  const _FooterPillAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.busy = false,
+    this.accent,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+  final bool busy;
+  final Color? accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = getPremiumThemeTokens(
+      Get.find<AppSettingsService>().activePremiumThemeVariant,
+    );
+    final tint = accent ?? tokens.primaryButtonGradient.first;
+    final enabled = onTap != null && !busy;
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: FilledButton.icon(
+        onPressed: enabled ? onTap : null,
+        style: FilledButton.styleFrom(
+          backgroundColor: tint.withOpacity(.18),
+          foregroundColor: tokens.textPrimary,
+          disabledBackgroundColor: tint.withOpacity(.10),
+          disabledForegroundColor: tokens.textSecondary.withOpacity(.72),
+          side: BorderSide(color: tint.withOpacity(.34)),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(999),
+          ),
+          textStyle: const TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 12.5,
+          ),
+        ),
+        icon:
+            busy
+                ? SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      tokens.textPrimary,
+                    ),
+                  ),
+                )
+                : Icon(icon, size: 16),
+        label: Text(label),
+      ),
     );
   }
 }
@@ -7047,67 +7100,6 @@ class _StageTile extends StatelessWidget {
                   ),
                 ),
               ),
-            if (!tile.isHost)
-              Positioned(
-                left: 10,
-                right: 10,
-                bottom: 10,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: tile.onProfileTap,
-                          borderRadius: BorderRadius.circular(14),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: tokens.glassColor.withOpacity(.22),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: tokens.borderColor.withOpacity(.34),
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  tile.label,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: featured ? 15 : 13,
-                                  ),
-                                ),
-                                if (tile.onProfileTap != null) ...[
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    tile.subtitle,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(.72),
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 10.5,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
           ],
         ),
       ),
@@ -7177,6 +7169,11 @@ class _HostModerationPanel extends StatelessWidget {
                   final requestId =
                       int.tryParse('${row['request_id'] ?? row['id'] ?? ''}') ??
                       0;
+                  final requestUserId =
+                      int.tryParse(
+                        '${(row['user'] as Map?)?['id'] ?? (row['user'] as Map?)?['user_id'] ?? ''}',
+                      ) ??
+                      0;
                   final name =
                       ((row['user'] as Map?)?['name'] ?? 'Viewer').toString();
                   return Padding(
@@ -7200,6 +7197,17 @@ class _HostModerationPanel extends StatelessWidget {
                               fontWeight: FontWeight.w800,
                             ),
                           ),
+                          if (requestUserId > 0) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'ID: $requestUserId',
+                              style: const TextStyle(
+                                color: Colors.white60,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 8),
                           Row(
                             children: [
@@ -7517,6 +7525,19 @@ class _HostModerationSheet extends StatelessWidget {
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),
+                                if (userId > 0) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'ID: $userId',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: tokens.textSecondary.withOpacity(.82),
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
                                 const Spacer(),
                                 SizedBox(
                                   width: double.infinity,
@@ -7904,7 +7925,9 @@ class _ViewerSpeakerRequestPanel extends StatelessWidget {
             icon: Icon(
               pendingRequest ? Icons.close_rounded : Icons.video_call_rounded,
             ),
-            label: Text(pendingRequest ? 'Cancel Request' : 'Request to Join'),
+            label: Text(
+              pendingRequest ? 'Cancel Join Call Request' : 'Join Call',
+            ),
           ),
           if (pendingRequest)
             const Padding(

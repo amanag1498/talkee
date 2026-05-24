@@ -1215,8 +1215,8 @@ class _LegendaryGiftHero extends StatelessWidget {
             ),
           ),
         ),
-        IgnorePointer(
-          child: Positioned.fill(
+        Positioned.fill(
+          child: IgnorePointer(
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: RadialGradient(

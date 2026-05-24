@@ -7,43 +7,6 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:106498003101:android:a2e04c2fd372fc75d70474",
-        "android_client_info": {
-          "package_name": "com.example.liveapp"
-        }
-      },
-      "oauth_client": [
-        {
-          "client_id": "106498003101-j5vu83oq491dge8ehdqosuj3dkhsj473.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.example.liveapp",
-            "certificate_hash": "92ad77fd4f9813a512d294c064009a6f59f3e18d"
-          }
-        },
-        {
-          "client_id": "106498003101-8u4gfag4o5406snd7573in660lktkngm.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
-      "api_key": [
-        {
-          "current_key": "AIzaSyATO0hL5__rGpb667PBeE2Rdyp-Av_Heig"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "106498003101-8u4gfag4o5406snd7573in660lktkngm.apps.googleusercontent.com",
-              "client_type": 3
-            }
-          ]
-        }
-      }
-    },
-    {
-      "client_info": {
         "mobilesdk_app_id": "1:106498003101:android:2ad2b982ee63e73bd70474",
         "android_client_info": {
           "package_name": "com.techybugs.talkee"
@@ -56,6 +19,22 @@
           "android_info": {
             "package_name": "com.techybugs.talkee",
             "certificate_hash": "92ad77fd4f9813a512d294c064009a6f59f3e18d"
+          }
+        },
+        {
+          "client_id": "106498003101-lmv42vsi28jud6jp5a24i3542vpb0n5l.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.techybugs.talkee",
+            "certificate_hash": "df6419bfa048bc72fb5202f812a7ab2b18798343"
+          }
+        },
+        {
+          "client_id": "106498003101-ohjk4hmdjv6ku6td0v806d9b5oa7dhcm.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.techybugs.talkee",
+            "certificate_hash": "a6fe7aa8da4c6c2caa511f88bb96c8ad30f91f37"
           }
         },
         {

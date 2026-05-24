@@ -131,7 +131,7 @@ class _ApplyAgencyPageState extends State<ApplyAgencyPage>
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Create and manage talent under your agency account using the existing Talkee approval flow.',
+                        'Create and manage talent under your agency account using the existing Talkieo approval flow.',
                         style: TextStyle(
                           color: tokens.textSecondary.withOpacity(.82),
                           height: 1.4,

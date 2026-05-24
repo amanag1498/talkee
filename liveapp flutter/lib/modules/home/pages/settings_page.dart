@@ -213,7 +213,7 @@ class _SettingsPageState extends State<SettingsPage>
                 child: Obx(() {
                   final profile = _profileController.profile.value;
                   final effectiveName =
-                      profile?.name ?? user?.name ?? 'Talkee user';
+                      profile?.name ?? user?.name ?? 'Talkieo user';
                   final effectiveRoles =
                       profile?.roles ?? user?.roles ?? const <String>[];
                   final avatarUrl = resolveAvatarUrl(
@@ -306,7 +306,7 @@ class _SettingsPageState extends State<SettingsPage>
                     _PremiumSettingTile(
                       icon: Icons.privacy_tip_rounded,
                       title: 'Privacy Policy',
-                      subtitle: 'Read how Talkee handles your data',
+                      subtitle: 'Read how Talkieo handles your data',
                       onTap: () => _openExternal(AppUrls.privacyPolicyUrl),
                     ),
                     _PremiumSettingTile(
@@ -342,7 +342,7 @@ class _SettingsPageState extends State<SettingsPage>
                       icon: Icons.person_off_rounded,
                       title: 'Deactivate Account',
                       subtitle:
-                          'Request deactivation without permanently deleting your Talkee account',
+                          'Request deactivation without permanently deleting your Talkieo account',
                       tint: const Color(0xFFFF8A3D),
                       onTap: _confirmDeactivateAccount,
                     ),

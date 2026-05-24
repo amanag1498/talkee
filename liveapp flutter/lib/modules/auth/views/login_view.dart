@@ -149,7 +149,7 @@ class _LoginDarkOnly extends GetView<AuthController> {
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                'Go live, host audio rooms, and build your audience on Talkee.',
+                                'Go live, host audio rooms, and build your audience on Talkieo.',
                                 textAlign: TextAlign.center,
                                 style: theme.textTheme.bodyMedium?.copyWith(
                                   color: tokens.textSecondary.withOpacity(.88),

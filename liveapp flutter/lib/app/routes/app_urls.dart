@@ -38,7 +38,7 @@ class AppUrls {
   static String get supportUrl => websiteOrigin;
   static const String supportEmail = 'admin@talkee.in';
   static String get deactivateAccountMailto =>
-      'mailto:$supportEmail?subject=${Uri.encodeComponent('Talkee account deactivation request')}';
+      'mailto:$supportEmail?subject=${Uri.encodeComponent('Talkieo account deactivation request')}';
 
   static String _buildOrigin(String scheme, String host, int port) {
     final normalizedScheme = scheme.trim().toLowerCase();
