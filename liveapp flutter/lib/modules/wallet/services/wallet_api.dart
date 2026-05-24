@@ -31,7 +31,10 @@ class WalletApi {
   Future<PaymentOrderDto> createRechargeOrder(int planId) async {
     final response = await _api.post<Map<String, dynamic>>(
       'recharge/orders',
-      data: {'plan_id': planId},
+      data: {
+        'plan_id': planId,
+        'gateway': 'razorpay',
+      },
     );
 
     final body = response.data is Map<String, dynamic>
@@ -46,17 +49,30 @@ class WalletApi {
   Future<WalletSummaryDto> verifyRechargeOrder(
     String orderId, {
     required String result,
+    String? gatewayPaymentId,
+    String? gatewayOrderId,
+    String? gatewaySignature,
+    Map<String, dynamic>? gatewayResponse,
   }) async {
+    final payload = <String, dynamic>{
+      'result': result,
+    };
+    if (gatewayPaymentId != null && gatewayPaymentId.isNotEmpty) {
+      payload['gateway_payment_id'] = gatewayPaymentId;
+    }
+    if (gatewayOrderId != null && gatewayOrderId.isNotEmpty) {
+      payload['gateway_order_id'] = gatewayOrderId;
+    }
+    if (gatewaySignature != null && gatewaySignature.isNotEmpty) {
+      payload['gateway_signature'] = gatewaySignature;
+    }
+    if (gatewayResponse != null && gatewayResponse.isNotEmpty) {
+      payload['gateway_response'] = gatewayResponse;
+    }
+
     await _api.post<Map<String, dynamic>>(
       'recharge/orders/$orderId/verify',
-      data: {
-        'result': result,
-        'gateway_payment_id': 'mock_${DateTime.now().millisecondsSinceEpoch}',
-        'gateway_response': {
-          'result': result,
-          'mock': true,
-        },
-      },
+      data: payload,
     );
 
     return fetchSummary();

@@ -1,5 +1,5 @@
 @extends('layouts.admin-berry')
-@section('title','Admin Dashboard')
+@section('title','Talkieo Overview')
 @section('page_actions')
   <a href="{{ route('admin.calls.index') }}" class="btn btn-primary"><i class="ti ti-phone me-1"></i>Call Reports</a>
   <a href="{{ route('admin.users.index') }}" class="btn btn-light border"><i class="ti ti-users me-1"></i>Users</a>

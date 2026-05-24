@@ -5,9 +5,10 @@ import 'package:get/get.dart';
 
 import '../../../app/theme/brand.dart';
 import '../../../app/widgets/haptics.dart';
+import '../../../services/auth_service.dart';
 import '../../../services/app_settings_service.dart';
-import '../models/payment_order_dto.dart';
 import '../models/wallet_summary_dto.dart';
+import '../services/razorpay_checkout_service.dart';
 import '../services/wallet_api.dart';
 
 bool isInsufficientCoinsErrorMessage(String message) {
@@ -57,7 +58,6 @@ class RechargeBottomSheet extends StatefulWidget {
 }
 
 class _RechargeBottomSheetState extends State<RechargeBottomSheet> {
-  static const bool _mockRechargeEnabled = false;
   WalletSummaryDto? _summary;
   bool _loading = true;
   bool _submitting = false;
@@ -129,57 +129,94 @@ class _RechargeBottomSheetState extends State<RechargeBottomSheet> {
     try {
       final api = Get.find<WalletApi>();
       final order = await api.createRechargeOrder(plan.id);
-
-      if (!_mockRechargeEnabled) {
+      if (order.gateway != 'razorpay' || order.checkout == null) {
         if (!mounted) return;
         setState(() => _submitting = false);
         Haptics.warning();
         Get.snackbar(
           'Recharge unavailable',
-          'Payment gateway access is hidden in this build.',
+          summary.message ??
+              'Payment gateway is not configured correctly on the server.',
           snackPosition: SnackPosition.BOTTOM,
         );
         return;
       }
 
-      final result = await _showMockPaymentDialog(order);
+      final checkoutService = Get.find<RazorpayCheckoutService>();
+      final auth = Get.find<AuthService>();
+      final checkoutResult = await checkoutService.openCheckout(
+        order: order,
+        user: auth.currentUser,
+      );
 
-      if (result == null) {
-        if (!mounted) return;
-        setState(() => _submitting = false);
+      if (checkoutResult.type == RechargeCheckoutResultType.success) {
+        try {
+          final updated = await api.verifyRechargeOrder(
+            order.orderId,
+            result: 'success',
+            gatewayPaymentId: checkoutResult.paymentId,
+            gatewayOrderId: checkoutResult.orderId ?? order.gatewayOrderId,
+            gatewaySignature: checkoutResult.signature,
+            gatewayResponse: checkoutResult.raw,
+          );
+          if (!mounted) return;
+          setState(() {
+            _summary = updated;
+            _submitting = false;
+          });
+          Haptics.success();
+          Get.snackbar(
+            'Recharge successful',
+            '${plan.totalCoins} coins added to your wallet.',
+            snackPosition: SnackPosition.BOTTOM,
+          );
+        } catch (_) {
+          WalletSummaryDto? refreshed;
+          try {
+            refreshed = await api.fetchSummary();
+          } catch (_) {}
+          if (!mounted) return;
+          setState(() {
+            _summary = refreshed ?? _summary;
+            _submitting = false;
+          });
+          Haptics.warning();
+          Get.snackbar(
+            'Payment received',
+            'Your recharge is awaiting confirmation. Coins will appear automatically once verified.',
+            snackPosition: SnackPosition.BOTTOM,
+            duration: const Duration(seconds: 4),
+          );
+        }
         return;
       }
 
-      if (result == 'success') {
-        final updated = await api.verifyRechargeOrder(
-          order.orderId,
-          result: result,
-        );
-        if (!mounted) return;
-        setState(() {
-          _summary = updated;
-          _selectedPlanId =
-              updated.quickPacks.isNotEmpty
-                  ? updated.quickPacks.first.id
-                  : null;
-          _submitting = false;
-        });
-        Haptics.success();
-        Get.snackbar(
-          'Recharge successful',
-          '${plan.totalCoins} coins added to your wallet.',
-          snackPosition: SnackPosition.BOTTOM,
-        );
-        return;
-      }
-
-      await api.verifyRechargeOrder(order.orderId, result: result);
+      final result =
+          checkoutResult.type == RechargeCheckoutResultType.cancelled
+              ? 'cancelled'
+              : 'failed';
+      await api.verifyRechargeOrder(
+        order.orderId,
+        result: result,
+        gatewayPaymentId: checkoutResult.paymentId,
+        gatewayOrderId: checkoutResult.orderId ?? order.gatewayOrderId,
+        gatewaySignature: checkoutResult.signature,
+        gatewayResponse: {
+          ...checkoutResult.raw,
+          if (checkoutResult.code != null) 'code': checkoutResult.code,
+          if (checkoutResult.message != null) 'message': checkoutResult.message,
+        },
+      );
       if (!mounted) return;
       setState(() => _submitting = false);
       Haptics.warning();
       Get.snackbar(
         result == 'cancelled' ? 'Payment cancelled' : 'Payment failed',
-        result == 'cancelled' ? 'No coins were added.' : 'Please try again.',
+        result == 'cancelled'
+            ? 'No coins were added.'
+            : (checkoutResult.message?.trim().isNotEmpty == true
+                ? checkoutResult.message!.trim()
+                : 'Please try again.'),
         snackPosition: SnackPosition.BOTTOM,
       );
     } catch (e) {
@@ -192,170 +229,6 @@ class _RechargeBottomSheetState extends State<RechargeBottomSheet> {
         snackPosition: SnackPosition.BOTTOM,
       );
     }
-  }
-
-  Future<String?> _showMockPaymentDialog(PaymentOrderDto order) {
-    return Get.dialog<String>(
-      Dialog(
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-        backgroundColor: Colors.transparent,
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: const Color(0xFF171427),
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: Colors.white.withValues(alpha: .08)),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x66000000),
-                blurRadius: 30,
-                offset: Offset(0, 18),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF56CCF2), Color(0xFF2F80ED)],
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Icon(
-                      Icons.developer_mode_rounded,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Development Payment',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Mock gateway actions only. No real payment is processed.',
-                          style: TextStyle(
-                            color: Color(0xFFB8B6C8),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              _DialogInfoRow(label: 'Order ID', value: order.orderId),
-              const SizedBox(height: 10),
-              _DialogInfoRow(
-                label: 'Amount',
-                value: '₹${_formatPrice(order.amountRupees)}',
-              ),
-              const SizedBox(height: 10),
-              _DialogInfoRow(label: 'Coins', value: '${order.totalCoins}'),
-              if (order.bonusCoins > 0) ...[
-                const SizedBox(height: 10),
-                _DialogInfoRow(label: 'Bonus', value: '+${order.bonusCoins}'),
-              ],
-              const SizedBox(height: 18),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFD36E).withValues(alpha: .10),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: const Color(0xFFFFD36E).withValues(alpha: .18),
-                  ),
-                ),
-                child: const Text(
-                  'Use these actions to simulate success, failure, or cancellation during development.',
-                  style: TextStyle(
-                    color: Color(0xFFFFE2A3),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Get.back(result: 'cancelled'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: BorderSide(
-                          color: Colors.white.withValues(alpha: .12),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      child: const Text('Cancel'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Get.back(result: 'failed'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFFFFA2AE),
-                        side: BorderSide(
-                          color: const Color(0xFFFF6B7A).withValues(alpha: .24),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      child: const Text('Failure'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () => Get.back(result: 'success'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF5B7CFF),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: const Text('Simulate Success'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-      barrierDismissible: true,
-    );
   }
 
   int _popularIndexFor(List<WalletPackDto> packs) {
@@ -419,19 +292,14 @@ class _RechargeBottomSheetState extends State<RechargeBottomSheet> {
                         const SizedBox(height: 16),
                         _BalanceCard(balance: _summary?.balance ?? 0),
                         const SizedBox(height: 14),
-                        if (!_mockRechargeEnabled) ...[
-                          const _ReleaseRechargeNotice(),
-                          const SizedBox(height: 14),
-                        ],
-                        //  _PaymentNotice(summary: _summary),
-                        //  const SizedBox(height: 14),
+                        _PaymentNotice(summary: _summary),
+                        const SizedBox(height: 14),
                         Expanded(child: _buildBody()),
                         const SizedBox(height: 14),
                         _FooterBar(
                           submitting: _submitting,
                           selectedPlan: _selectedPlan,
                           paymentReady: _summary?.paymentReady ?? false,
-                          mockRechargeEnabled: _mockRechargeEnabled,
                           onContinue: _startRecharge,
                         ),
                       ],
@@ -652,28 +520,20 @@ class _FooterBar extends StatelessWidget {
     required this.submitting,
     required this.selectedPlan,
     required this.paymentReady,
-    required this.mockRechargeEnabled,
     required this.onContinue,
   });
 
   final bool submitting;
   final WalletPackDto? selectedPlan;
   final bool paymentReady;
-  final bool mockRechargeEnabled;
   final VoidCallback onContinue;
 
   @override
   Widget build(BuildContext context) {
-    final enabled =
-        !submitting &&
-        paymentReady &&
-        selectedPlan != null &&
-        mockRechargeEnabled;
+    final enabled = !submitting && paymentReady && selectedPlan != null;
     final label =
         submitting
             ? 'Processing...'
-            : !mockRechargeEnabled
-            ? 'Gateway Coming Soon'
             : !paymentReady
             ? 'Payment Setup Required'
             : selectedPlan == null
@@ -717,9 +577,7 @@ class _FooterBar extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(label),
-                            if (secondaryLabel != null &&
-                                paymentReady &&
-                                mockRechargeEnabled)
+                            if (secondaryLabel != null && paymentReady)
                               Text(
                                 secondaryLabel,
                                 style: TextStyle(
@@ -732,38 +590,6 @@ class _FooterBar extends StatelessWidget {
                               ),
                           ],
                         ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ReleaseRechargeNotice extends StatelessWidget {
-  const _ReleaseRechargeNotice();
-
-  @override
-  Widget build(BuildContext context) {
-    return _GlassShell(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.lock_outline_rounded,
-            color: Color(0xFFFFD36E),
-            size: 18,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Recharge simulation is hidden until the live payment gateway is connected.',
-              style: TextStyle(
-                color: const Color(0xFFFFE2A3),
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
               ),
             ),
           ),
@@ -1086,49 +912,6 @@ class _PrimaryGlassButton extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _DialogInfoRow extends StatelessWidget {
-  const _DialogInfoRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: .04),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: .06)),
-      ),
-      child: Row(
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: .60),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const Spacer(),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

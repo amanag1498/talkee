@@ -60,6 +60,7 @@ import '../../services/live_rooms_ws_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/live_eligibility_service.dart'; // 👈 add
 import '../../modules/wallet/services/wallet_api.dart';
+import '../../modules/wallet/services/razorpay_checkout_service.dart';
 import '../../modules/wallet/views/wallet_history_page.dart';
 
 import '../middleware/auth_middleware.dart';
@@ -87,6 +88,10 @@ class AppPages {
     Get.put<HostFollowApi>(HostFollowApi(api), permanent: true);
     Get.put<ApplicationsApi>(ApplicationsApi(api), permanent: true);
     Get.put<WalletApi>(WalletApi(api), permanent: true);
+    Get.put<RazorpayCheckoutService>(
+      RazorpayCheckoutService(),
+      permanent: true,
+    );
     Get.put<EntryPackApi>(EntryPackApi(api), permanent: true);
     Get.put<DashboardApi>(DashboardApi(api), permanent: true);
     Get.put<ThemesApi>(ThemesApi(api), permanent: true);

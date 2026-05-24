@@ -20,15 +20,14 @@ class WalletApiController extends Controller
     public function summary(Request $request)
     {
         $wallet = WalletService::getOrCreate($request->user());
+        $paymentReady = $this->rechargeOrders->paymentReady();
 
         return response()->json([
             'ok' => true,
             'data' => [
                 'balance' => (int) $wallet->balance,
-                'payment_ready' => (bool) config('services.mock_payments.enabled', true),
-                'message' => config('services.mock_payments.enabled', true)
-                    ? 'Mock payment gateway enabled.'
-                    : 'Payment setup required.',
+                'payment_ready' => $paymentReady,
+                'message' => $this->rechargeOrders->paymentSummaryMessage(),
                 'quick_packs' => $this->plans->activePlans(),
             ],
         ]);

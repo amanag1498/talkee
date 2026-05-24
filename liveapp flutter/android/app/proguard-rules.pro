@@ -1,2 +1,7 @@
-# Local release rules placeholder.
-# Keep this file so the Android release build can reference it safely.
+-keepattributes *Annotation*
+-dontwarn com.razorpay.**
+-keep class com.razorpay.** { *; }
+-optimizations !method/inlining/
+-keepclasseswithmembers class * {
+    public void onPayment*(...);
+}

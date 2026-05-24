@@ -39,6 +39,14 @@ return [
         'enabled' => env('MOCK_PAYMENTS_ENABLED', true),
     ],
 
+    'razorpay' => [
+        'key_id' => env('RAZORPAY_KEY_ID', ''),
+        'key_secret' => env('RAZORPAY_KEY_SECRET', ''),
+        'webhook_secret' => env('RAZORPAY_WEBHOOK_SECRET', ''),
+        'currency' => env('RAZORPAY_CURRENCY', 'INR'),
+        'base_url' => env('RAZORPAY_BASE_URL', 'https://api.razorpay.com/v1'),
+    ],
+
     'livekit' => [
         'ws_url' => env('LIVEKIT_WS_URL', 'ws://localhost:7880'),
         'http_url' => env('LIVEKIT_HTTP_URL', ''),

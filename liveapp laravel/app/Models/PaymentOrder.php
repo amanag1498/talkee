@@ -17,6 +17,7 @@ class PaymentOrder extends Model
         'total_coins',
         'status',
         'gateway',
+        'gateway_order_id',
         'gateway_payment_id',
         'gateway_response',
         'verified_at',

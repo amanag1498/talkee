@@ -111,7 +111,7 @@ Artisan::command('pk:cleanup {--dry-run}', function (LiveRoomPkService $service)
     );
 })->purpose('Expire stale PK invites and complete overdue PK battles');
 
-Artisan::command('recharge:reconcile', function (RechargeOrderService $service) {
+Artisan::command('recharge:reconcile {--sync-pending} {--limit=100}', function (RechargeOrderService $service) {
     $this->table(
         ['Issue', 'Count'],
         collect($service->anomalies())
@@ -119,6 +119,22 @@ Artisan::command('recharge:reconcile', function (RechargeOrderService $service) 
             ->values()
             ->all()
     );
+
+    if ($this->option('sync-pending')) {
+        $report = $service->reconcileGatewayOrders((int) $this->option('limit'));
+        $this->table(
+            ['Metric', 'Value'],
+            [
+                ['scanned', $report['scanned']],
+                ['processed', $report['processed']],
+                ['credited', $report['credited']],
+                ['pending', $report['pending']],
+                ['failed', $report['failed']],
+                ['skipped', $report['skipped']],
+                ['errors', count($report['errors'])],
+            ]
+        );
+    }
 })->purpose('Detect inconsistent recharge orders and wallet credits');
 
 Artisan::command('agency:backfill', function (AgencyBackfillService $service) {

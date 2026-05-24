@@ -1,7 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\{PlanController, SubscriptionController, LiveRoomController, LiveRoomSeatRequestController, LiveRoomGiftController, ProfileController, ApplicationApiController, WalletApiController, RechargePlanController, RechargeOrderController, NotificationApiController, PushTokenController, LiveRoomIngestController, OpsController, BannerController, BannerTrackingController, LiveUsersController, CallController, CallReportApiController, LevelController, HostFollowController, EntryPackController, LiveRoomPkController, ThemeController, HostModerationController, UserReportController, UnblockRequestController, AdminModerationController, WsModerationController, DashboardLeaderboardController};
+use App\Http\Controllers\Api\{PlanController, SubscriptionController, LiveRoomController, LiveRoomSeatRequestController, LiveRoomGiftController, ProfileController, ApplicationApiController, WalletApiController, RechargePlanController, RechargeOrderController, NotificationApiController, PushTokenController, LiveRoomIngestController, OpsController, BannerController, BannerTrackingController, LiveUsersController, CallController, CallReportApiController, LevelController, HostFollowController, EntryPackController, LiveRoomPkController, ThemeController, HostModerationController, UserReportController, UnblockRequestController, AdminModerationController, WsModerationController, DashboardLeaderboardController, RazorpayWebhookController};
 use App\Http\Controllers\Auth\FirebaseAuthApiController;
 use App\Models\UserSubscription;
 use App\Services\AppSettingsService;
@@ -179,6 +179,7 @@ Route::middleware('throttle:240,1')->group(function () {
 
 
 Route::post('/auth/firebase/login', [FirebaseAuthApiController::class, 'login']);
+Route::post('/payments/razorpay/webhook', RazorpayWebhookController::class)->middleware('throttle:120,1');
 Route::middleware('auth:sanctum')->post('/auth/logout', [FirebaseAuthApiController::class, 'logout']);
 
 // Example of an authenticated API route:

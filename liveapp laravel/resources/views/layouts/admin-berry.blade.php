@@ -321,13 +321,13 @@
 
           <ul class="pc-navbar">
             <li class="pc-item pc-caption">
-              <label>Dashboard</label>
+              <label>Talkieo</label>
               <i class="ti ti-dashboard"></i>
             </li>
             <li class="pc-item">
               <a href="{{ route('admin.dashboard') }}" class="pc-link {{ request()->routeIs('admin.dashboard') ? 'active' : '' }}">
                 <span class="pc-micon"><i class="ti ti-dashboard"></i></span>
-                <span class="pc-mtext">Default</span>
+                <span class="pc-mtext">Overview</span>
               </a>
             </li>
             <li class="pc-item pc-caption">
@@ -598,8 +598,8 @@
           </ul>
 
           <div class="pc-navbar-card bg-primary rounded mt-3">
-            <h6 class="text-white mb-1">Talkieo Admin</h6>
-            <p class="text-white opacity-75 mb-2">Manage requests &amp; roles</p>
+            <h6 class="text-white mb-1">Talkieo Console</h6>
+            <p class="text-white opacity-75 mb-2">Platform operations and approvals</p>
           </div>
 
           <div class="w-100 text-center mt-3">
@@ -738,11 +738,11 @@
     <div class="pc-container">
       <div class="pc-content">
         @php
-          $pageTitle = trim($__env->yieldContent('title')) ?: 'Dashboard';
+          $pageTitle = trim($__env->yieldContent('title')) ?: 'Overview';
           $pageIntro = trim($__env->yieldContent('page_intro'));
           if ($pageIntro === '') {
             $pageIntro = match (true) {
-              request()->routeIs('admin.dashboard') => 'Track approvals, live operations, wallet distribution, and platform health from a single control center.',
+              request()->routeIs('admin.dashboard') => 'Track approvals, live operations, wallet distribution, and platform health from one control center.',
               request()->routeIs('admin.users.*') => 'Review users, moderation state, device integrity, and role-linked account details.',
               request()->routeIs('admin.hosts.*') => 'Manage host identities, profile quality, agency linkage, and account readiness.',
               request()->routeIs('admin.agencies.*') => 'Oversee agencies, owner assignments, payouts, and operational standing.',
