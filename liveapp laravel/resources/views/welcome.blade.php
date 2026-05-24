@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Talkee</title>
+  <title>Talkieo</title>
   @php
     $viteManifestExists = file_exists(public_path('build/manifest.json'));
     $viteHotExists = file_exists(public_path('hot'));
@@ -240,13 +240,13 @@
         <div class="col-lg-7">
           <div class="brand-kicker mb-4">
             <span class="brand-dot"></span>
-            Talkee
+            Talkieo
           </div>
           <h1 class="hero-title mb-4">
             <span class="gradient-text">Live rooms, social audio, gifting, and creator subscriptions</span>
           </h1>
           <p class="hero-copy mb-4">
-            Talkee is a premium live entertainment platform where viewers and creators connect through video rooms,
+            Talkieo is a premium live entertainment platform where viewers and creators connect through video rooms,
             audio rooms, real-time gifting, subscriptions, wallet-based experiences, and premium entry effects.
           </p>
           <div class="d-flex flex-wrap gap-3 mb-4">
@@ -286,9 +286,9 @@
         <div class="col-lg-5">
           <div class="hero-mesh">
             <div class="action-card mb-4">
-              <h2 class="h4 mb-3">What Talkee is for</h2>
+              <h2 class="h4 mb-3">What Talkieo is for</h2>
               <p class="muted-copy mb-0">
-                Talkee is designed for live creator engagement. Users can discover creators, join live rooms,
+                Talkieo is designed for live creator engagement. Users can discover creators, join live rooms,
                 send gifts, manage wallet balance, buy subscriptions, and unlock premium in-room experiences.
               </p>
             </div>
@@ -336,7 +336,7 @@
           <div class="feature-card">
             <h2 class="h5 mb-3">Creator platform</h2>
             <p class="muted-copy mb-0">
-              Hosts and creators use Talkee for scheduled or spontaneous live sessions, audience interaction, and premium engagement.
+              Hosts and creators use Talkieo for scheduled or spontaneous live sessions, audience interaction, and premium engagement.
             </p>
           </div>
         </div>

@@ -5,7 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=0, minimal-ui" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <link rel="icon" href="{{ asset('berry/assets/images/favicon.svg') }}" type="image/x-icon" />
+    <link rel="icon" href="{{ asset('berry/assets/images/talkieo-logo.png') }}" type="image/png" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" id="main-font-link" />
     <link rel="stylesheet" href="{{ asset('berry/assets/fonts/phosphor/duotone/style.css') }}">
     <link rel="stylesheet" href="{{ asset('berry/assets/fonts/tabler-icons.min.css') }}" />
@@ -117,7 +117,7 @@
       <div class="navbar-wrapper">
         <div class="m-header">
           <a href="{{ $overviewRoute }}" class="b-brand text-primary">
-            <img src="{{ asset('berry/assets/images/logo-dark.svg') }}" alt="logo" class="logo logo-lg" />
+            <img src="{{ asset('berry/assets/images/talkieo-logo.png') }}" alt="Talkieo" class="logo logo-lg" />
           </a>
         </div>
         <div class="navbar-content">
@@ -254,7 +254,7 @@
     <footer class="pc-footer">
       <div class="footer-wrapper container-fluid">
         <div class="row">
-          <div class="col-sm-6 my-1"><p class="m-0">© {{ date('Y') }} LiveApp</p></div>
+          <div class="col-sm-6 my-1"><p class="m-0">© {{ date('Y') }} Talkieo</p></div>
           <div class="col-sm-6 ms-auto my-1">
             <ul class="list-inline footer-link mb-0 justify-content-sm-end d-flex">
               <li class="list-inline-item"><a href="{{ $overviewRoute }}">Agency</a></li>

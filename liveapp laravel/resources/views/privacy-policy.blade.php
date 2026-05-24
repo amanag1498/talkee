@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Talkee Privacy Policy</title>
+  <title>Talkieo Privacy Policy</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
     :root {
@@ -150,7 +150,7 @@
       <div class="topbar">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
           <div>
-            <div class="brand-chip mb-3">Talkee legal</div>
+            <div class="brand-chip mb-3">Talkieo legal</div>
             <h1 class="policy-title"><span class="gradient-text">Privacy Policy</span></h1>
             <p class="policy-meta mb-0">Last updated: May 8, 2026</p>
           </div>
@@ -164,7 +164,7 @@
       <div class="policy-content">
         <div class="content-card">
           <p class="policy-copy">
-            This Privacy Policy (the “Policy”) describes how Talkee and its affiliates (also referred to as “Talkee,”
+            This Privacy Policy (the “Policy”) describes how Talkieo and its affiliates (also referred to as “Talkieo,”
             “Company,” “we,” “us,” or “our”), collects, stores, uses and protects your information when you use our website at
             <a href="https://talkee.in/" target="_blank" rel="noopener">https://talkee.in/</a> (the “Site”), and any mobile applications
             that hyperlink to this Policy and are available for download in the Google Play Store.
@@ -198,11 +198,11 @@
             we may generally collect the personal information described below.
           </p>
 
-          <p><strong>A. Registration Information and Profiles.</strong> Talkee will allow the end user to use your mobile number or a third party platform account to register in the Product and create an account. When you create an account, we may collect the personal information you provide to Talkee, such as your name, gender, date of birth, username, password, email address, picture, or phone number and so on. We also collect the information from the third party account which can be used to identify you.</p>
+          <p><strong>A. Registration Information and Profiles.</strong> Talkieo will allow the end user to use your mobile number or a third party platform account to register in the Product and create an account. When you create an account, we may collect the personal information you provide to Talkieo, such as your name, gender, date of birth, username, password, email address, picture, or phone number and so on. We also collect the information from the third party account which can be used to identify you.</p>
           <p><strong>B.</strong> We may collect information about the device or the information that your mobile device sends when using a Product such as its operating system, language and Android ID, your IP address and log files as well as your use of our Product.</p>
           <p><strong>C. Cookies.</strong> We may use Cookies and similar technologies to collect information about how you use our Product and its features.</p>
           <p><strong>D. Information you choose to post and/or to publicly display.</strong> You may post your photo, voice or other material on our Product and publicly display and share them with others in/through our Product. These materials posted by you remain under your control and you still choose whether you post, display or remove such material.</p>
-          <p><strong>E. Information.</strong> Talkee’s server will automatically record the activity and related information created by you when using Product. This log information may include the links on our Product you clicked on, streams videos that you watched, access date and time spent on pages and features of the Product and other statistics and Cookie information. We may also collect the interaction information with Product from you to know your interest to customize and improve our Product and features.</p>
+          <p><strong>E. Information.</strong> Talkieo’s server will automatically record the activity and related information created by you when using Product. This log information may include the links on our Product you clicked on, streams videos that you watched, access date and time spent on pages and features of the Product and other statistics and Cookie information. We may also collect the interaction information with Product from you to know your interest to customize and improve our Product and features.</p>
           <p><strong>F. Information you submit.</strong> The information you submit to communicate with us, for example, when you give us your opinions about our application and services via our feedback channel, such as your email address, and names and other information provided by you.</p>
           <p><strong>G. Your IP address and Location Information.</strong> Your IP address or GPS information may be collected by us when using Product to provide more specified features or services. You could close such collection to stop Product collecting your IP address or GPS information with acknowledging that some features or services may not be available for such closure.</p>
           <p><strong>H. Information You Share on Third Party Websites or through Social Media Services.</strong> The Services may include links to third-party websites and social media services where you may be able to post comments, stories, reviews or other information. Your use of these third-party websites and social media services may result in the collection or sharing of information about you by these third-party websites and social media services. We encourage you to review the privacy policies and settings on the third-party websites and social media services with which you interact to make sure you understand the information that may be collected, used, and shared by those third-party websites and social media services.</p>
@@ -231,9 +231,9 @@
           <p><strong>C. Business Transfers or Bankruptcy.</strong> In the event of a merger, acquisition, bankruptcy or other sale of all or a portion of our assets, any personal information owned or controlled by us may be one of the assets transferred to third parties. We will notify you via email or a prominent notice within our Services of any change in ownership or uses of your personal information, as well as any choices you may have regarding your personal information.</p>
           <p><strong>D. Our Affiliates and Third-Party Marketing Partners.</strong> Based on your consent, we may share some or all of your contact information with our marketing partners, parent company, subsidiaries and corporate affiliates, joint ventures, or other companies under common control with us. If you opt-in to receive marketing communications from third parties, we may permit these entities to use your information for their own marketing purposes.</p>
 
-          <h2>6. Children's Privacy on Talkee</h2>
+          <h2>6. Children's Privacy on Talkieo</h2>
           <p>
-            We do not knowingly collect personal information from children under 17 years old (or the minimum age required for the creation of a Talkee Account absent parental consent in your country), unless permitted to do so by applicable law. Children are not permitted to use our Services unless they provide us with consent from their parent or guardian. If we become aware that we have unknowingly collected personal information from a child, we will make commercially reasonable efforts to delete such information in our database. If you are a parent or guardian of a child, and you believe your child has provided us with their personal information on our Services, please contact us immediately at <a href="mailto:admin@talkee.in">admin@talkee.in</a>.
+            We do not knowingly collect personal information from children under 17 years old (or the minimum age required for the creation of a Talkieo Account absent parental consent in your country), unless permitted to do so by applicable law. Children are not permitted to use our Services unless they provide us with consent from their parent or guardian. If we become aware that we have unknowingly collected personal information from a child, we will make commercially reasonable efforts to delete such information in our database. If you are a parent or guardian of a child, and you believe your child has provided us with their personal information on our Services, please contact us immediately at <a href="mailto:admin@talkee.in">admin@talkee.in</a>.
           </p>
 
           <h2>7. Security</h2>
@@ -259,7 +259,7 @@
           <p><strong>Web Behavior Data.</strong> We retain any information collected via cookies, clear gifs, flash cookies, webpage counters and other technical or analytics tools in our system for a certain date and time from the expiry of the cookie or the date of collection.</p>
 
           <h2>9. Additional Data Protection Information</h2>
-          <p><strong>A. Our Relationship to You.</strong> Talkee is a data controller with regard to any personal information collected from users of its Services. A “user” is an individual providing personal information to us via our Services, such as by creating an account with our Apps, signing up for our newsletters, or otherwise accessing or using our Services. A “data controller” is an entity that determines the purposes for which and the manner in which any personal information is processed. Any third parties that act as our service providers are “data processors” that handle your personal information in accordance with our instructions.</p>
+          <p><strong>A. Our Relationship to You.</strong> Talkieo is a data controller with regard to any personal information collected from users of its Services. A “user” is an individual providing personal information to us via our Services, such as by creating an account with our Apps, signing up for our newsletters, or otherwise accessing or using our Services. A “data controller” is an entity that determines the purposes for which and the manner in which any personal information is processed. Any third parties that act as our service providers are “data processors” that handle your personal information in accordance with our instructions.</p>
           <p><strong>B. Legal Bases for Processing Personal Information.</strong> We describe our legal bases for processing in Sections 4 and 5 under headings entitled “Designated Countries.” The legal bases on which we rely to process your personal information include: your consent to the processing; satisfaction of our legal obligations; necessity to protect your vital interests; necessity to carry out our obligations arising from any contracts we entered with you or to take steps at your request prior to entering into a contract with you; necessity to process in the public interest; or for our legitimate interests as described in those sections.</p>
           <p><strong>C. Marketing Activities.</strong> If you are located in the Designated Countries and are a current user, we will only contact you by electronic means (such as email or SMS) per your communication preferences and/or with information about our Services that are similar to the Services you previously purchased from us or negotiated to purchase from us.</p>
           <p><strong>D. Individual Rights.</strong> We provide you with the rights described below when you use our Services. Please contact us at <a href="mailto:admin@talkee.in">admin@talkee.in</a> if you would like to exercise your rights under applicable law. When we receive an individual rights request from you, please make sure you are ready to verify your identity.</p>
@@ -291,7 +291,7 @@
           </p>
 
           <hr class="border-secondary-subtle my-4">
-          <p class="mb-0 text-white-50">© Talkee. All Rights Reserved.</p>
+          <p class="mb-0 text-white-50">© Talkieo. All Rights Reserved.</p>
         </div>
       </div>
     </div>

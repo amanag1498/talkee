@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <title>@yield('title','Dashboard') | Berry</title>
+    <title>@yield('title','Dashboard') | Talkieo</title>
     <!-- [Meta] -->
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=0, minimal-ui" />
@@ -11,7 +11,7 @@
     <meta name="author" content="codedthemes" />
 
     <!-- [Favicon] -->
-    <link rel="icon" href="{{ asset('berry/assets/images/favicon.svg') }}" type="image/x-icon" />
+    <link rel="icon" href="{{ asset('berry/assets/images/talkieo-logo.png') }}" type="image/png" />
 
     <!-- [Google Font] -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" id="main-font-link" />
@@ -307,7 +307,7 @@
       <div class="navbar-wrapper">
         <div class="m-header">
           <a href="{{ route('admin.dashboard') }}" class="b-brand text-primary">
-            <img src="{{ asset('berry/assets/images/logo-dark.svg') }}" alt="logo" class="logo logo-lg" />
+            <img src="{{ asset('berry/assets/images/talkieo-logo.png') }}" alt="Talkieo" class="logo logo-lg" />
           </a>
         </div>
 
@@ -598,7 +598,7 @@
           </ul>
 
           <div class="pc-navbar-card bg-primary rounded mt-3">
-            <h6 class="text-white mb-1">LiveApp Admin</h6>
+            <h6 class="text-white mb-1">Talkieo Admin</h6>
             <p class="text-white opacity-75 mb-2">Manage requests &amp; roles</p>
           </div>
 
@@ -759,7 +759,7 @@
               request()->routeIs('admin.agency-requests.*', 'admin.host-requests.*', 'admin.enroll-requests.*') => 'Process pending approvals with clearer context and faster decision-making.',
               request()->routeIs('admin.reports.hosts*') => 'Compare host performance, engagement volume, and gift activity over time.',
               request()->routeIs('admin.reports.leaderboards*') => 'Review weekly top users, hosts, and agencies from the leaderboard rollup without scanning raw monetization tables.',
-              default => 'Operational control, reporting, and moderation for the LiveApp admin panel.',
+              default => 'Operational control, reporting, and moderation for the Talkieo admin panel.',
             };
           }
         @endphp
@@ -794,7 +794,7 @@
       <div class="footer-wrapper container-fluid">
         <div class="row">
           <div class="col-sm-6 my-1">
-            <p class="m-0">© {{ date('Y') }} LiveApp</p>
+            <p class="m-0">© {{ date('Y') }} Talkieo</p>
           </div>
           <div class="col-sm-6 ms-auto my-1">
             <ul class="list-inline footer-link mb-0 justify-content-sm-end d-flex">

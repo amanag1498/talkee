@@ -347,7 +347,7 @@ class AppSettingsService
 
     public function androidUpdateMessage(): string
     {
-        return (string) env('ANDROID_UPDATE_MESSAGE', 'Please update Talkee to continue using the app.');
+        return (string) env('ANDROID_UPDATE_MESSAGE', 'Please update Talkieo to continue using the app.');
     }
 
     public function publicHostGoalSettings(): array

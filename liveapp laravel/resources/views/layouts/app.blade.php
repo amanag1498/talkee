@@ -3,12 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>@yield('title','LiveApp')</title>
+  <title>@yield('title','Talkieo')</title>
+  <link rel="icon" href="{{ asset('berry/assets/images/talkieo-logo.png') }}" type="image/png">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body>
 <nav class="navbar navbar-light bg-light px-3">
-  <a class="navbar-brand" href="{{ route('home') }}">LiveApp</a>
+  <a class="navbar-brand d-inline-flex align-items-center gap-2" href="{{ route('home') }}">
+    <img src="{{ asset('berry/assets/images/talkieo-logo.png') }}" alt="Talkieo" style="width: 32px; height: 32px; object-fit: contain;">
+    <span>Talkieo</span>
+  </a>
 
   @auth
     <div class="d-flex gap-2">

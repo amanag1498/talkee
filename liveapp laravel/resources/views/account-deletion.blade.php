@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Talkee Account Deletion</title>
+  <title>Talkieo Account Deletion</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
     :root {
@@ -169,9 +169,9 @@
       <div class="topbar">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
           <div>
-            <div class="brand-chip mb-3">Talkee support</div>
+            <div class="brand-chip mb-3">Talkieo support</div>
             <h1 class="title"><span class="gradient-text">Account Deletion</span></h1>
-            <p class="meta mb-0">Request deletion of your Talkee account and associated account data.</p>
+            <p class="meta mb-0">Request deletion of your Talkieo account and associated account data.</p>
           </div>
           <div class="d-flex flex-wrap gap-2">
             <a href="{{ route('home') }}" class="nav-link-pill">Home</a>
@@ -184,37 +184,37 @@
       <div class="content">
         <div class="card-surface">
           <p class="copy">
-            If you would like to delete your Talkee account, you can submit a request through the support channel below.
-            This page is provided as Talkee's public account deletion resource for users who are not able to access the app.
+            If you would like to delete your Talkieo account, you can submit a request through the support channel below.
+            This page is provided as Talkieo's public account deletion resource for users who are not able to access the app.
           </p>
 
           <div class="action-box mt-4">
             <p class="mb-2"><strong>Email support</strong></p>
-            <p class="mb-3">Send your account deletion request to <a href="mailto:admin@talkee.in">admin@talkee.in</a> with the email address or phone number linked to your Talkee account.</p>
+            <p class="mb-3">Send your account deletion request to <a href="mailto:admin@talkee.in">admin@talkee.in</a> with the email address or phone number linked to your Talkieo account.</p>
             <a
               class="mail-link"
-              href="mailto:admin@talkee.in?subject=Talkee%20account%20deletion%20request">
+              href="mailto:admin@talkee.in?subject=Talkieo%20account%20deletion%20request">
               Request Account Deletion
             </a>
           </div>
 
           <h2>What to include</h2>
           <ul>
-            <li>Your Talkee account email address or phone number.</li>
-            <li>Your Talkee user ID or profile name, if available.</li>
-            <li>A clear statement that you want your Talkee account deleted.</li>
+            <li>Your Talkieo account email address or phone number.</li>
+            <li>Your Talkieo user ID or profile name, if available.</li>
+            <li>A clear statement that you want your Talkieo account deleted.</li>
           </ul>
 
           <h2>What happens next</h2>
           <p>
-            After we receive your request, Talkee support will review the request and process account deletion in accordance
+            After we receive your request, Talkieo support will review the request and process account deletion in accordance
             with applicable legal, security, fraud prevention, and retention requirements.
           </p>
 
           <h2>Temporary deactivation vs deletion</h2>
           <p>
             Account deactivation only disables account access temporarily. Account deletion is a separate request and is intended
-            to remove the Talkee account and associated account data, subject to any data we must retain for legitimate legal or operational reasons.
+            to remove the Talkieo account and associated account data, subject to any data we must retain for legitimate legal or operational reasons.
           </p>
 
           <h2>Need help instead?</h2>

@@ -214,9 +214,9 @@ function layout_change(layout) {
   dark_flag = isDark;
 
   // Update logo images based on the layout
-  const logoPaths = isDark ? '/berry/assets/images/logo-white.svg' : '/berry/assets/images/logo-dark.svg';
+  const logoPaths = '/berry/assets/images/talkieo-logo.png';
 
-  const landingLogoPath = isDark ? '/berry/assets/images/logo-white.svg' : '/berry/assets/images/logo-dark.svg';
+  const landingLogoPath = '/berry/assets/images/talkieo-logo.png';
 
   const logoSelectors = [
     '.pc-sidebar .m-header .logo-lg',

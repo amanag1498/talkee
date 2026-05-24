@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Talkee Terms of Service</title>
+  <title>Talkieo Terms of Service</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
     :root {
@@ -135,9 +135,9 @@
       <div class="p-4 p-md-5 pb-0">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
           <div>
-            <div class="brand-chip mb-3">Talkee legal</div>
+            <div class="brand-chip mb-3">Talkieo legal</div>
             <h1 class="page-title"><span class="gradient-text">Terms of Service</span></h1>
-            <p class="muted-copy mb-0">Talkee platform terms and product usage conditions.</p>
+            <p class="muted-copy mb-0">Talkieo platform terms and product usage conditions.</p>
           </div>
           <div class="d-flex flex-wrap gap-2">
             <a href="{{ route('home') }}" class="nav-link-pill">Home</a>
@@ -149,7 +149,7 @@
       <div class="content-wrap">
         <div class="content-card content">
           <p>
-            Welcome to Talkee Platform. This Platform is owned and operated by Gauri Entertainment Company, India. By visiting our Platform and accessing the information, resources, services, third party products, and tools we provide, you understand and agree to accept and adhere to the following terms and conditions as stated in this policy (hereinafter referred to as the “Policy”), along with the terms and conditions as stated in our Privacy Policy.
+            Welcome to Talkieo Platform. This Platform is owned and operated by Gauri Entertainment Company, India. By visiting our Platform and accessing the information, resources, services, third party products, and tools we provide, you understand and agree to accept and adhere to the following terms and conditions as stated in this policy (hereinafter referred to as the “Policy”), along with the terms and conditions as stated in our Privacy Policy.
           </p>
           <p>
             The Privacy Policy describes our policies and procedures on the collection, use and disclosure of your information when you use the service and tells you about your privacy rights and how the law protects you.
@@ -166,21 +166,21 @@
 
           <h2>Definitions</h2>
           <p><strong>Account</strong> means a unique account created for you to access our Service or parts of our Service.</p>
-          <p><strong>Application</strong> refers to “Talkee,” the software program provided by Gauri Entertainment Company.</p>
+          <p><strong>Application</strong> refers to “Talkieo,” the software program provided by Gauri Entertainment Company.</p>
           <p><strong>Country</strong> refers to Delhi, India.</p>
           <p><strong>Device</strong> means any device that can access the Service such as a computer, a cellphone or a digital tablet.</p>
 
           <h2>Use of Personal Information</h2>
           <p>
-            Talkee may collect personal information, including contact information, from its users. You allow Talkee to use your personal information. By accepting our Privacy Policy, you expressly agree to receive this information. Gauri Entertainment Company does not sell our users’ personal information to anyone.
+            Talkieo may collect personal information, including contact information, from its users. You allow Talkieo to use your personal information. By accepting our Privacy Policy, you expressly agree to receive this information. Gauri Entertainment Company does not sell our users’ personal information to anyone.
           </p>
           <p>
-            Also, you may have arrived at Talkee by following a link from an affiliate. If so, please be aware that Talkee may share your information with that affiliate and the affiliate may use the information consistent with its privacy policy instead of ours.
+            Also, you may have arrived at Talkieo by following a link from an affiliate. If so, please be aware that Talkieo may share your information with that affiliate and the affiliate may use the information consistent with its privacy policy instead of ours.
           </p>
 
           <h2>Privacy Commitment</h2>
           <p>
-            Talkee and Gauri Entertainment Company are committed to protecting your privacy. However, we do not promise, and you should not expect, that your personal information or private communications will always remain private.
+            Talkieo and Gauri Entertainment Company are committed to protecting your privacy. However, we do not promise, and you should not expect, that your personal information or private communications will always remain private.
           </p>
 
           <h2>Contact</h2>

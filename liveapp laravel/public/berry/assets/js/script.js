@@ -416,7 +416,7 @@ var imgBrands = document.querySelectorAll('.auth-main.v2 .img-brand');
 if (imgBrands.length) {
   // Iterate through the NodeList and update the 'src' attribute
   imgBrands.forEach(function (img) {
-    img.setAttribute('src', '../assets/images/logo-white.svg');
+    img.setAttribute('src', '../assets/images/talkieo-logo.png');
   });
 }
 // =======================================================

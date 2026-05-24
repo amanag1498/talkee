@@ -533,6 +533,9 @@ class _LiveBannerStrip extends StatefulWidget {
 
 class _LiveBannerStripState extends State<_LiveBannerStrip>
     with SingleTickerProviderStateMixin {
+  static const EdgeInsets _outerPadding = EdgeInsets.fromLTRB(6, 8, 6, 4);
+  static const double _bannerHeight = 208;
+
   late final PageController _pc = PageController(viewportFraction: 1);
   late final AnimationController _flow;
   Timer? _ticker;
@@ -540,33 +543,6 @@ class _LiveBannerStripState extends State<_LiveBannerStrip>
   bool _loading = true;
   List<BannerItem> _banners = const <BannerItem>[];
   final Set<int> _impressed = <int>{};
-
-  List<BannerItem> _fallbackBanners() => <BannerItem>[
-    BannerItem(
-      id: -1,
-      title: 'Trending now',
-      imageUrl: '',
-      actionType: 'none',
-      actionValue: null,
-      buttonText: null,
-    ),
-    const BannerItem(
-      id: -2,
-      title: 'Creator spotlight',
-      imageUrl: '',
-      actionType: 'none',
-      actionValue: null,
-      buttonText: null,
-    ),
-    const BannerItem(
-      id: -3,
-      title: 'Go premium',
-      imageUrl: '',
-      actionType: 'route',
-      actionValue: '/subscriptions',
-      buttonText: null,
-    ),
-  ];
 
   String _shortTitle(String value) {
     final t = value.trim();
@@ -615,15 +591,16 @@ class _LiveBannerStripState extends State<_LiveBannerStrip>
     );
     if (!mounted) return;
 
-    final items = remote.isNotEmpty ? remote : _fallbackBanners();
     setState(() {
       _loading = false;
-      _banners = items;
+      _banners = remote;
       _index = 0;
       _impressed.clear();
     });
     _startTicker();
-    await _trackImpression(0);
+    if (remote.isNotEmpty) {
+      await _trackImpression(0);
+    }
   }
 
   Future<void> _trackImpression(int index) async {
@@ -685,17 +662,14 @@ class _LiveBannerStripState extends State<_LiveBannerStrip>
   Widget build(BuildContext context) {
     final banners = _banners;
     final tokens = widget.tokens;
-    if (_loading && banners.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.fromLTRB(8, 8, 8, 4),
-        child: SizedBox(height: 132),
-      );
+    if (banners.isEmpty) {
+      return const SizedBox.shrink();
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+      padding: _outerPadding,
       child: SizedBox(
-        height: 104,
+        height: _bannerHeight,
         child: Stack(
           children: [
             PageView.builder(
@@ -715,11 +689,15 @@ class _LiveBannerStripState extends State<_LiveBannerStrip>
                         if (banners[i].hasImage)
                           ClipRRect(
                             borderRadius: BorderRadius.circular(18),
-                            child: Image.network(
-                              banners[i].imageUrl,
-                              fit: BoxFit.cover,
-                              errorBuilder:
-                                  (_, __, ___) => const SizedBox.shrink(),
+                            child: Container(
+                              color: Colors.black.withOpacity(.18),
+                              alignment: Alignment.center,
+                              child: Image.network(
+                                banners[i].imageUrl,
+                                fit: BoxFit.contain,
+                                errorBuilder:
+                                    (_, __, ___) => const SizedBox.shrink(),
+                              ),
                             ),
                           ),
                         Container(
@@ -793,18 +771,6 @@ class _LiveBannerStripState extends State<_LiveBannerStrip>
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Text(
-                                      'LIVE NOW',
-                                      style: TextStyle(
-                                        color: tokens.textSecondary.withOpacity(
-                                          .72,
-                                        ),
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 10,
-                                        letterSpacing: .8,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
                                     Text(
                                       _shortTitle(banners[i].title),
                                       maxLines: 1,
