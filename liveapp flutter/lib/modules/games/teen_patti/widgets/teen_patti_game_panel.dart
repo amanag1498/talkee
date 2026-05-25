@@ -1,11 +1,16 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../../../../app/routes/app_urls.dart';
+import '../../../../app/widgets/haptics.dart';
+import '../../../../services/app_settings_service.dart';
 import '../../../../services/storage_service.dart';
+import '../../greedy/widgets/greedy_game_panel.dart';
 import '../../../wallet/widgets/recharge_bottom_sheet.dart';
 import '../models/teen_patti_models.dart';
 import '../services/teen_patti_api.dart';
@@ -19,7 +24,7 @@ class TeenPattiGamesSheet extends StatefulWidget {
 }
 
 class _TeenPattiGamesSheetState extends State<TeenPattiGamesSheet> {
-  bool _openTeenPatti = false;
+  String? _selectedGame;
 
   @override
   Widget build(BuildContext context) {
@@ -47,9 +52,9 @@ class _TeenPattiGamesSheetState extends State<TeenPattiGamesSheet> {
                 padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
                 child: Row(
                   children: [
-                    if (_openTeenPatti)
+                    if (_selectedGame != null)
                       IconButton(
-                        onPressed: () => setState(() => _openTeenPatti = false),
+                        onPressed: () => setState(() => _selectedGame = null),
                         icon: const Icon(Icons.arrow_back_rounded),
                         color: Colors.white,
                       )
@@ -57,7 +62,11 @@ class _TeenPattiGamesSheetState extends State<TeenPattiGamesSheet> {
                       const SizedBox(width: 48),
                     Expanded(
                       child: Text(
-                        _openTeenPatti ? 'Teen Patti' : 'Games',
+                        switch (_selectedGame) {
+                          'teen_patti' => 'Teen Patti',
+                          'greedy' => 'Greedy',
+                          _ => 'Games',
+                        },
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           color: Colors.white,
@@ -76,11 +85,16 @@ class _TeenPattiGamesSheetState extends State<TeenPattiGamesSheet> {
               ),
               Expanded(
                 child:
-                    _openTeenPatti
+                    _selectedGame == 'teen_patti'
                         ? const TeenPattiGamePanel()
+                        : _selectedGame == 'greedy'
+                        ? const GreedyGamePanel()
                         : _GamesList(
                           onOpenTeenPatti: () {
-                            setState(() => _openTeenPatti = true);
+                            setState(() => _selectedGame = 'teen_patti');
+                          },
+                          onOpenGreedy: () {
+                            setState(() => _selectedGame = 'greedy');
                           },
                         ),
               ),
@@ -93,84 +107,236 @@ class _TeenPattiGamesSheetState extends State<TeenPattiGamesSheet> {
 }
 
 class _GamesList extends StatelessWidget {
-  const _GamesList({required this.onOpenTeenPatti});
+  const _GamesList({
+    required this.onOpenTeenPatti,
+    required this.onOpenGreedy,
+  });
 
   final VoidCallback onOpenTeenPatti;
+  final VoidCallback onOpenGreedy;
 
   @override
   Widget build(BuildContext context) {
+    final settings = Get.find<AppSettingsService>();
+    final showTeenPatti = settings.teenPattiEnabled;
+    final showGreedy = settings.greedyEnabled;
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
       children: [
-        Text(
-          'Choose a live room game',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: .9),
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF241336), Color(0xFF100A18)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0x33FFD54F)),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black38,
+                blurRadius: 18,
+                offset: Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  gradient: const LinearGradient(
+                    colors: [Color(0x66FFD54F), Color(0x22FFD54F)],
+                  ),
+                ),
+                child: const Icon(
+                  Icons.casino_rounded,
+                  color: Color(0xFFFFE082),
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Live Table Games',
+                      style: TextStyle(
+                        color: Color(0xFFFFF2B0),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: .3,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Open a polished room game without leaving the live session.',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: .76),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 14),
-        InkWell(
-          onTap: onOpenTeenPatti,
-          borderRadius: BorderRadius.circular(22),
-          child: Ink(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(22),
-              gradient: const LinearGradient(
-                colors: [Color(0xFF26173C), Color(0xFF171124)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+        if (showTeenPatti)
+          InkWell(
+            onTap: onOpenTeenPatti,
+            borderRadius: BorderRadius.circular(22),
+            child: Ink(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(22),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF26173C), Color(0xFF171124)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                border: Border.all(color: Colors.white12),
               ),
-              border: Border.all(color: Colors.white12),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Image.asset(
-                      'assets/games/teen_patti/logo_teenpatti.png',
-                      width: 68,
-                      height: 68,
-                      fit: BoxFit.cover,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Image.asset(
+                        'assets/games/teen_patti/logo_teenpatti.png',
+                        width: 68,
+                        height: 68,
+                        fit: BoxFit.cover,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 14),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Teen Patti',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
+                    const SizedBox(width: 14),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Teen Patti',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
-                        ),
-                        SizedBox(height: 6),
-                        Text(
-                          'Live round-based betting with A, B, and C pots inside the video room.',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            height: 1.35,
+                          SizedBox(height: 6),
+                          Text(
+                            'Live round-based betting with A, B, and C pots inside the video room.',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              height: 1.35,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  const Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    color: Colors.white70,
-                    size: 18,
-                  ),
-                ],
+                    const Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      color: Colors.white70,
+                      size: 18,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
+        if (showTeenPatti && showGreedy) const SizedBox(height: 12),
+        if (showGreedy)
+          InkWell(
+            onTap: onOpenGreedy,
+            borderRadius: BorderRadius.circular(22),
+            child: Ink(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(22),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF1B1F37), Color(0xFF11131F)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 68,
+                      height: 68,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF5AA7FF), Color(0xFFE95BFF)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.blur_circular_rounded,
+                        color: Colors.white,
+                        size: 34,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Greedy',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          SizedBox(height: 6),
+                          Text(
+                            'Four weighted spinner pots with different multipliers inside the live room.',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              height: 1.35,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      color: Colors.white70,
+                      size: 18,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        if (!showTeenPatti && !showGreedy)
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              color: Colors.white.withValues(alpha: .04),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: const Text(
+              'No room games are enabled for this build right now.',
+              style: TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -183,7 +349,8 @@ class TeenPattiGamePanel extends StatefulWidget {
   State<TeenPattiGamePanel> createState() => _TeenPattiGamePanelState();
 }
 
-class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
+class _TeenPattiGamePanelState extends State<TeenPattiGamePanel>
+    with TickerProviderStateMixin {
   static const _chipOptions = <int>[50, 200, 500, 1000, 5000];
   static const _chipAssets = <int, String>{
     50: 'assets/games/teen_patti/gems_1.png',
@@ -206,6 +373,8 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
     5000: GlobalKey(),
   };
   final Random _random = Random();
+  late final AnimationController _idleController;
+  late final AudioPlayer _effectPlayer;
 
   TeenPattiSnapshot? _snapshot;
   StreamSubscription<Map<String, dynamic>>? _snapshotSub;
@@ -217,6 +386,8 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
   int _selectedChip = 50;
   int _selectedPotIndex = -1;
   int? _shownResultRoundId;
+  String? _localViewerRoundKey;
+  Map<String, int> _localViewerPotTotals = const {'A': 0, 'B': 0, 'C': 0};
   String? _activeFakeRoundKey;
   Map<String, int> _displayTotals = const {'A': 0, 'B': 0, 'C': 0};
   List<_ScheduledFakeBet> _scheduledFakeBets = const [];
@@ -228,6 +399,11 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
   @override
   void initState() {
     super.initState();
+    _effectPlayer = AudioPlayer()..setReleaseMode(ReleaseMode.stop);
+    _idleController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 8),
+    )..repeat(reverse: true);
     _bootstrap();
   }
 
@@ -236,6 +412,8 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
     _snapshotSub?.cancel();
     _eventSub?.cancel();
     _ticker?.cancel();
+    _idleController.dispose();
+    _effectPlayer.dispose();
     unawaited(_socket.stop());
     super.dispose();
   }
@@ -263,17 +441,48 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
       final next = TeenPattiSnapshot.fromJson(data);
       final current = _snapshot;
       if (current != null && !data.containsKey('wallet_balance')) {
+        final publicRoundData =
+            data['round'] is Map
+                ? Map<String, dynamic>.from(data['round'] as Map)
+                : const <String, dynamic>{};
+        final mergedRound = TeenPattiRound(
+          id: next.round.id,
+          roundKey: next.round.roundKey,
+          status: next.round.status,
+          phase: next.round.phase,
+          startsAt: next.round.startsAt,
+          locksAt: next.round.locksAt,
+          endsAt: next.round.endsAt,
+          settledAt: next.round.settledAt,
+          displayUntil: next.round.displayUntil,
+          winningPot: next.round.winningPot,
+          winningHand: next.round.winningHand,
+          losingHandOne: next.round.losingHandOne,
+          losingHandTwo: next.round.losingHandTwo,
+          countdownSeconds: next.round.countdownSeconds,
+          totals: next.round.totals,
+          realTotals: next.round.realTotals,
+          fakeTotals: next.round.fakeTotals,
+          totalBetsCount: next.round.totalBetsCount,
+          participantCount: next.round.participantCount,
+          payoutMultiplier: next.round.payoutMultiplier,
+          viewerBets:
+              publicRoundData.containsKey('viewer_bets')
+                  ? next.round.viewerBets
+                  : current.round.viewerBets,
+        );
         _applySnapshot(
           TeenPattiSnapshot(
             settings: next.settings,
             walletBalance: current.walletBalance,
-            round: next.round,
+            round: mergedRound,
             history: next.history,
           ),
+          syncViewerBets: false,
         );
         return;
       }
-      _applySnapshot(next);
+      _applySnapshot(next, syncViewerBets: false);
     });
     _eventSub?.cancel();
     _eventSub = _socket.eventStream.listen((payload) {
@@ -299,7 +508,7 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
     try {
       final snapshot = await _api.fetchSnapshot();
       if (!mounted) return;
-      _applySnapshot(snapshot, loading: false);
+      _applySnapshot(snapshot, loading: false, syncViewerBets: true);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -343,13 +552,17 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
       );
       if (!mounted) return;
       if (startGlobalPosition != null) {
+        Haptics.selection();
+        SystemSound.play(SystemSoundType.click);
+        unawaited(_playEffect('games/teen_patti/coin_dropped.mp3'));
         _launchFlyingGem(
           imagePath: imagePath,
           potIndex: ['A', 'B', 'C'].indexOf(pot),
           startGlobalPosition: startGlobalPosition,
         );
       }
-      _applySnapshot(next);
+      _applyLocalViewerBet(next.round.roundKey, pot, _selectedChip);
+      _applySnapshot(next, syncViewerBets: true);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -387,7 +600,11 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
     }
   }
 
-  void _applySnapshot(TeenPattiSnapshot next, {bool loading = false}) {
+  void _applySnapshot(
+    TeenPattiSnapshot next, {
+    bool loading = false,
+    bool syncViewerBets = true,
+  }) {
     final previous = _snapshot?.round;
     final allowedChips =
         _chipOptions
@@ -411,9 +628,56 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
       }
     });
 
+    if (syncViewerBets) {
+      _syncLocalViewerBets(next.round);
+    }
     _syncDisplayTotals(next);
     _animateRemoteBetDeltas(previous, next.round);
     _showResultDialogIfNeeded(next.round);
+  }
+
+  void _applyLocalViewerBet(String roundKey, String pot, int amount) {
+    final nextTotals =
+        _localViewerRoundKey == roundKey
+            ? Map<String, int>.from(_localViewerPotTotals)
+            : <String, int>{'A': 0, 'B': 0, 'C': 0};
+    nextTotals[pot] = (nextTotals[pot] ?? 0) + amount;
+    setState(() {
+      _localViewerRoundKey = roundKey;
+      _localViewerPotTotals = nextTotals;
+    });
+  }
+
+  void _syncLocalViewerBets(TeenPattiRound round) {
+    final serverTotals = <String, int>{
+      'A': round.viewerBets.where((bet) => bet.pot == 'A').fold<int>(0, (sum, bet) => sum + bet.amount),
+      'B': round.viewerBets.where((bet) => bet.pot == 'B').fold<int>(0, (sum, bet) => sum + bet.amount),
+      'C': round.viewerBets.where((bet) => bet.pot == 'C').fold<int>(0, (sum, bet) => sum + bet.amount),
+    };
+
+    if (_localViewerRoundKey != round.roundKey) {
+      setState(() {
+        _localViewerRoundKey = round.roundKey;
+        _localViewerPotTotals = serverTotals;
+      });
+      return;
+    }
+
+    final merged = <String, int>{
+      'A': max(_localViewerPotTotals['A'] ?? 0, serverTotals['A'] ?? 0),
+      'B': max(_localViewerPotTotals['B'] ?? 0, serverTotals['B'] ?? 0),
+      'C': max(_localViewerPotTotals['C'] ?? 0, serverTotals['C'] ?? 0),
+    };
+
+    if (merged['A'] == _localViewerPotTotals['A'] &&
+        merged['B'] == _localViewerPotTotals['B'] &&
+        merged['C'] == _localViewerPotTotals['C']) {
+      return;
+    }
+
+    setState(() {
+      _localViewerPotTotals = merged;
+    });
   }
 
   void _syncDisplayTotals(TeenPattiSnapshot snapshot) {
@@ -600,12 +864,34 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
     if (!mounted || round.phase != 'result' || round.id <= 0) return;
     if (_shownResultRoundId == round.id) return;
     _shownResultRoundId = round.id;
+    Haptics.success();
+    SystemSound.play(SystemSoundType.alert);
+    unawaited(_loadSnapshot());
+    final winningPot = round.winningPot;
+    final localWinningBet =
+        winningPot == null ? 0 : (_localViewerRoundKey == round.roundKey ? (_localViewerPotTotals[winningPot] ?? 0) : 0);
+    final serverWinningBet = round.viewerBets
+        .where((bet) => bet.pot == winningPot)
+        .fold<int>(0, (sum, bet) => sum + bet.amount);
+    final resolvedWinningBet = max(localWinningBet, serverWinningBet);
+    final serverWinningAmount = round.viewerBets
+        .where((bet) => bet.payoutCoins > 0)
+        .fold<int>(0, (sum, bet) => sum + bet.payoutCoins);
+    final resolvedWinningAmount =
+        serverWinningAmount > 0
+            ? serverWinningAmount
+            : (winningPot == null ? 0 : resolvedWinningBet * round.payoutMultiplier);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       showDialog<void>(
         context: context,
         barrierDismissible: true,
-        builder: (context) => _TeenPattiResultDialog(round: round),
+        builder: (context) => _TeenPattiResultDialog(
+          round: round,
+          winningBetAmount: resolvedWinningBet,
+          winningPayoutAmount: resolvedWinningAmount,
+        ),
       );
     });
   }
@@ -616,6 +902,13 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
     if (amount >= 500) return _chipAssets[500]!;
     if (amount >= 200) return _chipAssets[200]!;
     return _chipAssets[50]!;
+  }
+
+  Future<void> _playEffect(String assetPath) async {
+    try {
+      await _effectPlayer.stop();
+      await _effectPlayer.play(AssetSource(assetPath));
+    } catch (_) {}
   }
 
   void _launchFlyingGem({
@@ -641,6 +934,7 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
         _FlyingGem(
           id: id,
           imagePath: imagePath,
+          accent: _potAccentColor(const ['A', 'B', 'C'][potIndex]),
           left: startLocal.dx - 16,
           top: startLocal.dy - 16,
           targetLeft: startLocal.dx - 16,
@@ -733,6 +1027,67 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
             ),
           ),
         ),
+        AnimatedBuilder(
+          animation: _idleController,
+          builder: (context, child) {
+            final drift = sin(_idleController.value * 2 * pi);
+            return Stack(
+              children: [
+                Positioned(
+                  top: -40 + (drift * 8),
+                  left: -30 + (drift * 10),
+                  child: IgnorePointer(
+                    child: Container(
+                      width: 180,
+                      height: 180,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: RadialGradient(
+                          colors: [Color(0x5547C8FF), Color(0x0047C8FF)],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 36 - (drift * 6),
+                  right: -20 + (drift * 7),
+                  child: IgnorePointer(
+                    child: Container(
+                      width: 160,
+                      height: 160,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: RadialGradient(
+                          colors: [Color(0x44FFD54F), Color(0x00FFD54F)],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 112 + (drift * 6),
+                  left: 0,
+                  right: 0,
+                  child: IgnorePointer(
+                    child: Center(
+                      child: Container(
+                        width: 240 + (drift.abs() * 24),
+                        height: 130,
+                        decoration: const BoxDecoration(
+                          gradient: RadialGradient(
+                            colors: [Color(0x559B59FF), Color(0x009B59FF)],
+                            radius: .92,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
         ListView(
           padding: const EdgeInsets.fromLTRB(12, 6, 12, 24),
           children: [
@@ -758,13 +1113,16 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
                       height: cardHeight,
                       potCoins: _displayTotals[pot] ?? 0,
                       myCoins: _myPotCoins(round, pot),
+                      gemStack: _potGemStackForTotal(_displayTotals[pot] ?? 0),
                       cards: _cardsForPot(round, pot),
                       selected: _selectedPotIndex == index,
                       revealedWinner:
                           round.phase == 'result' && round.winningPot == pot,
                       bettingOpen: round.phase == 'betting',
+                      pulseSeed: index,
                       onTap: () {
                         if (round.phase != 'betting') return;
+                        Haptics.selection();
                         setState(() {
                           _selectedPotIndex =
                               _selectedPotIndex == index ? -1 : index;
@@ -776,8 +1134,6 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
               },
             ),
             const SizedBox(height: 16),
-            _RecentWinnersStrip(history: snapshot.history.take(5).toList()),
-            const SizedBox(height: 18),
             _BettingConsole(
               chipRowKey: _chipRowKey,
               walletBalance: snapshot.walletBalance,
@@ -785,8 +1141,6 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
                   _selectedPotIndex == -1 ? null : ['A', 'B', 'C'][_selectedPotIndex],
               selectedChip: _selectedChip,
               phase: round.phase,
-              minBet: snapshot.settings.minBet,
-              maxBet: snapshot.settings.maxBet,
               placingBet: _placingBet,
               chipOptions: _chipOptions,
               chipAssets: _chipAssets,
@@ -808,33 +1162,41 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
               },
             ),
             const SizedBox(height: 14),
-            _PhaseBanner(
-              phase: round.phase,
-              winningPot: round.winningPot,
-              error: _error,
-            ),
+            _RecentWinnersStrip(history: snapshot.history.take(5).toList()),
             const SizedBox(height: 8),
           ],
         ),
         ..._flyingGems.map(
           (gem) => AnimatedPositioned(
             key: ValueKey('gem-${gem.id}'),
-            duration: const Duration(milliseconds: 460),
-            curve: Curves.easeOutCubic,
+            duration: const Duration(milliseconds: 520),
+            curve: Curves.easeOutBack,
             left: gem.targetLeft,
             top: gem.targetTop,
             child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 1, end: .68),
-              duration: const Duration(milliseconds: 460),
+              tween: Tween(begin: 1.08, end: .82),
+              duration: const Duration(milliseconds: 520),
+              curve: Curves.elasticOut,
               builder: (context, scale, child) {
                 return Transform.scale(scale: scale, child: child);
               },
               child: IgnorePointer(
-                child: Image.asset(
-                  gem.imagePath,
-                  width: 34,
-                  height: 34,
-                  fit: BoxFit.contain,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    boxShadow: [
+                      BoxShadow(
+                        color: gem.accent.withValues(alpha: .24),
+                        blurRadius: 10,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: Image.asset(
+                    gem.imagePath,
+                    width: 34,
+                    height: 34,
+                    fit: BoxFit.contain,
+                  ),
                 ),
               ),
             ),
@@ -881,9 +1243,29 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
   }
 
   int _myPotCoins(_LiveRoundView round, String pot) {
+    if (_localViewerRoundKey == round.roundKey) {
+      return _localViewerPotTotals[pot] ?? 0;
+    }
     return round.viewerBets
         .where((bet) => bet.pot == pot)
         .fold<int>(0, (sum, bet) => sum + bet.amount);
+  }
+
+  List<String> _potGemStackForTotal(int total) {
+    if (total <= 0) return const [];
+    var remaining = total;
+    final chips = <String>[];
+    for (final option in const [5000, 1000, 500, 200, 50]) {
+      while (remaining >= option && chips.length < 4) {
+        chips.add(_chipAssets[option]!);
+        remaining -= option;
+      }
+      if (chips.length >= 4) break;
+    }
+    if (chips.isEmpty) {
+      chips.add(_chipAssets[50]!);
+    }
+    return chips;
   }
 
   String _gameStateLabel(_LiveRoundView round) {
@@ -973,7 +1355,7 @@ class _TeenPattiHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 152,
+      height: 164,
       child: Column(
         children: [
           Stack(
@@ -993,28 +1375,45 @@ class _TeenPattiHeader extends StatelessWidget {
                 ],
               ),
               Container(
-                constraints: const BoxConstraints(minWidth: 112),
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                constraints: const BoxConstraints(minWidth: 124),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.redAccent.withValues(alpha: .9),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.white24),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFF7B54), Color(0xFFE63E6D)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: const Color(0x66FFFFFF)),
                   boxShadow: const [
                     BoxShadow(
-                      color: Colors.black26,
-                      blurRadius: 10,
-                      offset: Offset(0, 4),
+                      color: Color(0x66E63E6D),
+                      blurRadius: 18,
+                      spreadRadius: 2,
+                      offset: Offset(0, 6),
                     ),
                   ],
                 ),
-                child: Text(
-                  '00:${countdownSeconds.toString().padLeft(2, '0')}s',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.timer_rounded,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '00:${countdownSeconds.toString().padLeft(2, '0')}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: .4,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -1022,20 +1421,43 @@ class _TeenPattiHeader extends StatelessWidget {
           const SizedBox(height: 10),
           Expanded(
             child: Center(
-              child: Image.asset(
-                'assets/games/teen_patti/logo_teenpatti.png',
-                width: MediaQuery.of(context).size.width * .54,
-                fit: BoxFit.contain,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    width: MediaQuery.of(context).size.width * .52,
+                    height: 88,
+                    decoration: const BoxDecoration(
+                      gradient: RadialGradient(
+                        colors: [Color(0x44FFD54F), Color(0x00FFD54F)],
+                      ),
+                    ),
+                  ),
+                  Image.asset(
+                    'assets/games/teen_patti/logo_teenpatti.png',
+                    width: MediaQuery.of(context).size.width * .54,
+                    fit: BoxFit.contain,
+                  ),
+                ],
               ),
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            gameStateLabel,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: .28),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: Text(
+              gameStateLabel,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                letterSpacing: .2,
+              ),
             ),
           ),
         ],
@@ -1224,6 +1646,7 @@ class _RecentWinnersStrip extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             children: [
@@ -1377,7 +1800,7 @@ class _WinnerBadge extends StatelessWidget {
               ),
             ],
           ),
-          const Spacer(),
+          const SizedBox(height: 18),
           Text(
             winnerPot == null ? 'Waiting for result' : 'Winning side',
             style: TextStyle(
@@ -1424,9 +1847,11 @@ class _BoardPotCard extends StatelessWidget {
     required this.height,
     required this.potCoins,
     required this.myCoins,
+    required this.gemStack,
     required this.selected,
     required this.revealedWinner,
     required this.bettingOpen,
+    required this.pulseSeed,
     required this.cards,
     this.onTap,
   });
@@ -1437,155 +1862,158 @@ class _BoardPotCard extends StatelessWidget {
   final double height;
   final int potCoins;
   final int myCoins;
+  final List<String> gemStack;
   final bool selected;
   final bool revealedWinner;
   final bool bettingOpen;
+  final int pulseSeed;
   final List<String> cards;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final accent = _potAccentColor(pot);
+    final softAccent = accent.withValues(alpha: .18);
+    final pulse = bettingOpen ? ((sin((DateTime.now().millisecondsSinceEpoch / 700) + pulseSeed) + 1) / 2) : 0.0;
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        width: width,
-        height: height,
-        padding: EdgeInsets.all(width * .05),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              Colors.white.withValues(alpha: selected ? .16 : .11),
-              Colors.black.withValues(alpha: .12),
-            ],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-          borderRadius: BorderRadius.circular(width * .10),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black26,
-              blurRadius: width * .03,
-              offset: Offset(0, height * .01),
-            ),
-          ],
-          border:
-              selected
-                  ? Border.all(color: Colors.greenAccent, width: width * .03)
-                  : null,
-        ),
-        child: Column(
-          children: [
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: width * .085,
-                vertical: height * .014,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: selected || revealedWinner || bettingOpen ? 1 : .45),
+        duration: const Duration(milliseconds: 320),
+        builder: (context, glow, child) {
+          return Container(
+            width: width,
+            height: height,
+            padding: EdgeInsets.all(width * .05),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  softAccent.withValues(alpha: .20 + (.05 * glow)),
+                  Colors.white.withValues(alpha: selected ? .14 : .10),
+                  Colors.black.withValues(alpha: .20),
+                ],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
               ),
-              decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(width * .10),
+              boxShadow: [
+                BoxShadow(
+                  color: accent.withValues(alpha: (.12 + (.14 * pulse)) * glow),
+                  blurRadius: width * (.12 + (.06 * pulse)),
+                  spreadRadius: width * (.012 + (.012 * pulse)),
+                ),
+                BoxShadow(
+                  color: Colors.black38,
+                  blurRadius: width * .06,
+                  offset: Offset(0, height * .012),
+                ),
+              ],
+              border: Border.all(
                 color:
                     revealedWinner
-                        ? Colors.greenAccent.withValues(alpha: .14)
+                        ? accent.withValues(alpha: .88)
                         : selected
-                            ? Colors.white.withValues(alpha: .16)
-                            : Colors.black.withValues(alpha: .18),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                  color:
-                      revealedWinner
-                          ? Colors.greenAccent.withValues(alpha: .44)
-                          : selected
-                              ? Colors.white24
-                              : Colors.white10,
-                ),
-              ),
-              child: Text(
-                revealedWinner
-                    ? 'Winner Pot $pot'
-                    : selected
-                        ? 'Pot $pot Selected'
-                        : 'Pot $pot',
-                style: TextStyle(
-                  color: revealedWinner ? Colors.greenAccent : Colors.white,
-                  fontWeight: FontWeight.w900,
-                  fontSize: width * .078,
-                ),
+                            ? accent.withValues(alpha: .68)
+                            : Colors.white10,
+                width: selected || revealedWinner ? width * .024 : 1.1,
               ),
             ),
-            SizedBox(height: height * .018),
-            Container(
-              key: potKey,
-              height: height * .34,
-              alignment: Alignment.center,
-              child: SizedBox(
-                width: width * .82,
-                child: Stack(
+            child: Column(
+              children: [
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: width * .085,
+                    vertical: height * .014,
+                  ),
+                  decoration: BoxDecoration(
+                    color:
+                        revealedWinner
+                            ? accent.withValues(alpha: .18)
+                            : selected
+                                ? accent.withValues(alpha: .14)
+                                : Colors.black.withValues(alpha: .18),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color:
+                          revealedWinner
+                              ? accent.withValues(alpha: .82)
+                              : selected
+                                  ? accent.withValues(alpha: .58)
+                                  : Colors.white10,
+                    ),
+                  ),
+                  child: Text(
+                    revealedWinner
+                        ? 'Winner Pot $pot'
+                        : selected
+                            ? 'Pot $pot Selected'
+                            : 'Pot $pot',
+                    style: TextStyle(
+                      color: revealedWinner ? accent : Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: width * .078,
+                    ),
+                  ),
+                ),
+                SizedBox(height: height * .018),
+                Container(
+                  key: potKey,
+                  height: height * .34,
                   alignment: Alignment.center,
-                  clipBehavior: Clip.none,
-                  children: [
-                    Transform.translate(
-                      offset: Offset(-width * .13, 0),
-                      child: _CardImage(
-                        path: cards[0],
-                        width: width * .44,
-                        opacity: .7,
-                      ),
-                    ),
-                    Transform.translate(
-                      offset: Offset(0, -2),
-                      child: _CardImage(
-                        path: cards[1],
-                        width: width * .44,
-                        opacity: .86,
-                      ),
-                    ),
-                    Transform.translate(
-                      offset: Offset(width * .13, 0),
-                      child: _CardImage(
-                        path: cards[2],
-                        width: width * .44,
-                      ),
-                    ),
-                  ],
+                  child: _CardFan(
+                    paths: cards,
+                    cardWidth: width * .40,
+                    sideOffset: width * .13,
+                    centerLift: 4,
+                    sideOpacity: .78,
+                  ),
                 ),
-              ),
-            ),
-            SizedBox(height: height * .025),
-            Text(
-              '$potCoins',
-              style: TextStyle(
-                fontSize: width * .115,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-              ),
-            ),
-            Text(
-              'Total Bet',
-              style: TextStyle(
-                fontSize: width * .065,
-                color: Colors.white54,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            SizedBox(height: height * .012),
-            Text(
-              'You: $myCoins',
-              style: TextStyle(
-                fontSize: width * .082,
-                color: selected ? Colors.white : Colors.white70,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const Spacer(),
-            if (bettingOpen)
-              Text(
-                selected ? 'Ready for gem bet' : 'Tap to target',
-                style: TextStyle(
-                  color: selected ? const Color(0xFFFFE082) : Colors.white54,
-                  fontWeight: FontWeight.w700,
-                  fontSize: width * .064,
+                SizedBox(height: height * .01),
+                _PotGemPile(gems: gemStack, width: width, accent: accent),
+                SizedBox(height: height * .018),
+                Text(
+                  '$potCoins',
+                  style: TextStyle(
+                    fontSize: width * .115,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                  ),
                 ),
-              ),
-          ],
-        ),
+                Text(
+                  'Total Bet',
+                  style: TextStyle(
+                    fontSize: width * .065,
+                    color: Colors.white54,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                SizedBox(height: height * .012),
+                Text(
+                  'You: $myCoins',
+                  style: TextStyle(
+                    fontSize: width * .082,
+                    color: selected ? accent : Colors.white70,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                if (bettingOpen)
+                  Text(
+                    revealedWinner
+                        ? 'Winner Locked'
+                        : selected
+                            ? 'Ready for gem bet'
+                            : 'Tap to target',
+                    style: TextStyle(
+                      color: selected ? accent : Colors.white54,
+                      fontWeight: FontWeight.w700,
+                      fontSize: width * .064,
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -1619,7 +2047,128 @@ class _CardImage extends StatelessWidget {
   }
 }
 
-class _BetGemButton extends StatelessWidget {
+class _CardFan extends StatelessWidget {
+  const _CardFan({
+    required this.paths,
+    required this.cardWidth,
+    required this.sideOffset,
+    required this.centerLift,
+    this.sideOpacity = .8,
+  });
+
+  final List<String> paths;
+  final double cardWidth;
+  final double sideOffset;
+  final double centerLift;
+  final double sideOpacity;
+
+  @override
+  Widget build(BuildContext context) {
+    final resolved = paths.length >= 3
+        ? paths
+        : const [
+            'assets/games/teen_patti/card_back_1.jpeg',
+            'assets/games/teen_patti/card_back_1.jpeg',
+            'assets/games/teen_patti/card_back_1.jpeg',
+          ];
+
+    return SizedBox(
+      width: (cardWidth * 2) + sideOffset,
+      height: (cardWidth * 1.34) + centerLift + 2,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        clipBehavior: Clip.none,
+        children: [
+          Transform.translate(
+            offset: Offset(-sideOffset, 0),
+            child: _CardImage(
+              path: resolved[0],
+              width: cardWidth,
+              opacity: sideOpacity,
+            ),
+          ),
+          Transform.translate(
+            offset: Offset(0, -centerLift),
+            child: _CardImage(
+              path: resolved[1],
+              width: cardWidth,
+              opacity: .94,
+            ),
+          ),
+          Transform.translate(
+            offset: Offset(sideOffset, 0),
+            child: _CardImage(
+              path: resolved[2],
+              width: cardWidth,
+              opacity: sideOpacity,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PotGemPile extends StatelessWidget {
+  const _PotGemPile({
+    required this.gems,
+    required this.width,
+    required this.accent,
+  });
+
+  final List<String> gems;
+  final double width;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    if (gems.isEmpty) {
+      return SizedBox(height: width * .12);
+    }
+
+    return SizedBox(
+      height: width * .18,
+      child: Center(
+        child: SizedBox(
+          width: width * .48,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: List.generate(gems.length, (index) {
+              final left = (width * .09) * index;
+              final top = index.isEven ? 4.0 : 0.0;
+              return Positioned(
+                left: left,
+                top: top,
+                child: Transform.rotate(
+                  angle: (index.isEven ? -.08 : .08),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      boxShadow: [
+                        BoxShadow(
+                          color: accent.withValues(alpha: .18),
+                          blurRadius: 8,
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                    child: Image.asset(
+                      gems[index],
+                      width: width * .16,
+                      height: width * .16,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BetGemButton extends StatefulWidget {
   const _BetGemButton({
     required this.chipKey,
     required this.value,
@@ -1637,42 +2186,85 @@ class _BetGemButton extends StatelessWidget {
   final ValueChanged<TapDownDetails> onTapDown;
 
   @override
+  State<_BetGemButton> createState() => _BetGemButtonState();
+}
+
+class _BetGemButtonState extends State<_BetGemButton> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
-    final shortLabel = switch (value) {
+    final shortLabel = switch (widget.value) {
       1000 => '1K',
       5000 => '5K',
-      _ => '$value',
+      _ => '${widget.value}',
     };
     return Opacity(
-      opacity: enabled ? 1 : .42,
+      opacity: widget.enabled ? 1 : .42,
       child: GestureDetector(
-        onTapDown: enabled ? onTapDown : null,
-        child: AnimatedContainer(
-          key: chipKey,
-          duration: const Duration(milliseconds: 180),
+        onTapDown: widget.enabled
+            ? (details) {
+                setState(() => _pressed = true);
+                Haptics.selection();
+                widget.onTapDown(details);
+              }
+            : null,
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTapCancel: () => setState(() => _pressed = false),
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 120),
+          scale: _pressed ? .92 : 1,
+          child: AnimatedContainer(
+            key: widget.chipKey,
+            duration: const Duration(milliseconds: 180),
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border:
-                active
-                    ? Border.all(color: Colors.greenAccent, width: 2)
-                    : null,
+            gradient: LinearGradient(
+              colors: [
+                Colors.white.withValues(alpha: widget.active ? .16 : .06),
+                Colors.black.withValues(alpha: .14),
+              ],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+            border: Border.all(
+              color: widget.active
+                  ? const Color(0xFFFFE082)
+                  : Colors.white12,
+              width: widget.active ? 2 : 1,
+            ),
+            boxShadow: [
+              if (widget.active)
+                const BoxShadow(
+                  color: Color(0x66FFD54F),
+                  blurRadius: 12,
+                  spreadRadius: 1,
+                ),
+              const BoxShadow(
+                color: Colors.black38,
+                blurRadius: 8,
+                offset: Offset(0, 4),
+              ),
+            ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _RotatingGem(imagePath: imagePath),
+              _RotatingGem(imagePath: widget.imagePath, active: widget.active),
               const SizedBox(height: 4),
               Text(
                 shortLabel,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: widget.active ? const Color(0xFFFFF2B0) : Colors.white,
                   fontSize: 12,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: .3,
                 ),
               ),
             ],
           ),
+        ),
         ),
       ),
     );
@@ -1686,8 +2278,6 @@ class _BettingConsole extends StatelessWidget {
     required this.selectedPot,
     required this.selectedChip,
     required this.phase,
-    required this.minBet,
-    required this.maxBet,
     required this.placingBet,
     required this.chipOptions,
     required this.chipAssets,
@@ -1700,8 +2290,6 @@ class _BettingConsole extends StatelessWidget {
   final String? selectedPot;
   final int selectedChip;
   final String phase;
-  final int minBet;
-  final int maxBet;
   final bool placingBet;
   final List<int> chipOptions;
   final Map<int, String> chipAssets;
@@ -1715,14 +2303,21 @@ class _BettingConsole extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Colors.black.withValues(alpha: .24),
-            Colors.black.withValues(alpha: .12),
+            Colors.white.withValues(alpha: .08),
+            Colors.black.withValues(alpha: .18),
           ],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white12),
+        border: Border.all(color: const Color(0x33D4AF37)),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black45,
+            blurRadius: 18,
+            offset: Offset(0, 10),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1733,50 +2328,45 @@ class _BettingConsole extends StatelessWidget {
                 child: Text(
                   'Bet Console',
                   style: TextStyle(
-                    fontSize: 22,
+                    fontSize: 23,
                     fontWeight: FontWeight.w900,
-                    color: Colors.white,
+                    color: Color(0xFFFFF2B0),
+                    letterSpacing: .4,
+                    shadows: [
+                      Shadow(
+                        color: Color(0x66000000),
+                        blurRadius: 12,
+                        offset: Offset(0, 3),
+                      ),
+                    ],
                   ),
                 ),
               ),
-              _CoinBalancePill(balance: walletBalance),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              _SelectionChip(
-                label: selectedPot == null ? 'Select Pot' : 'Pot $selectedPot',
-                active: selectedPot != null,
-              ),
-              const SizedBox(width: 8),
+              if (selectedPot != null) ...[
+                _SelectionChip(
+                  label: 'Pot $selectedPot',
+                  active: true,
+                ),
+                const SizedBox(width: 8),
+              ],
               _SelectionChip(
                 label:
                     'Gem ${selectedChip >= 1000 ? '${selectedChip ~/ 1000}K' : selectedChip}',
                 active: true,
-              ),
-              const Spacer(),
-              Text(
-                '$minBet-$maxBet',
-                style: const TextStyle(
-                  color: Colors.white54,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 11,
-                ),
               ),
             ],
           ),
           const SizedBox(height: 10),
           Text(
             selectedPot == null
-                ? 'Tap a pot board, then tap a gem to place a bet.'
+                ? 'Pick a pot, then drop a gem.'
                 : phase == 'betting'
-                    ? 'Pot $selectedPot is armed. Tap any enabled gem below.'
-                    : 'Round is not accepting bets right now.',
+                    ? 'Pot $selectedPot armed. Drop your gem.'
+                    : 'Round closed.',
             style: TextStyle(
               color: Colors.white.withValues(alpha: .80),
-              fontWeight: FontWeight.w600,
-              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              fontSize: 11.5,
               height: 1.35,
             ),
           ),
@@ -1786,8 +2376,7 @@ class _BettingConsole extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children:
                 chipOptions.map((chip) {
-                  final enabled =
-                      chip >= minBet && chip <= maxBet && phase == 'betting';
+                  final enabled = phase == 'betting';
                   return _BetGemButton(
                     chipKey: chipKeys[chip],
                     value: chip,
@@ -1813,12 +2402,19 @@ class _SelectionChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color:
-            active
-                ? const Color(0xFFFFD54F).withValues(alpha: .16)
-                : Colors.white10,
+        gradient: LinearGradient(
+          colors: active
+              ? [
+                  const Color(0xFFFFD54F).withValues(alpha: .22),
+                  const Color(0xFFFF8A5B).withValues(alpha: .16),
+                ]
+              : [
+                  Colors.white.withValues(alpha: .10),
+                  Colors.white.withValues(alpha: .04),
+                ],
+        ),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
           color:
@@ -1826,23 +2422,43 @@ class _SelectionChip extends StatelessWidget {
                   ? const Color(0xFFFFD54F).withValues(alpha: .44)
                   : Colors.white12,
         ),
+        boxShadow: active
+            ? const [
+                BoxShadow(
+                  color: Color(0x44FFD54F),
+                  blurRadius: 10,
+                  spreadRadius: 1,
+                ),
+              ]
+            : null,
       ),
       child: Text(
         label,
         style: TextStyle(
-          color: active ? const Color(0xFFFFE082) : Colors.white70,
-          fontWeight: FontWeight.w800,
+          color: active ? const Color(0xFFFFF2B0) : Colors.white70,
+          fontWeight: FontWeight.w900,
           fontSize: 11,
+          letterSpacing: .25,
         ),
       ),
     );
   }
 }
 
+Color _potAccentColor(String pot) {
+  return switch (pot) {
+    'A' => const Color(0xFF66B8FF),
+    'B' => const Color(0xFFFF8A5B),
+    'C' => const Color(0xFF68D391),
+    _ => const Color(0xFFE8C76A),
+  };
+}
+
 class _RotatingGem extends StatefulWidget {
-  const _RotatingGem({required this.imagePath});
+  const _RotatingGem({required this.imagePath, required this.active});
 
   final String imagePath;
+  final bool active;
 
   @override
   State<_RotatingGem> createState() => _RotatingGemState();
@@ -1881,20 +2497,24 @@ class _RotatingGemState extends State<_RotatingGem>
         alignment: Alignment.center,
         children: [
           Container(
-            width: 50,
-            height: 50,
+            width: widget.active ? 54 : 50,
+            height: widget.active ? 54 : 50,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: const RadialGradient(
-                colors: [Color(0x66FFFFFF), Color(0x33FFD54F)],
+              gradient: RadialGradient(
+                colors: widget.active
+                    ? const [Color(0x88FFF7CC), Color(0x44FFD54F)]
+                    : const [Color(0x66FFFFFF), Color(0x33FFD54F)],
                 center: Alignment.center,
                 radius: .82,
               ),
-              boxShadow: const [
+              boxShadow: [
                 BoxShadow(
-                  color: Color(0x66FFD54F),
-                  blurRadius: 12,
-                  spreadRadius: 3,
+                  color: widget.active
+                      ? const Color(0x88FFD54F)
+                      : const Color(0x66FFD54F),
+                  blurRadius: widget.active ? 16 : 12,
+                  spreadRadius: widget.active ? 5 : 3,
                 ),
               ],
             ),
@@ -1911,52 +2531,103 @@ class _RotatingGemState extends State<_RotatingGem>
   }
 }
 
-class _TeenPattiResultDialog extends StatelessWidget {
-  const _TeenPattiResultDialog({required this.round});
+class _TeenPattiResultDialog extends StatefulWidget {
+  const _TeenPattiResultDialog({
+    required this.round,
+    required this.winningBetAmount,
+    required this.winningPayoutAmount,
+  });
 
   final TeenPattiRound round;
+  final int winningBetAmount;
+  final int winningPayoutAmount;
+
+  @override
+  State<_TeenPattiResultDialog> createState() => _TeenPattiResultDialogState();
+}
+
+class _TeenPattiResultDialogState extends State<_TeenPattiResultDialog> {
+  bool _cardsVisible = false;
+  bool _highlightVisible = false;
+  bool _payoutVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future<void>.delayed(const Duration(milliseconds: 120), () {
+      if (!mounted) return;
+      setState(() => _cardsVisible = true);
+      SystemSound.play(SystemSoundType.click);
+    });
+    Future<void>.delayed(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      setState(() => _highlightVisible = true);
+    });
+    Future<void>.delayed(const Duration(milliseconds: 520), () {
+      if (!mounted) return;
+      setState(() => _payoutVisible = true);
+      Haptics.medium();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final winningPot = round.winningPot ?? '—';
+    final winningPot = widget.round.winningPot ?? '—';
+    final accent = _potAccentColor(winningPot);
     final winningCards = [
-      if (round.winningHand.isNotEmpty)
-        round.winningHand[0]
+      if (widget.round.winningHand.isNotEmpty)
+        widget.round.winningHand[0]
       else
         'assets/games/teen_patti/card_back_1.jpeg',
-      if (round.winningHand.length > 1)
-        round.winningHand[1]
+      if (widget.round.winningHand.length > 1)
+        widget.round.winningHand[1]
       else
         'assets/games/teen_patti/card_back_1.jpeg',
-      if (round.winningHand.length > 2)
-        round.winningHand[2]
+      if (widget.round.winningHand.length > 2)
+        widget.round.winningHand[2]
       else
         'assets/games/teen_patti/card_back_1.jpeg',
     ];
-    final totalBetOnWinningPot = round.viewerBets
-        .where((bet) => bet.pot == winningPot)
-        .fold<int>(0, (sum, bet) => sum + bet.amount);
-    final winningAmount = round.viewerBets
-        .where((bet) => bet.payoutCoins > 0)
-        .fold<int>(0, (sum, bet) => sum + bet.payoutCoins);
-
     return Dialog(
       backgroundColor: Colors.transparent,
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: .72),
-          borderRadius: BorderRadius.circular(18),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF1C0F2B), Color(0xFF0C0814)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(color: const Color(0xFFE1B12C), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: accent.withValues(alpha: .22),
+              blurRadius: 30,
+              spreadRadius: 2,
+            ),
+          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            AnimatedScale(
+              scale: _highlightVisible ? 1 : .92,
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOutBack,
+              child: AnimatedOpacity(
+                opacity: _highlightVisible ? 1 : .45,
+                duration: const Duration(milliseconds: 220),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: .48),
-                borderRadius: BorderRadius.circular(16),
+                gradient: LinearGradient(
+                  colors: [
+                    accent.withValues(alpha: .18),
+                    const Color(0xFFFFC107).withValues(alpha: .16),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(color: const Color(0xFFFFC107)),
               ),
               child: Row(
@@ -1974,56 +2645,86 @@ class _TeenPattiResultDialog extends StatelessWidget {
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              height: 110,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Positioned(
-                    left: 44,
-                    child: _CardImage(
-                      path: winningCards[0].contains('/')
-                          ? winningCards[0]
-                          : 'assets/games/teen_patti/cards/${winningCards[0]}',
-                      width: 72,
-                      opacity: .78,
-                    ),
-                  ),
-                  Positioned(
-                    left: 72,
-                    child: _CardImage(
-                      path: winningCards[1].contains('/')
-                          ? winningCards[1]
-                          : 'assets/games/teen_patti/cards/${winningCards[1]}',
-                      width: 72,
-                      opacity: .88,
-                    ),
-                  ),
-                  Positioned(
-                    left: 100,
-                    child: _CardImage(
-                      path: winningCards[2].contains('/')
-                          ? winningCards[2]
-                          : 'assets/games/teen_patti/cards/${winningCards[2]}',
-                      width: 72,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
             const SizedBox(height: 18),
-            _ResultInfoTile(
-              title: 'Your Bet on Winning Pot',
-              value: '$totalBetOnWinningPot',
-              color: const Color(0xFFFFA726),
+            AnimatedOpacity(
+              opacity: _cardsVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 220),
+              child: AnimatedSlide(
+                offset: _cardsVisible ? Offset.zero : const Offset(0, .08),
+                duration: const Duration(milliseconds: 240),
+                curve: Curves.easeOutCubic,
+                child: Container(
+                  height: 138,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(22),
+                    gradient: LinearGradient(
+                      colors: [
+                        accent.withValues(alpha: .14),
+                        Colors.black.withValues(alpha: .22),
+                      ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                    border: Border.all(color: accent.withValues(alpha: .36)),
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Container(
+                        width: 160,
+                        height: 110,
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(
+                            colors: [accent.withValues(alpha: .22), accent.withValues(alpha: 0)],
+                          ),
+                        ),
+                      ),
+                      _CardFan(
+                        paths: [
+                          winningCards[0].contains('/')
+                              ? winningCards[0]
+                              : 'assets/games/teen_patti/cards/${winningCards[0]}',
+                          winningCards[1].contains('/')
+                              ? winningCards[1]
+                              : 'assets/games/teen_patti/cards/${winningCards[1]}',
+                          winningCards[2].contains('/')
+                              ? winningCards[2]
+                              : 'assets/games/teen_patti/cards/${winningCards[2]}',
+                        ],
+                        cardWidth: 80,
+                        sideOffset: 34,
+                        centerLift: 6,
+                        sideOpacity: .80,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            AnimatedOpacity(
+              opacity: _payoutVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 260),
+              child: _ResultInfoTile(
+                title: 'Your Bet on Winning Pot',
+                value: widget.winningBetAmount,
+                color: const Color(0xFFFFA726),
+                icon: Icons.local_atm_rounded,
+              ),
             ),
             const SizedBox(height: 10),
-            _ResultInfoTile(
-              title: 'Your Winning Amount',
-              value: '$winningAmount',
-              color: const Color(0xFF66BB6A),
+            AnimatedOpacity(
+              opacity: _payoutVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 320),
+              child: _ResultInfoTile(
+                title: 'Your Winning Amount',
+                value: widget.winningPayoutAmount,
+                color: const Color(0xFF66BB6A),
+                icon: Icons.workspace_premium_rounded,
+              ),
             ),
             const SizedBox(height: 14),
             TextButton(
@@ -2049,35 +2750,64 @@ class _ResultInfoTile extends StatelessWidget {
     required this.title,
     required this.value,
     required this.color,
+    required this.icon,
   });
 
   final String title;
-  final String value;
+  final int value;
   final Color color;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: .18),
-        borderRadius: BorderRadius.circular(12),
+        gradient: LinearGradient(
+          colors: [
+            color.withValues(alpha: .22),
+            color.withValues(alpha: .08),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: .28)),
       ),
       child: Row(
         children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: .18),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color, size: 18),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               title,
-              style: const TextStyle(color: Colors.white70, fontSize: 13),
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
-          Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w800,
-              fontSize: 16,
-            ),
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: value.toDouble()),
+            duration: const Duration(milliseconds: 850),
+            curve: Curves.easeOutCubic,
+            builder: (context, animatedValue, child) {
+              return Text(
+                animatedValue.round().toString(),
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 20,
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -2121,6 +2851,7 @@ class _FlyingGem {
   const _FlyingGem({
     required this.id,
     required this.imagePath,
+    required this.accent,
     required this.left,
     required this.top,
     required this.targetLeft,
@@ -2129,6 +2860,7 @@ class _FlyingGem {
 
   final int id;
   final String imagePath;
+  final Color accent;
   final double left;
   final double top;
   final double targetLeft;
@@ -2143,6 +2875,7 @@ class _FlyingGem {
     return _FlyingGem(
       id: id,
       imagePath: imagePath,
+      accent: accent,
       left: left ?? this.left,
       top: top ?? this.top,
       targetLeft: targetLeft ?? this.targetLeft,

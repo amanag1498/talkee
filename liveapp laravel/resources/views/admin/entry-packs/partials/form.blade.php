@@ -53,7 +53,7 @@
             </div>
             <div class="col-md-4">
               <label class="form-label">Duration (ms)</label>
-              <input type="number" min="2000" max="4000" step="100" name="duration_ms" class="form-control" value="{{ old('duration_ms', $pack?->duration_ms ?? 3000) }}">
+              <input type="number" min="2000" step="100" name="duration_ms" class="form-control" value="{{ old('duration_ms', $pack?->duration_ms ?? 3000) }}">
             </div>
             <div class="col-md-4">
               <label class="form-label">Validity (days)</label>

@@ -148,7 +148,7 @@ class EntryPackAdminController extends Controller
             'price_coins' => 'required|integer|min:0',
             'animation_style' => 'required|in:banner,center,fullscreen',
             'priority' => 'nullable|integer|min:1|max:9999',
-            'duration_ms' => 'nullable|integer|min:2000|max:4000',
+            'duration_ms' => 'nullable|integer|min:2000',
             'duration_days' => 'nullable|integer|min:1|max:3650',
             'sort_order' => 'nullable|integer|min:0|max:100000',
             'is_active' => 'nullable|boolean',

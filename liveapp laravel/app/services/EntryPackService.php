@@ -218,7 +218,7 @@ class EntryPackService
             'asset_type' => $this->detectAssetType($pack->svg_url),
             'animation_style' => (string) $pack->animation_style,
             'priority' => (int) $pack->priority,
-            'duration_ms' => max(2000, min(4000, (int) $pack->duration_ms)),
+            'duration_ms' => max(2000, (int) $pack->duration_ms),
             'triggered_at' => now()->toIso8601String(),
             'max_age_ms' => self::ENTRY_EVENT_MAX_AGE_SECONDS * 1000,
         ];

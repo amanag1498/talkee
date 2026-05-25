@@ -216,6 +216,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       payload.value?.features.hostCallingEnabled ?? true;
   bool get teenPattiEnabled =>
       payload.value?.features.teenPattiEnabled ?? false;
+  bool get greedyEnabled =>
+      payload.value?.features.greedyEnabled ?? false;
   bool get videoRoomGamesEnabled =>
       payload.value?.features.videoRoomGamesEnabled ?? false;
   AppHostGoalSettings get hostGoals =>
@@ -310,6 +312,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
         'wallet_recharge_enabled': true,
         'host_calling_enabled': true,
         'teen_patti_enabled': false,
+        'greedy_enabled': false,
         'video_room_games_enabled': false,
       },
     });
@@ -557,6 +560,7 @@ class AppPlatformFeatureFlags {
     required this.walletRechargeEnabled,
     required this.hostCallingEnabled,
     required this.teenPattiEnabled,
+    required this.greedyEnabled,
     required this.videoRoomGamesEnabled,
   });
 
@@ -570,6 +574,7 @@ class AppPlatformFeatureFlags {
       walletRechargeEnabled = true,
       hostCallingEnabled = true,
       teenPattiEnabled = false,
+      greedyEnabled = false,
       videoRoomGamesEnabled = false;
 
   final bool audioRoomsEnabled;
@@ -581,6 +586,7 @@ class AppPlatformFeatureFlags {
   final bool walletRechargeEnabled;
   final bool hostCallingEnabled;
   final bool teenPattiEnabled;
+  final bool greedyEnabled;
   final bool videoRoomGamesEnabled;
 
   factory AppPlatformFeatureFlags.fromJson(Map<String, dynamic> json) {
@@ -623,6 +629,10 @@ class AppPlatformFeatureFlags {
       ),
       teenPattiEnabled: toBool(
         json['teen_patti_enabled'],
+        fallback: false,
+      ),
+      greedyEnabled: toBool(
+        json['greedy_enabled'],
         fallback: false,
       ),
       videoRoomGamesEnabled: toBool(

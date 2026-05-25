@@ -2,9 +2,9 @@
 
 namespace App\Services;
 
-use App\Models\TeenPattiBet;
-use App\Models\TeenPattiPayout;
-use App\Models\TeenPattiRound;
+use App\Models\GreedyBet;
+use App\Models\GreedyPayout;
+use App\Models\GreedyRound;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
@@ -15,10 +15,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
-class TeenPattiService
+class GreedyGameService
 {
-    private const CARD_SUITS = ['hearts', 'spades', 'diamonds', 'clubs'];
-    private const CARD_VALUES = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'jack', 'queen', 'king', 'ace'];
+    private const POTS = ['A', 'B', 'C', 'D'];
 
     public function publicSettings(): array
     {
@@ -31,74 +30,89 @@ class TeenPattiService
             'round_duration_seconds' => $this->roundDurationSeconds(),
             'betting_lock_seconds' => $this->bettingLockSeconds(),
             'result_display_seconds' => $this->resultDisplaySeconds(),
-            'payout_multiplier' => $this->payoutMultiplier(),
             'winning_strategy_mode' => $this->winningStrategyMode(),
+            'pot_multipliers' => $this->potMultipliers(),
+            'pot_sectors' => $this->potSectors(),
         ];
     }
 
     public function enabled(): bool
     {
-        return (bool) config('games.teen_patti.enabled', false)
-            && (bool) config('app_features.platform.android.teen_patti_enabled', false);
+        return (bool) config('games.greedy.enabled', false)
+            && (bool) config('app_features.platform.android.greedy_enabled', false);
     }
 
     public function visibleInVideoRoomStrip(): bool
     {
-        return (bool) config('games.teen_patti.visible_in_video_room_strip', true)
+        return (bool) config('games.greedy.visible_in_video_room_strip', true)
             && (bool) config('app_features.platform.android.video_room_games_enabled', true);
     }
 
     public function fakeBetsEnabled(): bool
     {
-        return (bool) config('games.teen_patti.fake_bets_enabled', false);
+        return (bool) config('games.greedy.fake_bets_enabled', false);
     }
 
     public function minBet(): int
     {
-        return max(1, (int) config('games.teen_patti.min_bet', 10));
+        return max(1, (int) config('games.greedy.min_bet', 10));
     }
 
     public function maxBet(): int
     {
-        return max($this->minBet(), (int) config('games.teen_patti.max_bet', 5000));
+        return max($this->minBet(), (int) config('games.greedy.max_bet', 5000));
     }
 
     public function roundDurationSeconds(): int
     {
-        return max(10, (int) config('games.teen_patti.round_duration_seconds', 30));
+        return max(10, (int) config('games.greedy.round_duration_seconds', 30));
     }
 
     public function bettingLockSeconds(): int
     {
-        return max(2, min($this->roundDurationSeconds() - 1, (int) config('games.teen_patti.betting_lock_seconds', 5)));
+        return max(2, min($this->roundDurationSeconds() - 1, (int) config('games.greedy.betting_lock_seconds', 5)));
     }
 
     public function resultDisplaySeconds(): int
     {
-        return max(3, (int) config('games.teen_patti.result_display_seconds', 6));
-    }
-
-    public function payoutMultiplier(): int
-    {
-        return max(2, (int) config('games.teen_patti.payout_multiplier', 3));
+        return max(3, (int) config('games.greedy.result_display_seconds', 6));
     }
 
     public function winningStrategyMode(): string
     {
-        $mode = strtolower(trim((string) config('games.teen_patti.winning_strategy_mode', 'probability')));
-        return in_array($mode, ['random', 'minimum_bet', 'highest_bet', 'probability'], true)
+        $mode = strtolower(trim((string) config('games.greedy.winning_strategy_mode', 'probability')));
+        return in_array($mode, ['random', 'minimum_liability', 'highest_liability', 'probability', 'exposure_guard'], true)
             ? $mode
             : 'probability';
+    }
+
+    public function potMultipliers(): array
+    {
+        return [
+            'A' => max(2, (int) config('games.greedy.multiplier_a', 2)),
+            'B' => max(2, (int) config('games.greedy.multiplier_b', 3)),
+            'C' => max(2, (int) config('games.greedy.multiplier_c', 5)),
+            'D' => max(2, (int) config('games.greedy.multiplier_d', 10)),
+        ];
+    }
+
+    public function potSectors(): array
+    {
+        return [
+            'A' => max(1, (int) config('games.greedy.sectors_a', 22)),
+            'B' => max(1, (int) config('games.greedy.sectors_b', 14)),
+            'C' => max(1, (int) config('games.greedy.sectors_c', 8)),
+            'D' => max(1, (int) config('games.greedy.sectors_d', 4)),
+        ];
     }
 
     public function snapshotForUser(User $user): array
     {
         if (!$this->enabled()) {
-            throw new HttpException(403, 'Teen Patti is currently unavailable.');
+            throw new HttpException(403, 'Greedy is currently unavailable.');
         }
 
-        $round = $this->ensureCurrentRound();
-        $round = $this->refreshRoundState($round);
+        $round = $this->refreshRoundState($this->ensureCurrentRound());
         $wallet = WalletService::getOrCreate($user);
 
         return [
@@ -112,14 +126,10 @@ class TeenPattiService
     public function publicRoundSnapshot(): array
     {
         if (!$this->enabled()) {
-            return [
-                'ok' => false,
-                'enabled' => false,
-            ];
+            return ['ok' => false, 'enabled' => false];
         }
 
-        $round = $this->ensureCurrentRound();
-        $round = $this->refreshRoundState($round);
+        $round = $this->refreshRoundState($this->ensureCurrentRound());
 
         return [
             'ok' => true,
@@ -132,12 +142,12 @@ class TeenPattiService
 
     public function historyPayload(int $limit = 10): array
     {
-        return TeenPattiRound::query()
+        return GreedyRound::query()
             ->whereIn('status', ['settled', 'cancelled'])
             ->latest('id')
             ->limit($limit)
             ->get()
-            ->map(fn (TeenPattiRound $round) => $this->roundPayload($round))
+            ->map(fn (GreedyRound $round) => $this->roundPayload($round))
             ->values()
             ->all();
     }
@@ -145,31 +155,31 @@ class TeenPattiService
     public function placeBet(User $user, string $pot, int $amount, ?string $idempotencyKey = null): array
     {
         if (!$this->enabled()) {
-            throw new HttpException(403, 'Teen Patti is currently unavailable.');
+            throw new HttpException(403, 'Greedy is currently unavailable.');
         }
 
         $pot = strtoupper(trim($pot));
-        if (!in_array($pot, ['A', 'B', 'C'], true)) {
+        if (!in_array($pot, self::POTS, true)) {
             throw new HttpException(422, 'Invalid pot selection.');
         }
         if ($amount < $this->minBet() || $amount > $this->maxBet()) {
             throw new HttpException(422, "Bet amount must be between {$this->minBet()} and {$this->maxBet()} coins.");
         }
 
-        $round = $this->ensureCurrentRound();
-        $round = $this->refreshRoundState($round);
+        $round = $this->refreshRoundState($this->ensureCurrentRound());
+        $multipliers = $this->potMultipliers();
 
-        $result = DB::transaction(function () use ($user, $round, $pot, $amount, $idempotencyKey) {
-            /** @var TeenPattiRound $lockedRound */
-            $lockedRound = TeenPattiRound::query()->whereKey($round->id)->lockForUpdate()->firstOrFail();
+        [$bet, $alreadyProcessed] = DB::transaction(function () use ($user, $round, $pot, $amount, $idempotencyKey, $multipliers) {
+            /** @var GreedyRound $lockedRound */
+            $lockedRound = GreedyRound::query()->whereKey($round->id)->lockForUpdate()->firstOrFail();
             if ($lockedRound->status !== 'open' || now()->greaterThanOrEqualTo($lockedRound->locks_at)) {
                 throw new HttpException(409, 'Betting is locked for this round.');
             }
 
             $normalizedKey = $idempotencyKey ? Str::limit(trim($idempotencyKey), 120, '') : null;
             if ($normalizedKey) {
-                $existing = TeenPattiBet::query()
-                    ->where('teen_patti_round_id', $lockedRound->id)
+                $existing = GreedyBet::query()
+                    ->where('greedy_round_id', $lockedRound->id)
                     ->where('user_id', $user->id)
                     ->where('idempotency_key', $normalizedKey)
                     ->with('walletTransaction')
@@ -180,10 +190,7 @@ class TeenPattiService
             }
 
             WalletService::getOrCreate($user);
-            $wallet = Wallet::query()
-                ->where('user_id', $user->id)
-                ->lockForUpdate()
-                ->firstOrFail();
+            $wallet = Wallet::query()->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
 
             if ((int) $wallet->balance < $amount) {
                 throw new HttpException(422, 'Insufficient wallet balance.');
@@ -193,11 +200,12 @@ class TeenPattiService
             $balanceAfter = $balanceBefore - $amount;
             $wallet->update(['balance' => $balanceAfter]);
 
-            $bet = TeenPattiBet::query()->create([
-                'teen_patti_round_id' => $lockedRound->id,
+            $bet = GreedyBet::query()->create([
+                'greedy_round_id' => $lockedRound->id,
                 'user_id' => $user->id,
                 'pot' => $pot,
                 'amount' => $amount,
+                'multiplier' => $multipliers[$pot],
                 'status' => 'placed',
                 'idempotency_key' => $normalizedKey,
                 'placed_at' => now(),
@@ -211,14 +219,14 @@ class TeenPattiService
                 'type' => 'debit',
                 'coins' => $amount,
                 'category' => 'game_bet_debit',
-                'reference' => 'teen_patti_bet:' . $bet->id,
-                'reference_type' => 'teen_patti_bet',
+                'reference' => 'greedy_bet:' . $bet->id,
+                'reference_type' => 'greedy_bet',
                 'reference_id' => $bet->id,
-                'description' => "Teen Patti bet on pot {$pot}",
+                'description' => "Greedy bet on pot {$pot}",
                 'balance_before' => $balanceBefore,
                 'balance_after' => $balanceAfter,
                 'meta' => [
-                    'game' => 'teen_patti',
+                    'game' => 'greedy',
                     'bet_id' => $bet->id,
                     'round_key' => $lockedRound->round_key,
                     'pot' => $pot,
@@ -226,26 +234,15 @@ class TeenPattiService
             ]);
 
             $bet->forceFill(['wallet_transaction_id' => $walletTx->id])->save();
-
-            $column = match ($pot) {
-                'A' => 'total_bet_a',
-                'B' => 'total_bet_b',
-                default => 'total_bet_c',
-            };
-
-            $lockedRound->forceFill([
-                $column => (int) $lockedRound->{$column} + $amount,
-                'total_bets_count' => (int) $lockedRound->total_bets_count + 1,
-            ])->save();
+            $this->incrementRoundPot($lockedRound, $pot, $amount);
 
             return [$bet->fresh('walletTransaction'), false];
         });
 
-        [$bet, $alreadyProcessed] = $result;
-        $freshRound = $this->refreshRoundState(TeenPattiRound::query()->findOrFail($bet->teen_patti_round_id));
+        $freshRound = $this->refreshRoundState(GreedyRound::query()->findOrFail($bet->greedy_round_id));
         $snapshot = $this->roundPayload($freshRound, $user);
 
-        TeenPattiBroadcaster::broadcast('teen_patti:bet_placed', [
+        GreedyBroadcaster::broadcast('greedy:bet_placed', [
             'round_id' => $freshRound->id,
             'round_key' => $freshRound->round_key,
             'totals' => data_get($snapshot, 'totals'),
@@ -254,6 +251,7 @@ class TeenPattiService
                 'user_id' => $bet->user_id,
                 'pot' => $bet->pot,
                 'amount' => (int) $bet->amount,
+                'multiplier' => (int) $bet->multiplier,
             ],
         ]);
 
@@ -272,86 +270,70 @@ class TeenPattiService
         return [
             'settings' => $this->publicSettings(),
             'current_round' => $round ? $this->roundPayload($round) : null,
-            'recent_rounds' => TeenPattiRound::query()->latest('id')->limit(15)->get(),
-            'recent_bets' => TeenPattiBet::query()->with(['user', 'round'])->latest('id')->limit(50)->get(),
-            'recent_payouts' => TeenPattiPayout::query()->with(['user', 'bet', 'round'])->latest('id')->limit(50)->get(),
+            'recent_rounds' => GreedyRound::query()->latest('id')->limit(15)->get(),
+            'recent_bets' => GreedyBet::query()->with(['user', 'round'])->latest('id')->limit(50)->get(),
+            'recent_payouts' => GreedyPayout::query()->with(['user', 'bet', 'round'])->latest('id')->limit(50)->get(),
         ];
     }
 
     public function roundsQuery(): Builder
     {
-        return TeenPattiRound::query()->latest('id');
+        return GreedyRound::query()->latest('id');
     }
 
     public function betsQuery(): Builder
     {
-        return TeenPattiBet::query()
-            ->with(['user', 'round', 'walletTransaction'])
-            ->latest('id');
+        return GreedyBet::query()->with(['user', 'round', 'walletTransaction'])->latest('id');
     }
 
     public function payoutsQuery(): Builder
     {
-        return TeenPattiPayout::query()
-            ->with(['user', 'bet', 'round', 'walletTransaction'])
-            ->latest('id');
+        return GreedyPayout::query()->with(['user', 'bet', 'round', 'walletTransaction'])->latest('id');
     }
 
-    public function tick(?TeenPattiRound $round = null): TeenPattiRound
+    public function tick(?GreedyRound $round = null): GreedyRound
     {
         if (!$this->enabled()) {
-            throw new HttpException(403, 'Teen Patti is currently unavailable.');
+            throw new HttpException(403, 'Greedy is currently unavailable.');
         }
 
-        if ($round) {
-            return $this->refreshRoundState($round->fresh());
-        }
-
-        return $this->refreshRoundState($this->ensureCurrentRound());
+        return $this->refreshRoundState($round ? $round->fresh() : $this->ensureCurrentRound());
     }
 
-    public function reconcileRound(TeenPattiRound $round): array
+    public function reconcileRound(GreedyRound $round): array
     {
         $refreshed = DB::transaction(function () use ($round) {
-            /** @var TeenPattiRound $lockedRound */
-            $lockedRound = TeenPattiRound::query()
+            /** @var GreedyRound $lockedRound */
+            $lockedRound = GreedyRound::query()
                 ->with(['bets.user', 'bets.walletTransaction', 'bets.payout', 'payouts'])
                 ->whereKey($round->id)
                 ->lockForUpdate()
                 ->firstOrFail();
 
             $bets = $lockedRound->bets->whereNull('refunded_at');
-            $actualTotals = [
-                'A' => (int) $bets->where('pot', 'A')->sum('amount'),
-                'B' => (int) $bets->where('pot', 'B')->sum('amount'),
-                'C' => (int) $bets->where('pot', 'C')->sum('amount'),
-            ];
-            $actualCount = (int) $bets->count();
+            $actualTotals = $this->sumPotTotals($bets);
 
             $lockedRound->forceFill([
                 'total_bet_a' => $actualTotals['A'],
                 'total_bet_b' => $actualTotals['B'],
                 'total_bet_c' => $actualTotals['C'],
-                'total_bets_count' => $actualCount,
+                'total_bet_d' => $actualTotals['D'],
+                'total_bets_count' => (int) $bets->count(),
             ])->save();
 
             if (in_array($lockedRound->status, ['open', 'locked'], true) && now()->greaterThanOrEqualTo($lockedRound->ends_at)) {
                 return $this->settleRound($lockedRound);
             }
 
-            if ($lockedRound->status === 'settled' && in_array($lockedRound->winning_pot, ['A', 'B', 'C'], true)) {
+            if ($lockedRound->status === 'settled' && in_array($lockedRound->winning_pot, self::POTS, true)) {
                 foreach ($lockedRound->bets as $bet) {
                     $isWinner = $bet->pot === $lockedRound->winning_pot;
-                    $expectedStatus = $isWinner ? 'won' : 'lost';
-                    $expectedPayoutCoins = $isWinner ? ((int) $bet->amount * $this->payoutMultiplier()) : 0;
-
-                    if ($bet->status !== $expectedStatus || (int) $bet->payout_coins !== $expectedPayoutCoins) {
-                        $bet->forceFill([
-                            'status' => $expectedStatus,
-                            'payout_coins' => $expectedPayoutCoins,
-                            'settled_at' => $bet->settled_at ?? now(),
-                        ])->save();
-                    }
+                    $expectedPayout = $isWinner ? ((int) $bet->amount * (int) $bet->multiplier) : 0;
+                    $bet->forceFill([
+                        'status' => $isWinner ? 'won' : 'lost',
+                        'payout_coins' => $expectedPayout,
+                        'settled_at' => $bet->settled_at ?? now(),
+                    ])->save();
 
                     if ($isWinner) {
                         $this->creditPayoutForBet($lockedRound, $bet, $lockedRound->winning_pot);
@@ -369,11 +351,11 @@ class TeenPattiService
         ];
     }
 
-    public function refundBet(TeenPattiBet $bet, ?string $note = null): TeenPattiBet
+    public function refundBet(GreedyBet $bet, ?string $note = null): GreedyBet
     {
         return DB::transaction(function () use ($bet, $note) {
-            /** @var TeenPattiBet $lockedBet */
-            $lockedBet = TeenPattiBet::query()
+            /** @var GreedyBet $lockedBet */
+            $lockedBet = GreedyBet::query()
                 ->with(['user', 'round', 'walletTransaction', 'payout'])
                 ->whereKey($bet->id)
                 ->lockForUpdate()
@@ -382,7 +364,6 @@ class TeenPattiService
             if ($lockedBet->refunded_at) {
                 return $lockedBet;
             }
-
             if ($lockedBet->payout()->exists()) {
                 throw new HttpException(409, 'Winning bets with credited payouts cannot be refunded from this action.');
             }
@@ -400,14 +381,14 @@ class TeenPattiService
                 'type' => 'credit',
                 'coins' => $refundCoins,
                 'category' => 'game_refund_credit',
-                'reference' => 'teen_patti_bet:' . $lockedBet->id,
-                'reference_type' => 'teen_patti_bet',
+                'reference' => 'greedy_bet:' . $lockedBet->id,
+                'reference_type' => 'greedy_bet',
                 'reference_id' => $lockedBet->id,
-                'description' => 'Teen Patti bet refund',
+                'description' => 'Greedy bet refund',
                 'balance_before' => $balanceBefore,
                 'balance_after' => $balanceAfter,
                 'meta' => [
-                    'game' => 'teen_patti',
+                    'game' => 'greedy',
                     'bet_id' => $lockedBet->id,
                     'round_key' => $lockedBet->round?->round_key,
                     'note' => $note,
@@ -424,19 +405,21 @@ class TeenPattiService
                 ], static fn ($value) => $value !== null && $value !== ''),
             ])->save();
 
-            $remainingBets = TeenPattiBet::query()
-                ->where('teen_patti_round_id', $lockedBet->teen_patti_round_id)
+            $remainingBets = GreedyBet::query()
+                ->where('greedy_round_id', $lockedBet->greedy_round_id)
                 ->whereNull('refunded_at')
                 ->get();
+            $totals = $this->sumPotTotals($remainingBets);
             $lockedBet->round->forceFill([
-                'total_bet_a' => (int) $remainingBets->where('pot', 'A')->sum('amount'),
-                'total_bet_b' => (int) $remainingBets->where('pot', 'B')->sum('amount'),
-                'total_bet_c' => (int) $remainingBets->where('pot', 'C')->sum('amount'),
+                'total_bet_a' => $totals['A'],
+                'total_bet_b' => $totals['B'],
+                'total_bet_c' => $totals['C'],
+                'total_bet_d' => $totals['D'],
                 'total_bets_count' => (int) $remainingBets->count(),
             ])->save();
 
-            TeenPattiBroadcaster::broadcast('teen_patti:bet_refunded', [
-                'round_id' => $lockedBet->teen_patti_round_id,
+            GreedyBroadcaster::broadcast('greedy:bet_refunded', [
+                'round_id' => $lockedBet->greedy_round_id,
                 'round_key' => $lockedBet->round?->round_key,
                 'bet_id' => $lockedBet->id,
                 'user_id' => $lockedBet->user_id,
@@ -447,14 +430,14 @@ class TeenPattiService
         });
     }
 
-    public function ensureCurrentRound(): TeenPattiRound
+    public function ensureCurrentRound(): GreedyRound
     {
         if (!$this->enabled()) {
-            throw new HttpException(403, 'Teen Patti is currently unavailable.');
+            throw new HttpException(403, 'Greedy is currently unavailable.');
         }
 
         for ($attempt = 0; $attempt < 5; $attempt++) {
-            $round = TeenPattiRound::query()->latest('id')->first();
+            $round = GreedyRound::query()->latest('id')->first();
             if (!$round) {
                 return $this->createRound(CarbonImmutable::now());
             }
@@ -467,31 +450,27 @@ class TeenPattiService
 
             $displayUntil = $this->displayUntil($round);
             if (now()->greaterThanOrEqualTo($displayUntil)) {
-                $nextStart = $displayUntil;
-                if ($nextStart->lessThan(CarbonImmutable::now())) {
-                    $nextStart = CarbonImmutable::now();
-                }
-
+                $nextStart = $displayUntil->lessThan(CarbonImmutable::now()) ? CarbonImmutable::now() : $displayUntil;
                 return $this->createRound($nextStart);
             }
 
             return $round;
         }
 
-        return TeenPattiRound::query()->latest('id')->firstOrFail();
+        return GreedyRound::query()->latest('id')->firstOrFail();
     }
 
-    public function refreshRoundState(TeenPattiRound $round): TeenPattiRound
+    public function refreshRoundState(GreedyRound $round): GreedyRound
     {
         $now = CarbonImmutable::now();
 
         if ($round->status === 'open' && $now->greaterThanOrEqualTo($round->locks_at)) {
             $round = DB::transaction(function () use ($round) {
-                /** @var TeenPattiRound $locked */
-                $locked = TeenPattiRound::query()->whereKey($round->id)->lockForUpdate()->firstOrFail();
+                /** @var GreedyRound $locked */
+                $locked = GreedyRound::query()->whereKey($round->id)->lockForUpdate()->firstOrFail();
                 if ($locked->status === 'open' && now()->greaterThanOrEqualTo($locked->locks_at)) {
                     $locked->forceFill(['status' => 'locked'])->save();
-                    TeenPattiBroadcaster::broadcast('teen_patti:round_locked', [
+                    GreedyBroadcaster::broadcast('greedy:round_locked', [
                         'round_id' => $locked->id,
                         'round_key' => $locked->round_key,
                     ]);
@@ -507,15 +486,11 @@ class TeenPattiService
         return $round->fresh();
     }
 
-    public function settleRound(TeenPattiRound $round): TeenPattiRound
+    public function settleRound(GreedyRound $round): GreedyRound
     {
         return DB::transaction(function () use ($round) {
-            /** @var TeenPattiRound $lockedRound */
-            $lockedRound = TeenPattiRound::query()
-                ->with(['bets.user', 'bets.walletTransaction'])
-                ->whereKey($round->id)
-                ->lockForUpdate()
-                ->firstOrFail();
+            /** @var GreedyRound $lockedRound */
+            $lockedRound = GreedyRound::query()->with(['bets.user', 'bets.walletTransaction'])->whereKey($round->id)->lockForUpdate()->firstOrFail();
 
             if (in_array($lockedRound->status, ['settled', 'cancelled'], true)) {
                 return $lockedRound;
@@ -523,11 +498,12 @@ class TeenPattiService
 
             $bets = $lockedRound->bets;
             $winner = $this->determineWinningPot($lockedRound, $bets);
-            $cards = $this->buildCardReveal();
+            $multipliers = $this->potMultipliers();
+            $winningMultiplier = $multipliers[$winner];
 
             foreach ($bets as $bet) {
                 $isWinner = $bet->pot === $winner;
-                $payoutCoins = $isWinner ? ((int) $bet->amount * $this->payoutMultiplier()) : 0;
+                $payoutCoins = $isWinner ? ((int) $bet->amount * (int) $bet->multiplier) : 0;
 
                 $bet->forceFill([
                     'status' => $isWinner ? 'won' : 'lost',
@@ -543,15 +519,13 @@ class TeenPattiService
             $lockedRound->forceFill([
                 'status' => 'settled',
                 'winning_pot' => $winner,
+                'winning_multiplier' => $winningMultiplier,
                 'winning_strategy' => $this->winningStrategyMode(),
-                'winning_hand' => $cards['winning_hand'],
-                'losing_hand_one' => $cards['losing_hand_one'],
-                'losing_hand_two' => $cards['losing_hand_two'],
                 'settled_at' => now(),
             ])->save();
 
             $payload = $this->roundPayload($lockedRound->fresh());
-            TeenPattiBroadcaster::broadcast('teen_patti:round_settled', [
+            GreedyBroadcaster::broadcast('greedy:round_settled', [
                 'round_id' => $lockedRound->id,
                 'round_key' => $lockedRound->round_key,
                 'snapshot' => $payload,
@@ -561,14 +535,14 @@ class TeenPattiService
         });
     }
 
-    private function createRound(CarbonImmutable $startsAt): TeenPattiRound
+    private function createRound(CarbonImmutable $startsAt): GreedyRound
     {
         $lockAt = $startsAt->addSeconds(max(1, $this->roundDurationSeconds() - $this->bettingLockSeconds()));
         $endsAt = $startsAt->addSeconds($this->roundDurationSeconds());
         $displayUntil = $endsAt->addSeconds($this->resultDisplaySeconds());
 
-        $round = TeenPattiRound::query()->create([
-            'round_key' => 'tpr_' . Str::lower((string) Str::ulid()),
+        $round = GreedyRound::query()->create([
+            'round_key' => 'grd_' . Str::lower((string) Str::ulid()),
             'status' => 'open',
             'starts_at' => $startsAt,
             'locks_at' => $lockAt,
@@ -578,10 +552,12 @@ class TeenPattiService
                 'betting_lock_seconds' => $this->bettingLockSeconds(),
                 'result_display_seconds' => $this->resultDisplaySeconds(),
                 'display_until' => $displayUntil->toIso8601String(),
+                'pot_multipliers' => $this->potMultipliers(),
+                'pot_sectors' => $this->potSectors(),
             ],
         ]);
 
-        TeenPattiBroadcaster::broadcast('teen_patti:round_started', [
+        GreedyBroadcaster::broadcast('greedy:round_started', [
             'round_id' => $round->id,
             'round_key' => $round->round_key,
             'starts_at' => $round->starts_at?->toIso8601String(),
@@ -592,41 +568,68 @@ class TeenPattiService
         return $round;
     }
 
-    private function determineWinningPot(TeenPattiRound $round, Collection $bets): string
+    private function determineWinningPot(GreedyRound $round, Collection $bets): string
     {
         $totals = [
             'A' => (int) $round->total_bet_a,
             'B' => (int) $round->total_bet_b,
             'C' => (int) $round->total_bet_c,
+            'D' => (int) $round->total_bet_d,
         ];
+        $liabilities = $this->potLiabilities($totals);
 
-        $mode = $this->winningStrategyMode();
         if ($bets->isEmpty()) {
-            return ['A', 'B', 'C'][random_int(0, 2)];
+            return $this->weightedPotFromSectors();
         }
 
-        return match ($mode) {
-            'minimum_bet' => collect($totals)->sort()->keys()->first(),
-            'highest_bet' => collect($totals)->sortDesc()->keys()->first(),
-            'probability' => $this->probabilityWeightedPot($totals),
-            default => ['A', 'B', 'C'][random_int(0, 2)],
+        return match ($this->winningStrategyMode()) {
+            'minimum_liability' => collect($liabilities)->sort()->keys()->first(),
+            'highest_liability' => collect($liabilities)->sortDesc()->keys()->first(),
+            'exposure_guard' => $this->exposureGuardPot($liabilities),
+            'probability' => $this->weightedPotFromSectors(),
+            default => self::POTS[random_int(0, count(self::POTS) - 1)],
         };
     }
 
-    private function probabilityWeightedPot(array $totals): string
+    private function weightedPotFromSectors(): string
     {
-        $highestPot = collect($totals)->sortDesc()->keys()->first();
-        $others = collect(['A', 'B', 'C'])->reject(fn ($pot) => $pot === $highestPot)->values();
-        $roll = random_int(1, 100);
-
-        if ($roll <= 20) {
-            return $highestPot;
+        $sectors = $this->potSectors();
+        $total = array_sum($sectors);
+        $roll = random_int(1, max(1, $total));
+        $cursor = 0;
+        foreach (self::POTS as $pot) {
+            $cursor += $sectors[$pot];
+            if ($roll <= $cursor) {
+                return $pot;
+            }
         }
 
-        return $roll <= 60 ? $others[0] : $others[1];
+        return 'A';
     }
 
-    private function roundPayload(TeenPattiRound $round, ?User $viewer = null): array
+    private function exposureGuardPot(array $liabilities): string
+    {
+        $sectors = $this->potSectors();
+        $weights = [];
+        foreach (self::POTS as $pot) {
+            $guard = 1 / max(1.0, (($liabilities[$pot] + 1) / 1000.0));
+            $weights[$pot] = max(1, (int) round($sectors[$pot] * $guard * 10));
+        }
+
+        $total = array_sum($weights);
+        $roll = random_int(1, max(1, $total));
+        $cursor = 0;
+        foreach (self::POTS as $pot) {
+            $cursor += $weights[$pot];
+            if ($roll <= $cursor) {
+                return $pot;
+            }
+        }
+
+        return 'A';
+    }
+
+    private function roundPayload(GreedyRound $round, ?User $viewer = null): array
     {
         $round->loadMissing(['bets.user', 'payouts']);
         $now = CarbonImmutable::now();
@@ -638,7 +641,7 @@ class TeenPattiService
         };
 
         $viewerBets = $viewer
-            ? $round->bets->where('user_id', $viewer->id)->values()->map(fn (TeenPattiBet $bet) => $this->betPayload($bet))->all()
+            ? $round->bets->where('user_id', $viewer->id)->values()->map(fn (GreedyBet $bet) => $this->betPayload($bet))->all()
             : [];
 
         $countdownTarget = $phase === 'betting'
@@ -649,15 +652,19 @@ class TeenPattiService
             'A' => (int) $round->total_bet_a,
             'B' => (int) $round->total_bet_b,
             'C' => (int) $round->total_bet_c,
+            'D' => (int) $round->total_bet_d,
         ];
         $fakeTotals = $this->fakeBetsEnabled()
             ? $this->fakeTotalsForRound($round, $phase)
-            : ['A' => 0, 'B' => 0, 'C' => 0];
+            : ['A' => 0, 'B' => 0, 'C' => 0, 'D' => 0];
         $displayTotals = [
             'A' => $realTotals['A'] + $fakeTotals['A'],
             'B' => $realTotals['B'] + $fakeTotals['B'],
             'C' => $realTotals['C'] + $fakeTotals['C'],
+            'D' => $realTotals['D'] + $fakeTotals['D'],
         ];
+        $multipliers = $this->potMultipliers();
+        $sectors = $this->potSectors();
 
         return [
             'id' => $round->id,
@@ -670,21 +677,20 @@ class TeenPattiService
             'settled_at' => optional($round->settled_at)->toIso8601String(),
             'display_until' => $this->displayUntil($round)->toIso8601String(),
             'winning_pot' => $round->winning_pot,
-            'winning_hand' => $round->winning_hand ?? [],
-            'losing_hand_one' => $round->losing_hand_one ?? [],
-            'losing_hand_two' => $round->losing_hand_two ?? [],
+            'winning_multiplier' => $round->winning_multiplier ?: ($round->winning_pot ? $multipliers[$round->winning_pot] : null),
             'countdown_seconds' => $countdownSeconds,
             'totals' => $displayTotals,
             'real_totals' => $realTotals,
             'fake_totals' => $fakeTotals,
+            'pot_multipliers' => $multipliers,
+            'pot_sectors' => $sectors,
             'total_bets_count' => (int) $round->total_bets_count,
             'participant_count' => (int) $round->bets->pluck('user_id')->unique()->count(),
-            'payout_multiplier' => $this->payoutMultiplier(),
             'viewer_bets' => $viewerBets,
         ];
     }
 
-    private function displayUntil(TeenPattiRound $round): CarbonImmutable
+    private function displayUntil(GreedyRound $round): CarbonImmutable
     {
         $displayUntil = data_get($round->meta, 'display_until');
         if (is_string($displayUntil) && trim($displayUntil) !== '') {
@@ -694,13 +700,9 @@ class TeenPattiService
         return CarbonImmutable::parse($round->ends_at);
     }
 
-    private function creditPayoutForBet(TeenPattiRound $round, TeenPattiBet $bet, string $winner): void
+    private function creditPayoutForBet(GreedyRound $round, GreedyBet $bet, string $winner): void
     {
-        $existingPayout = TeenPattiPayout::query()
-            ->where('teen_patti_bet_id', $bet->id)
-            ->first();
-
-        if ($existingPayout) {
+        if (GreedyPayout::query()->where('greedy_bet_id', $bet->id)->exists()) {
             return;
         }
 
@@ -721,23 +723,23 @@ class TeenPattiService
             'type' => 'credit',
             'coins' => $payoutCoins,
             'category' => 'game_payout_credit',
-            'reference' => 'teen_patti_bet:' . $bet->id,
-            'reference_type' => 'teen_patti_bet',
+            'reference' => 'greedy_bet:' . $bet->id,
+            'reference_type' => 'greedy_bet',
             'reference_id' => $bet->id,
-            'description' => "Teen Patti payout for pot {$winner}",
+            'description' => "Greedy payout for pot {$winner}",
             'balance_before' => $balanceBefore,
             'balance_after' => $balanceAfter,
             'meta' => [
-                'game' => 'teen_patti',
+                'game' => 'greedy',
                 'bet_id' => $bet->id,
                 'round_key' => $round->round_key,
                 'winning_pot' => $winner,
             ],
         ]);
 
-        TeenPattiPayout::query()->create([
-            'teen_patti_round_id' => $round->id,
-            'teen_patti_bet_id' => $bet->id,
+        GreedyPayout::query()->create([
+            'greedy_round_id' => $round->id,
+            'greedy_bet_id' => $bet->id,
             'user_id' => $user->id,
             'wallet_transaction_id' => $walletTx->id,
             'payout_coins' => $payoutCoins,
@@ -745,18 +747,20 @@ class TeenPattiService
             'settled_at' => now(),
             'meta' => [
                 'winning_pot' => $winner,
+                'winning_multiplier' => (int) $bet->multiplier,
             ],
         ]);
     }
 
-    private function betPayload(TeenPattiBet $bet): array
+    private function betPayload(GreedyBet $bet): array
     {
         return [
             'id' => $bet->id,
-            'round_id' => $bet->teen_patti_round_id,
+            'round_id' => $bet->greedy_round_id,
             'user_id' => $bet->user_id,
             'pot' => $bet->pot,
             'amount' => (int) $bet->amount,
+            'multiplier' => (int) $bet->multiplier,
             'status' => $bet->status,
             'payout_coins' => (int) $bet->payout_coins,
             'placed_at' => optional($bet->placed_at)->toIso8601String(),
@@ -764,46 +768,60 @@ class TeenPattiService
         ];
     }
 
-    private function buildCardReveal(): array
-    {
-        return [
-            'winning_hand' => $this->drawCards(3),
-            'losing_hand_one' => $this->drawCards(3),
-            'losing_hand_two' => $this->drawCards(3),
-        ];
-    }
-
-    private function fakeTotalsForRound(TeenPattiRound $round, string $phase): array
+    private function fakeTotalsForRound(GreedyRound $round, string $phase): array
     {
         $seed = sprintf('%s|%s|%s', $round->round_key, $round->starts_at?->timestamp ?? 0, $phase);
-        $maxBet = max($this->minBet(), $this->maxBet());
-        $band = max($this->minBet(), (int) floor($maxBet * 1.8));
+        $band = max($this->minBet(), (int) floor(max($this->minBet(), $this->maxBet()) * 1.8));
 
         return [
             'A' => $this->fakePotValue($seed . '|A', $band),
             'B' => $this->fakePotValue($seed . '|B', $band),
             'C' => $this->fakePotValue($seed . '|C', $band),
+            'D' => $this->fakePotValue($seed . '|D', $band),
         ];
     }
 
     private function fakePotValue(string $seed, int $band): int
     {
         $hash = abs(crc32($seed));
-        $multiplier = 3 + ($hash % 9);
-        $step = max($this->minBet(), (int) floor($band / 6));
+        $multiplier = 3 + ($hash % 10);
+        $step = max($this->minBet(), (int) floor($band / 7));
         return $multiplier * $step;
     }
 
-    private function drawCards(int $count): array
+    private function incrementRoundPot(GreedyRound $round, string $pot, int $amount): void
     {
-        $cards = [];
-        for ($i = 0; $i < $count; $i++) {
-            $cards[] = self::CARD_VALUES[random_int(0, count(self::CARD_VALUES) - 1)]
-                . '_of_'
-                . self::CARD_SUITS[random_int(0, count(self::CARD_SUITS) - 1)]
-                . '.png';
-        }
+        $column = match ($pot) {
+            'A' => 'total_bet_a',
+            'B' => 'total_bet_b',
+            'C' => 'total_bet_c',
+            default => 'total_bet_d',
+        };
 
-        return $cards;
+        $round->forceFill([
+            $column => (int) $round->{$column} + $amount,
+            'total_bets_count' => (int) $round->total_bets_count + 1,
+        ])->save();
+    }
+
+    private function sumPotTotals(Collection $bets): array
+    {
+        return [
+            'A' => (int) $bets->where('pot', 'A')->sum('amount'),
+            'B' => (int) $bets->where('pot', 'B')->sum('amount'),
+            'C' => (int) $bets->where('pot', 'C')->sum('amount'),
+            'D' => (int) $bets->where('pot', 'D')->sum('amount'),
+        ];
+    }
+
+    private function potLiabilities(array $totals): array
+    {
+        $multipliers = $this->potMultipliers();
+        return [
+            'A' => $totals['A'] * $multipliers['A'],
+            'B' => $totals['B'] * $multipliers['B'],
+            'C' => $totals['C'] * $multipliers['C'],
+            'D' => $totals['D'] * $multipliers['D'],
+        ];
     }
 }

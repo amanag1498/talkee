@@ -52,7 +52,7 @@ class LiveEntryEffectEvent {
       assetType: json['asset_type']?.toString(),
       animationStyle: (json['animation_style'] ?? 'banner').toString(),
       priority: toInt(json['priority'], 1),
-      durationMs: toInt(json['duration_ms'], 3000).clamp(2000, 4000),
+      durationMs: toInt(json['duration_ms'], 3000).clamp(2000, 2147483647),
       triggeredAt: DateTime.tryParse((json['triggered_at'] ?? '').toString()) ?? DateTime.now(),
       maxAgeMs: toInt(json['max_age_ms'], 8000),
     );

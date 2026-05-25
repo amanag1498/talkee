@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\{PlanController, SubscriptionController, LiveRoomController, LiveRoomSeatRequestController, LiveRoomGiftController, ProfileController, ApplicationApiController, WalletApiController, RechargePlanController, RechargeOrderController, NotificationApiController, PushTokenController, LiveRoomIngestController, OpsController, BannerController, BannerTrackingController, LiveUsersController, CallController, CallReportApiController, LevelController, HostFollowController, EntryPackController, LiveRoomPkController, ThemeController, HostModerationController, UserReportController, UnblockRequestController, AdminModerationController, WsModerationController, DashboardLeaderboardController, RazorpayWebhookController};
 use App\Http\Controllers\Api\TeenPattiController;
+use App\Http\Controllers\Api\GreedyGameController;
 use App\Http\Controllers\Auth\FirebaseAuthApiController;
 use App\Models\UserSubscription;
 use App\Services\AppSettingsService;
@@ -32,6 +33,7 @@ Route::get('/health/ready', [OpsController::class, 'ready']);
 Route::get('/metrics', [OpsController::class, 'metrics']);
 Route::get('/recharge/plans', [RechargePlanController::class, 'index'])->middleware('feature_enabled:wallet_recharge_enabled');
 Route::get('/games/teen-patti/public-snapshot', [TeenPattiController::class, 'publicSnapshot']);
+Route::get('/games/greedy/public-snapshot', [GreedyGameController::class, 'publicSnapshot']);
 Route::get('/levels', [LevelController::class, 'index']);
 
 // host/admin only
@@ -107,6 +109,9 @@ Route::middleware(['auth:sanctum','throttle:240,1'])->group(function () {
     Route::get('/games/teen-patti', [TeenPattiController::class, 'snapshot'])->middleware('feature_enabled:teen_patti_enabled');
     Route::get('/games/teen-patti/history', [TeenPattiController::class, 'history'])->middleware('feature_enabled:teen_patti_enabled');
     Route::post('/games/teen-patti/bets', [TeenPattiController::class, 'placeBet'])->middleware('feature_enabled:teen_patti_enabled');
+    Route::get('/games/greedy', [GreedyGameController::class, 'snapshot'])->middleware('feature_enabled:greedy_enabled');
+    Route::get('/games/greedy/history', [GreedyGameController::class, 'history'])->middleware('feature_enabled:greedy_enabled');
+    Route::post('/games/greedy/bets', [GreedyGameController::class, 'placeBet'])->middleware('feature_enabled:greedy_enabled');
     Route::get('/entry-packs', [EntryPackController::class, 'index'])->middleware('feature_enabled:entry_effects_enabled');
     Route::post('/entry-packs/{entryPack}/purchase', [EntryPackController::class, 'purchase'])->middleware('feature_enabled:entry_effects_enabled');
     Route::get('/me/entry-pack', [EntryPackController::class, 'mine'])->middleware('feature_enabled:entry_effects_enabled');
@@ -238,3 +243,4 @@ Route::middleware('auth:sanctum')->post('/ws/rooms/chat-check', [WsModerationCon
 Route::middleware('throttle:240,1')->get('/ws/moderation/snapshot', [WsModerationController::class, 'snapshot']);
 Route::middleware('throttle:240,1')->post('/ws/moderation/persist-chat-action', [WsModerationController::class, 'persistChatAction']);
 Route::middleware('throttle:240,1')->get('/ws/games/teen-patti/snapshot', [TeenPattiController::class, 'internalSnapshot']);
+Route::middleware('throttle:240,1')->get('/ws/games/greedy/snapshot', [GreedyGameController::class, 'internalSnapshot']);

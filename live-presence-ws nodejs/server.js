@@ -91,6 +91,7 @@ function defaultAppConfig() {
       wallet_recharge_enabled: true,
       host_calling_enabled: true,
       teen_patti_enabled: false,
+      greedy_enabled: false,
       video_room_games_enabled: false,
     },
   };
@@ -458,8 +459,10 @@ function makeAuthMiddleware(_namespaceName) {
         return next(new Error('live_rooms_disabled'));
       }
 
-      if (_namespaceName === '/games' && !featureEnabled('teen_patti_enabled')) {
-        return next(new Error('teen_patti_disabled'));
+      if (_namespaceName === '/games'
+        && !featureEnabled('teen_patti_enabled')
+        && !featureEnabled('greedy_enabled')) {
+        return next(new Error('games_disabled'));
       }
 
       socket.user = user;
@@ -791,6 +794,8 @@ gamesNs.use(makeAuthMiddleware('/games'));
 
 let teenPattiSnapshotCache = null;
 let teenPattiSnapshotHash = '';
+let greedySnapshotCache = null;
+let greedySnapshotHash = '';
 
 function hashTeenPattiSnapshot(payload) {
   try {
@@ -829,6 +834,46 @@ async function fetchTeenPattiSnapshotInternal(force = false) {
   } catch (e) {
     console.error('[games][ERR]', nowISO(), `teen patti snapshot fetch failed: ${e.message}`);
     return teenPattiSnapshotCache;
+  }
+}
+
+function hashGreedySnapshot(payload) {
+  try {
+    return JSON.stringify(payload || {});
+  } catch {
+    return '';
+  }
+}
+
+async function fetchGreedySnapshotInternal(force = false) {
+  await getAppConfig();
+  if (!featureEnabled('greedy_enabled')) {
+    greedySnapshotCache = null;
+    greedySnapshotHash = '';
+    return null;
+  }
+
+  try {
+    const { data } = await api.get('/ws/games/greedy/snapshot', {
+      headers: internalApiHeaders(),
+    });
+    const payload = data && typeof data === 'object' ? data : null;
+    if (!payload?.ok) {
+      return null;
+    }
+    const nextHash = hashGreedySnapshot(payload);
+    const changed = force || nextHash !== greedySnapshotHash;
+    greedySnapshotCache = payload;
+    greedySnapshotHash = nextHash;
+
+    if (changed) {
+      gamesNs.emit('greedy:snapshot', payload);
+    }
+
+    return payload;
+  } catch (e) {
+    console.error('[games][ERR]', nowISO(), `greedy snapshot fetch failed: ${e.message}`);
+    return greedySnapshotCache;
   }
 }
 
@@ -1418,6 +1463,11 @@ sub.subscribe('games:teen_patti:events', (err) => {
   else console.log('[games][SUB]', nowISO(), 'subscribed channel games:teen_patti:events');
 });
 
+sub.subscribe('games:greedy:events', (err) => {
+  if (err) console.error('[games][ERR]', nowISO(), 'subscribe games:greedy:events', err.message);
+  else console.log('[games][SUB]', nowISO(), 'subscribed channel games:greedy:events');
+});
+
 sub.on('message', async (channel, message) => {
   await getAppConfig();
   if (channel === 'rooms:events') {
@@ -1683,6 +1733,22 @@ sub.on('message', async (channel, message) => {
       await fetchTeenPattiSnapshotInternal(true);
     } catch (e) {
       console.error('[games][ERR]', nowISO(), 'games:teen_patti:events parse', e.message, message);
+    }
+  } else if (channel === 'games:greedy:events') {
+    try {
+      const payload = JSON.parse(message || '{}');
+      console.log('[games][EVT]', nowISO(), JSON.stringify({
+        event: payload.event,
+        round_key: payload.round_key || payload.snapshot?.round?.round_key || null,
+        sockets: gamesNs.sockets.size,
+      }));
+      gamesNs.emit('games:event', payload);
+      if (payload.event) {
+        gamesNs.emit(payload.event, payload);
+      }
+      await fetchGreedySnapshotInternal(true);
+    } catch (e) {
+      console.error('[games][ERR]', nowISO(), 'games:greedy:events parse', e.message, message);
     }
   }
 });
@@ -2015,6 +2081,27 @@ gamesNs.on('connection', (socket) => {
     socket.leave('game:teen_patti');
   });
 
+  socket.on('games:greedy:subscribe', async () => {
+    await getAppConfig();
+    if (!featureEnabled('greedy_enabled')) {
+      socket.emit('feature:error', featureErrorPayload(
+        'GREEDY_DISABLED',
+        'Greedy is currently unavailable.',
+      ));
+      return;
+    }
+
+    socket.join('game:greedy');
+    const snapshot = await fetchGreedySnapshotInternal(true);
+    if (snapshot) {
+      socket.emit('greedy:snapshot', snapshot);
+    }
+  });
+
+  socket.on('games:greedy:unsubscribe', () => {
+    socket.leave('game:greedy');
+  });
+
   socket.on('disconnect', (reason) => {
     removeSocketMap(socket);
     console.log('[games][CONN]', nowISO(), `disconnect sid=${socket.id} user=${uid} reason=${reason} total=${gamesNs.sockets.size}`);
@@ -2090,11 +2177,11 @@ setInterval(async () => {
     );
   }
 
-  if (!latest.features.teen_patti_enabled) {
+  if (!latest.features.teen_patti_enabled && !latest.features.greedy_enabled) {
     disconnectNamespace(
       gamesNs,
-      'teen_patti_disabled',
-      featureErrorPayload('TEEN_PATTI_DISABLED', 'Teen Patti is currently unavailable.'),
+      'games_disabled',
+      featureErrorPayload('GAMES_DISABLED', 'Room games are currently unavailable.'),
     );
   }
 }, APP_CONFIG_POLL_MS);
@@ -2111,6 +2198,7 @@ setInterval(async () => {
     return;
   }
   await fetchTeenPattiSnapshotInternal(false);
+  await fetchGreedySnapshotInternal(false);
 }, 1000);
 
 // ===================================================================

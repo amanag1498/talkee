@@ -35,6 +35,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('live-rooms:reconcile')->hourly()->withoutOverlapping();
         $schedule->command('teen-patti:tick')->everyMinute()->withoutOverlapping();
         $schedule->command('teen-patti:reconcile --limit=5')->everyFiveMinutes()->withoutOverlapping();
+        $schedule->command('greedy:tick')->everyMinute()->withoutOverlapping();
+        $schedule->command('greedy:reconcile --limit=5')->everyFiveMinutes()->withoutOverlapping();
         $schedule->command('agency:payout-reports:generate')
             ->weeklyOn(
                 (int) config('agency_payouts.schedule_day', 1),

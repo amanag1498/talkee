@@ -201,6 +201,18 @@ class SettingsController extends Controller
             ]);
         }
 
+        if ((int) data_get($games, 'greedy.max_bet') < (int) data_get($games, 'greedy.min_bet')) {
+            throw ValidationException::withMessages([
+                'games.greedy.max_bet' => 'Greedy maximum bet must be greater than or equal to minimum bet.',
+            ]);
+        }
+
+        if ((int) data_get($games, 'greedy.betting_lock_seconds') >= (int) data_get($games, 'greedy.round_duration_seconds')) {
+            throw ValidationException::withMessages([
+                'games.greedy.betting_lock_seconds' => 'Greedy bet lock seconds must be less than round duration seconds.',
+            ]);
+        }
+
         $this->settings->updateGameSettings($games);
 
         return redirect()
