@@ -208,6 +208,7 @@ Route::middleware(['auth','not_blocked','role:admin'])->prefix('admin')->name('a
   Route::get('settings/games', [AdminSettingsController::class, 'editGames'])->name('settings.games.edit');
   Route::put('settings/games', [AdminSettingsController::class, 'updateGames'])->name('settings.games.update');
   Route::get('games/teen-patti', [TeenPattiAdminController::class, 'dashboard'])->name('games.teen-patti.dashboard');
+  Route::get('games/teen-patti/report', [TeenPattiAdminController::class, 'report'])->name('games.teen-patti.report');
   Route::get('games/teen-patti/rounds', [TeenPattiAdminController::class, 'rounds'])->name('games.teen-patti.rounds');
   Route::get('games/teen-patti/bets', [TeenPattiAdminController::class, 'bets'])->name('games.teen-patti.bets');
   Route::get('games/teen-patti/payouts', [TeenPattiAdminController::class, 'payouts'])->name('games.teen-patti.payouts');
@@ -215,6 +216,7 @@ Route::middleware(['auth','not_blocked','role:admin'])->prefix('admin')->name('a
   Route::post('games/teen-patti/rounds/{round}/reconcile', [TeenPattiAdminController::class, 'reconcile'])->name('games.teen-patti.rounds.reconcile');
   Route::post('games/teen-patti/bets/{bet}/refund', [TeenPattiAdminController::class, 'refund'])->name('games.teen-patti.bets.refund');
   Route::get('games/greedy', [GreedyGameAdminController::class, 'dashboard'])->name('games.greedy.dashboard');
+  Route::get('games/greedy/report', [GreedyGameAdminController::class, 'report'])->name('games.greedy.report');
   Route::get('games/greedy/rounds', [GreedyGameAdminController::class, 'rounds'])->name('games.greedy.rounds');
   Route::get('games/greedy/bets', [GreedyGameAdminController::class, 'bets'])->name('games.greedy.bets');
   Route::get('games/greedy/payouts', [GreedyGameAdminController::class, 'payouts'])->name('games.greedy.payouts');

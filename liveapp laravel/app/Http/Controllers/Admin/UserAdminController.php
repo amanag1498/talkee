@@ -47,14 +47,14 @@ class UserAdminController extends Controller
             ->with(['roles', 'host.agency', 'wallet', 'level']);
 
         if ($s = trim((string) $request->get('s'))) {
-            $q->where(function ($qq) use ($s) {
-                $qq->where('name', 'like', "%{$s}%")
-                   ->orWhere('email', 'like', "%{$s}%");
-
-                if (ctype_digit($s)) {
-                    $qq->orWhere('id', (int) $s);
-                }
-            });
+            if (ctype_digit($s)) {
+                $q->where('id', (int) $s);
+            } else {
+                $q->where(function ($qq) use ($s) {
+                    $qq->where('name', 'like', "%{$s}%")
+                       ->orWhere('email', 'like', "%{$s}%");
+                });
+            }
         }
 
         $users = $q->latest()->paginate(20);

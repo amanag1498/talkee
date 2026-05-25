@@ -18,6 +18,7 @@
     </div>
     <div class="d-flex gap-2">
       <a href="{{ route('admin.settings.games.edit', ['game' => 'greedy']) }}" class="btn btn-light border">Game Settings</a>
+      <a href="{{ route('admin.games.greedy.report') }}" class="btn btn-light border">User Report</a>
       <a href="{{ route('admin.games.greedy.rounds') }}" class="btn btn-light border">Rounds</a>
       <a href="{{ route('admin.games.greedy.bets') }}" class="btn btn-light border">Bets</a>
       <a href="{{ route('admin.games.greedy.payouts') }}" class="btn btn-light border">Payouts</a>

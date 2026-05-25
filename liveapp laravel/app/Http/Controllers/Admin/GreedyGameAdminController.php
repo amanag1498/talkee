@@ -21,6 +21,17 @@ class GreedyGameAdminController extends Controller
         ]);
     }
 
+    public function report(Request $request)
+    {
+        return view('admin.games.user-performance-report', [
+            'report' => $this->greedy->adminUserReportPayload($request->all()),
+            'gameName' => 'Greedy',
+            'gameDescription' => 'Per-user betting, payout, refund, and profit reporting for Greedy.',
+            'dashboardRoute' => 'admin.games.greedy.dashboard',
+            'reportRoute' => 'admin.games.greedy.report',
+        ]);
+    }
+
     public function rounds(Request $request)
     {
         $query = $this->greedy->roundsQuery();

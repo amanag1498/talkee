@@ -21,6 +21,17 @@ class TeenPattiAdminController extends Controller
         ]);
     }
 
+    public function report(Request $request)
+    {
+        return view('admin.games.user-performance-report', [
+            'report' => $this->teenPatti->adminUserReportPayload($request->all()),
+            'gameName' => 'Teen Patti',
+            'gameDescription' => 'Per-user betting, payout, refund, and profit reporting for Teen Patti.',
+            'dashboardRoute' => 'admin.games.teen-patti.dashboard',
+            'reportRoute' => 'admin.games.teen-patti.report',
+        ]);
+    }
+
     public function rounds(Request $request)
     {
         $query = $this->teenPatti->roundsQuery();

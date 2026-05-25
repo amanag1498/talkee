@@ -8,6 +8,7 @@ use App\Models\GreedyRound;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use Carbon\CarbonInterface;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -289,6 +290,105 @@ class GreedyGameService
     public function payoutsQuery(): Builder
     {
         return GreedyPayout::query()->with(['user', 'bet', 'round', 'walletTransaction'])->latest('id');
+    }
+
+    public function adminUserReportPayload(array $filters = []): array
+    {
+        $window = $this->normalizeAdminReportWindow($filters);
+        $search = trim((string) ($filters['q'] ?? ''));
+        $perPage = max(10, min(100, (int) ($filters['per_page'] ?? 25)));
+
+        $betQuery = GreedyBet::query();
+        $this->applyAdminTimeWindow($betQuery, 'COALESCE(placed_at, created_at)', $window['start'], $window['end']);
+
+        $payoutQuery = GreedyPayout::query();
+        $this->applyAdminTimeWindow($payoutQuery, 'COALESCE(settled_at, created_at)', $window['start'], $window['end']);
+
+        $refundQuery = GreedyBet::query()->whereNotNull('refunded_at');
+        $this->applyAdminTimeWindow($refundQuery, 'COALESCE(refunded_at, updated_at, created_at)', $window['start'], $window['end']);
+
+        $betAgg = (clone $betQuery)
+            ->selectRaw('user_id, COUNT(*) as total_bets_count, COALESCE(SUM(amount), 0) as total_bet_amount')
+            ->groupBy('user_id');
+        $payoutAgg = (clone $payoutQuery)
+            ->selectRaw('user_id, COUNT(*) as total_wins_count, COALESCE(SUM(payout_coins), 0) as total_win_amount')
+            ->groupBy('user_id');
+        $refundAgg = (clone $refundQuery)
+            ->selectRaw('user_id, COUNT(*) as total_refunds_count, COALESCE(SUM(amount), 0) as refunded_amount')
+            ->groupBy('user_id');
+
+        $activityUsers = (clone $betQuery)
+            ->select('user_id')
+            ->union((clone $payoutQuery)->select('user_id'))
+            ->union((clone $refundQuery)->select('user_id'));
+
+        $reportBase = DB::query()
+            ->fromSub($activityUsers, 'activity_users')
+            ->join('users', 'users.id', '=', 'activity_users.user_id')
+            ->leftJoinSub($betAgg, 'bet_agg', fn ($join) => $join->on('bet_agg.user_id', '=', 'users.id'))
+            ->leftJoinSub($payoutAgg, 'payout_agg', fn ($join) => $join->on('payout_agg.user_id', '=', 'users.id'))
+            ->leftJoinSub($refundAgg, 'refund_agg', fn ($join) => $join->on('refund_agg.user_id', '=', 'users.id'))
+            ->selectRaw("
+                users.id as user_id,
+                users.name,
+                users.email,
+                COALESCE(bet_agg.total_bets_count, 0) as total_bets_count,
+                COALESCE(bet_agg.total_bet_amount, 0) as total_bet_amount,
+                COALESCE(payout_agg.total_wins_count, 0) as total_wins_count,
+                COALESCE(payout_agg.total_win_amount, 0) as total_win_amount,
+                COALESCE(refund_agg.total_refunds_count, 0) as total_refunds_count,
+                COALESCE(refund_agg.refunded_amount, 0) as refunded_amount,
+                (COALESCE(bet_agg.total_bet_amount, 0) - COALESCE(payout_agg.total_win_amount, 0) - COALESCE(refund_agg.refunded_amount, 0)) as profit_amount
+            ")
+            ->distinct();
+
+        if ($search !== '') {
+            if (is_numeric($search)) {
+                $reportBase->where('users.id', (int) $search);
+            } else {
+                $reportBase->where(function ($query) use ($search) {
+                    $query
+                        ->where('users.name', 'like', "%{$search}%")
+                        ->orWhere('users.email', 'like', "%{$search}%");
+                });
+            }
+        }
+
+        $summary = DB::query()
+            ->fromSub(clone $reportBase, 'report_rows')
+            ->selectRaw('
+                COUNT(*) as active_users_count,
+                COALESCE(SUM(total_bet_amount), 0) as total_bet_amount,
+                COALESCE(SUM(total_win_amount), 0) as total_win_amount,
+                COALESCE(SUM(refunded_amount), 0) as refunded_amount,
+                COALESCE(SUM(profit_amount), 0) as profit_amount
+            ')
+            ->first();
+
+        $rows = $reportBase
+            ->orderByDesc('profit_amount')
+            ->orderByDesc('total_bet_amount')
+            ->paginate($perPage)
+            ->withQueryString();
+
+        return [
+            'filters' => [
+                'period' => $window['period'],
+                'start_date' => $window['start']->toDateString(),
+                'end_date' => $window['end']->toDateString(),
+                'label' => $window['label'],
+                'q' => $search,
+                'per_page' => $perPage,
+            ],
+            'summary' => [
+                'active_users_count' => (int) ($summary->active_users_count ?? 0),
+                'total_bet_amount' => (int) ($summary->total_bet_amount ?? 0),
+                'total_win_amount' => (int) ($summary->total_win_amount ?? 0),
+                'refunded_amount' => (int) ($summary->refunded_amount ?? 0),
+                'profit_amount' => (int) ($summary->profit_amount ?? 0),
+            ],
+            'rows' => $rows,
+        ];
     }
 
     public function tick(?GreedyRound $round = null): GreedyRound
@@ -826,5 +926,65 @@ class GreedyGameService
             'C' => $totals['C'] * $multipliers['C'],
             'D' => $totals['D'] * $multipliers['D'],
         ];
+    }
+
+    private function normalizeAdminReportWindow(array $filters): array
+    {
+        $period = strtolower(trim((string) ($filters['period'] ?? '7d')));
+        $allowed = ['today', '7d', '30d', 'this_month', 'last_month', 'custom'];
+        if (!in_array($period, $allowed, true)) {
+            $period = '7d';
+        }
+
+        $now = CarbonImmutable::now();
+        $startInput = trim((string) ($filters['start_date'] ?? ''));
+        $endInput = trim((string) ($filters['end_date'] ?? ''));
+
+        [$start, $end, $label] = match ($period) {
+            'today' => [$now->startOfDay(), $now->endOfDay(), 'Today'],
+            '30d' => [$now->subDays(29)->startOfDay(), $now->endOfDay(), 'Last 30 days'],
+            'this_month' => [$now->startOfMonth(), $now->endOfDay(), 'This month'],
+            'last_month' => [
+                $now->subMonthNoOverflow()->startOfMonth(),
+                $now->subMonthNoOverflow()->endOfMonth(),
+                'Last month',
+            ],
+            'custom' => [
+                $this->parseAdminDate($startInput, $now->subDays(6)->startOfDay()),
+                $this->parseAdminDate($endInput, $now->endOfDay(), endOfDay: true),
+                'Custom range',
+            ],
+            default => [$now->subDays(6)->startOfDay(), $now->endOfDay(), 'Last 7 days'],
+        };
+
+        if ($start->greaterThan($end)) {
+            [$start, $end] = [$end->startOfDay(), $start->endOfDay()];
+        }
+
+        return [
+            'period' => $period,
+            'start' => $start->startOfDay(),
+            'end' => $end->endOfDay(),
+            'label' => $label,
+        ];
+    }
+
+    private function parseAdminDate(string $value, CarbonImmutable $fallback, bool $endOfDay = false): CarbonImmutable
+    {
+        if ($value === '') {
+            return $endOfDay ? $fallback->endOfDay() : $fallback->startOfDay();
+        }
+
+        try {
+            $date = CarbonImmutable::parse($value);
+            return $endOfDay ? $date->endOfDay() : $date->startOfDay();
+        } catch (\Throwable) {
+            return $endOfDay ? $fallback->endOfDay() : $fallback->startOfDay();
+        }
+    }
+
+    private function applyAdminTimeWindow(Builder $query, string $expression, CarbonInterface $start, CarbonInterface $end): void
+    {
+        $query->whereBetween(DB::raw($expression), [$start->toDateTimeString(), $end->toDateTimeString()]);
     }
 }

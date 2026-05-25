@@ -180,8 +180,8 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
       _localViewerRoundKey = next.round.roundKey;
       _localViewerPotTotals = <String, int>{};
       _animatedTotals = const <String, int>{};
-      _lastSettledRoundKey = next.round.phase == 'result' ? next.round.roundKey : null;
-      _lastWinningPot = next.round.phase == 'result' ? next.round.winningPot : null;
+      _lastSettledRoundKey = null;
+      _lastWinningPot = null;
       _landedGems = <String, List<_GreedyGemStackItem>>{
         for (final pot in _pots) pot: <_GreedyGemStackItem>[],
       };
@@ -402,7 +402,7 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
       ..reset()
       ..forward();
 
-    if (previous?.roundKey != round.roundKey) {
+    if (previous?.phase != 'result') {
       Future<void>.delayed(const Duration(milliseconds: 2150), () async {
         if (!mounted || _snapshot?.round.roundKey != round.roundKey) return;
         _revealStage = _GreedyRevealStage.flash;
