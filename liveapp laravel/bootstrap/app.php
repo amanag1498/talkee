@@ -33,6 +33,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('live-rooms:remind-hosts --lead-minutes=2')->everyMinute()->withoutOverlapping();
         $schedule->command('live-rooms:sync-redis')->everyTenMinutes()->withoutOverlapping();
         $schedule->command('live-rooms:reconcile')->hourly()->withoutOverlapping();
+        $schedule->command('teen-patti:tick')->everyMinute()->withoutOverlapping();
+        $schedule->command('teen-patti:reconcile --limit=5')->everyFiveMinutes()->withoutOverlapping();
         $schedule->command('agency:payout-reports:generate')
             ->weeklyOn(
                 (int) config('agency_payouts.schedule_day', 1),

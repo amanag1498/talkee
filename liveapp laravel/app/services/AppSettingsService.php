@@ -111,6 +111,18 @@ class AppSettingsService
             'group' => 'android',
             'default' => true,
         ],
+        'app_features.platform.android.teen_patti_enabled' => [
+            'label' => 'Teen Patti',
+            'type' => 'boolean',
+            'group' => 'android',
+            'default' => false,
+        ],
+        'app_features.platform.android.video_room_games_enabled' => [
+            'label' => 'Video Room Games Strip',
+            'type' => 'boolean',
+            'group' => 'android',
+            'default' => false,
+        ],
     ];
 
     public const CALL_DEFINITIONS = [
@@ -201,6 +213,79 @@ class AppSettingsService
         ],
     ];
 
+    public const GAME_DEFINITIONS = [
+        'games.teen_patti.enabled' => [
+            'label' => 'Enable Teen Patti Engine',
+            'type' => 'boolean',
+            'group' => 'availability',
+            'default' => false,
+            'hint' => 'Server-side master switch. Disables rounds, betting, and settlement when off.',
+        ],
+        'games.teen_patti.visible_in_video_room_strip' => [
+            'label' => 'Show In Video Room Strip',
+            'type' => 'boolean',
+            'group' => 'availability',
+            'default' => true,
+            'hint' => 'Controls whether the Games entry appears in the video room action strip.',
+        ],
+        'games.teen_patti.min_bet' => [
+            'label' => 'Minimum Bet',
+            'type' => 'integer',
+            'group' => 'limits',
+            'default' => 10,
+            'min' => 1,
+            'hint' => 'Lowest allowed coin amount per bet.',
+        ],
+        'games.teen_patti.max_bet' => [
+            'label' => 'Maximum Bet',
+            'type' => 'integer',
+            'group' => 'limits',
+            'default' => 1000,
+            'min' => 1,
+            'hint' => 'Highest allowed coin amount per bet.',
+        ],
+        'games.teen_patti.round_duration_seconds' => [
+            'label' => 'Round Duration Seconds',
+            'type' => 'integer',
+            'group' => 'timing',
+            'default' => 30,
+            'min' => 10,
+            'hint' => 'Base round duration used by the realtime game loop.',
+        ],
+        'games.teen_patti.betting_lock_seconds' => [
+            'label' => 'Bet Lock Seconds',
+            'type' => 'integer',
+            'group' => 'timing',
+            'default' => 5,
+            'min' => 2,
+            'hint' => 'How many seconds before reveal betting is locked.',
+        ],
+        'games.teen_patti.result_display_seconds' => [
+            'label' => 'Result Display Seconds',
+            'type' => 'integer',
+            'group' => 'timing',
+            'default' => 6,
+            'min' => 3,
+            'hint' => 'How long result state remains before the next round begins.',
+        ],
+        'games.teen_patti.payout_multiplier' => [
+            'label' => 'Payout Multiplier',
+            'type' => 'integer',
+            'group' => 'economy',
+            'default' => 3,
+            'min' => 2,
+            'hint' => 'Winning bets are credited with bet amount multiplied by this value.',
+        ],
+        'games.teen_patti.winning_strategy_mode' => [
+            'label' => 'Winning Strategy',
+            'type' => 'string',
+            'group' => 'economy',
+            'default' => 'probability',
+            'options' => ['random', 'minimum_bet', 'highest_bet', 'probability'],
+            'hint' => 'Server-side winner selection strategy for round settlement.',
+        ],
+    ];
+
     public function loadCallSettingsIntoConfig(): void
     {
         $this->loadDefinitionsIntoConfig(self::CALL_DEFINITIONS);
@@ -214,6 +299,11 @@ class AppSettingsService
     public function loadLiveRoomSettingsIntoConfig(): void
     {
         $this->loadDefinitionsIntoConfig(self::LIVE_ROOM_DEFINITIONS);
+    }
+
+    public function loadGameSettingsIntoConfig(): void
+    {
+        $this->loadDefinitionsIntoConfig(self::GAME_DEFINITIONS);
     }
 
     public function callSettings(): array
@@ -244,6 +334,21 @@ class AppSettingsService
     public function updateLiveRoomSettings(array $validated): void
     {
         $this->updateSettings($validated, self::LIVE_ROOM_DEFINITIONS, 'live_rooms');
+    }
+
+    public function gameSettings(): array
+    {
+        $values = [];
+        foreach (self::GAME_DEFINITIONS as $key => $definition) {
+            $values[$key] = config($key, $definition['default'] ?? null);
+        }
+
+        return $values;
+    }
+
+    public function updateGameSettings(array $validated): void
+    {
+        $this->updateSettings($validated, self::GAME_DEFINITIONS, 'games');
     }
 
     public function appSettings(): array
@@ -332,6 +437,8 @@ class AppSettingsService
             'entry_effects_enabled' => (bool) config('app_features.platform.android.entry_effects_enabled', true),
             'wallet_recharge_enabled' => (bool) config('app_features.platform.android.wallet_recharge_enabled', true),
             'host_calling_enabled' => (bool) config('app_features.platform.android.host_calling_enabled', true),
+            'teen_patti_enabled' => (bool) config('app_features.platform.android.teen_patti_enabled', false),
+            'video_room_games_enabled' => (bool) config('app_features.platform.android.video_room_games_enabled', false),
         ];
     }
 

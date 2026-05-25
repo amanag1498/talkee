@@ -214,6 +214,10 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       payload.value?.features.walletRechargeEnabled ?? true;
   bool get hostCallingEnabled =>
       payload.value?.features.hostCallingEnabled ?? true;
+  bool get teenPattiEnabled =>
+      payload.value?.features.teenPattiEnabled ?? false;
+  bool get videoRoomGamesEnabled =>
+      payload.value?.features.videoRoomGamesEnabled ?? false;
   AppHostGoalSettings get hostGoals =>
       payload.value?.hostGoals ?? const AppHostGoalSettings.defaults();
   bool get anyLiveCreationEnabled => audioRoomsEnabled || videoRoomsEnabled;
@@ -305,6 +309,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
         'entry_effects_enabled': true,
         'wallet_recharge_enabled': true,
         'host_calling_enabled': true,
+        'teen_patti_enabled': false,
+        'video_room_games_enabled': false,
       },
     });
   }
@@ -550,6 +556,8 @@ class AppPlatformFeatureFlags {
     required this.entryEffectsEnabled,
     required this.walletRechargeEnabled,
     required this.hostCallingEnabled,
+    required this.teenPattiEnabled,
+    required this.videoRoomGamesEnabled,
   });
 
   const AppPlatformFeatureFlags.enabled()
@@ -560,7 +568,9 @@ class AppPlatformFeatureFlags {
       subscriptionsEnabled = true,
       entryEffectsEnabled = true,
       walletRechargeEnabled = true,
-      hostCallingEnabled = true;
+      hostCallingEnabled = true,
+      teenPattiEnabled = false,
+      videoRoomGamesEnabled = false;
 
   final bool audioRoomsEnabled;
   final bool videoRoomsEnabled;
@@ -570,6 +580,8 @@ class AppPlatformFeatureFlags {
   final bool entryEffectsEnabled;
   final bool walletRechargeEnabled;
   final bool hostCallingEnabled;
+  final bool teenPattiEnabled;
+  final bool videoRoomGamesEnabled;
 
   factory AppPlatformFeatureFlags.fromJson(Map<String, dynamic> json) {
     bool toBool(dynamic value, {required bool fallback}) {
@@ -608,6 +620,14 @@ class AppPlatformFeatureFlags {
       hostCallingEnabled: toBool(
         json['host_calling_enabled'],
         fallback: true,
+      ),
+      teenPattiEnabled: toBool(
+        json['teen_patti_enabled'],
+        fallback: false,
+      ),
+      videoRoomGamesEnabled: toBool(
+        json['video_room_games_enabled'],
+        fallback: false,
       ),
     );
   }

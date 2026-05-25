@@ -36,6 +36,8 @@ import '../../modules/notifications/controllers/notification_controller.dart';
 import '../../modules/notifications/views/notification_page.dart';
 import '../../modules/entry_packs/services/entry_pack_api.dart';
 import '../../modules/entry_packs/views/entry_pack_catalog_page.dart';
+import '../../modules/games/teen_patti/services/teen_patti_api.dart';
+import '../../modules/games/teen_patti/services/teen_patti_socket_service.dart';
 import '../../modules/subscriptions/controllers/viewer_gate_controller.dart';
 import '../../modules/subscriptions/views/subscriptions_page.dart';
 import '../../modules/themes/controllers/theme_center_controller.dart';
@@ -88,6 +90,7 @@ class AppPages {
     Get.put<HostFollowApi>(HostFollowApi(api), permanent: true);
     Get.put<ApplicationsApi>(ApplicationsApi(api), permanent: true);
     Get.put<WalletApi>(WalletApi(api), permanent: true);
+    Get.put<TeenPattiApi>(TeenPattiApi(api), permanent: true);
     Get.put<RazorpayCheckoutService>(
       RazorpayCheckoutService(),
       permanent: true,
@@ -127,6 +130,10 @@ class AppPages {
       fenix: true,
     );
     Get.lazyPut<RoomsSocketService>(() => RoomsSocketService(), fenix: true);
+    Get.lazyPut<TeenPattiSocketService>(
+      () => TeenPattiSocketService(),
+      fenix: true,
+    );
     Get.lazyPut<ProfileController>(
       () => ProfileController(
         api: Get.find<ProfileApi>(),

@@ -1,0 +1,199 @@
+class TeenPattiSnapshot {
+  const TeenPattiSnapshot({
+    required this.settings,
+    required this.walletBalance,
+    required this.round,
+    required this.history,
+  });
+
+  final TeenPattiSettings settings;
+  final int walletBalance;
+  final TeenPattiRound round;
+  final List<TeenPattiRound> history;
+
+  factory TeenPattiSnapshot.fromJson(Map<String, dynamic> json) {
+    return TeenPattiSnapshot(
+      settings: TeenPattiSettings.fromJson(
+        Map<String, dynamic>.from(json['settings'] as Map? ?? const {}),
+      ),
+      walletBalance: int.tryParse('${json['wallet_balance'] ?? 0}') ?? 0,
+      round: TeenPattiRound.fromJson(
+        Map<String, dynamic>.from(json['round'] as Map? ?? const {}),
+      ),
+      history:
+          (json['history'] as List? ?? const [])
+              .whereType<Map>()
+              .map((row) => TeenPattiRound.fromJson(Map<String, dynamic>.from(row)))
+              .toList(),
+    );
+  }
+}
+
+class TeenPattiSettings {
+  const TeenPattiSettings({
+    required this.enabled,
+    required this.visibleInVideoRoomStrip,
+    required this.minBet,
+    required this.maxBet,
+    required this.roundDurationSeconds,
+    required this.bettingLockSeconds,
+    required this.resultDisplaySeconds,
+    required this.payoutMultiplier,
+    required this.winningStrategyMode,
+  });
+
+  final bool enabled;
+  final bool visibleInVideoRoomStrip;
+  final int minBet;
+  final int maxBet;
+  final int roundDurationSeconds;
+  final int bettingLockSeconds;
+  final int resultDisplaySeconds;
+  final int payoutMultiplier;
+  final String winningStrategyMode;
+
+  factory TeenPattiSettings.fromJson(Map<String, dynamic> json) {
+    bool toBool(dynamic value, {required bool fallback}) {
+      if (value is bool) return value;
+      if (value == null) return fallback;
+      final normalized = value.toString().trim().toLowerCase();
+      return normalized == '1' || normalized == 'true' || normalized == 'yes';
+    }
+
+    int toInt(dynamic value, int fallback) =>
+        int.tryParse(value?.toString() ?? '') ?? fallback;
+
+    return TeenPattiSettings(
+      enabled: toBool(json['enabled'], fallback: false),
+      visibleInVideoRoomStrip: toBool(
+        json['visible_in_video_room_strip'],
+        fallback: true,
+      ),
+      minBet: toInt(json['min_bet'], 10),
+      maxBet: toInt(json['max_bet'], 1000),
+      roundDurationSeconds: toInt(json['round_duration_seconds'], 30),
+      bettingLockSeconds: toInt(json['betting_lock_seconds'], 5),
+      resultDisplaySeconds: toInt(json['result_display_seconds'], 6),
+      payoutMultiplier: toInt(json['payout_multiplier'], 3),
+      winningStrategyMode:
+          (json['winning_strategy_mode'] ?? 'probability').toString(),
+    );
+  }
+}
+
+class TeenPattiRound {
+  const TeenPattiRound({
+    required this.id,
+    required this.roundKey,
+    required this.status,
+    required this.phase,
+    required this.startsAt,
+    required this.locksAt,
+    required this.endsAt,
+    required this.winningPot,
+    required this.winningHand,
+    required this.losingHandOne,
+    required this.losingHandTwo,
+    required this.countdownSeconds,
+    required this.totals,
+    required this.totalBetsCount,
+    required this.participantCount,
+    required this.payoutMultiplier,
+    required this.viewerBets,
+  });
+
+  final int id;
+  final String roundKey;
+  final String status;
+  final String phase;
+  final DateTime? startsAt;
+  final DateTime? locksAt;
+  final DateTime? endsAt;
+  final String? winningPot;
+  final List<String> winningHand;
+  final List<String> losingHandOne;
+  final List<String> losingHandTwo;
+  final int countdownSeconds;
+  final Map<String, int> totals;
+  final int totalBetsCount;
+  final int participantCount;
+  final int payoutMultiplier;
+  final List<TeenPattiBet> viewerBets;
+
+  factory TeenPattiRound.fromJson(Map<String, dynamic> json) {
+    int toInt(dynamic value, int fallback) =>
+        int.tryParse(value?.toString() ?? '') ?? fallback;
+    DateTime? toDate(dynamic value) =>
+        value == null ? null : DateTime.tryParse(value.toString());
+    List<String> toCards(dynamic raw) =>
+        (raw is List ? raw : const <dynamic>[])
+            .map((value) => value.toString())
+            .where((value) => value.isNotEmpty)
+            .toList();
+
+    final totalsJson = Map<String, dynamic>.from(json['totals'] as Map? ?? const {});
+
+    return TeenPattiRound(
+      id: toInt(json['id'], 0),
+      roundKey: (json['round_key'] ?? '').toString(),
+      status: (json['status'] ?? 'open').toString(),
+      phase: (json['phase'] ?? 'betting').toString(),
+      startsAt: toDate(json['starts_at']),
+      locksAt: toDate(json['locks_at']),
+      endsAt: toDate(json['ends_at']),
+      winningPot: json['winning_pot']?.toString(),
+      winningHand: toCards(json['winning_hand']),
+      losingHandOne: toCards(json['losing_hand_one']),
+      losingHandTwo: toCards(json['losing_hand_two']),
+      countdownSeconds: toInt(json['countdown_seconds'], 0),
+      totals: <String, int>{
+        'A': toInt(totalsJson['A'], 0),
+        'B': toInt(totalsJson['B'], 0),
+        'C': toInt(totalsJson['C'], 0),
+      },
+      totalBetsCount: toInt(json['total_bets_count'], 0),
+      participantCount: toInt(json['participant_count'], 0),
+      payoutMultiplier: toInt(json['payout_multiplier'], 3),
+      viewerBets:
+          (json['viewer_bets'] as List? ?? const [])
+              .whereType<Map>()
+              .map((row) => TeenPattiBet.fromJson(Map<String, dynamic>.from(row)))
+              .toList(),
+    );
+  }
+}
+
+class TeenPattiBet {
+  const TeenPattiBet({
+    required this.id,
+    required this.roundId,
+    required this.userId,
+    required this.pot,
+    required this.amount,
+    required this.status,
+    required this.payoutCoins,
+  });
+
+  final int id;
+  final int roundId;
+  final int userId;
+  final String pot;
+  final int amount;
+  final String status;
+  final int payoutCoins;
+
+  factory TeenPattiBet.fromJson(Map<String, dynamic> json) {
+    int toInt(dynamic value, int fallback) =>
+        int.tryParse(value?.toString() ?? '') ?? fallback;
+
+    return TeenPattiBet(
+      id: toInt(json['id'], 0),
+      roundId: toInt(json['round_id'], 0),
+      userId: toInt(json['user_id'], 0),
+      pot: (json['pot'] ?? '').toString(),
+      amount: toInt(json['amount'], 0),
+      status: (json['status'] ?? 'placed').toString(),
+      payoutCoins: toInt(json['payout_coins'], 0),
+    );
+  }
+}

@@ -90,6 +90,8 @@ function defaultAppConfig() {
       entry_effects_enabled: true,
       wallet_recharge_enabled: true,
       host_calling_enabled: true,
+      teen_patti_enabled: false,
+      video_room_games_enabled: false,
     },
   };
 }
@@ -456,6 +458,10 @@ function makeAuthMiddleware(_namespaceName) {
         return next(new Error('live_rooms_disabled'));
       }
 
+      if (_namespaceName === '/games' && !featureEnabled('teen_patti_enabled')) {
+        return next(new Error('teen_patti_disabled'));
+      }
+
       socket.user = user;
       socket.authToken = token;
       return next();
@@ -656,7 +662,7 @@ function disconnectNamespace(namespace, reason, payload) {
 }
 
 function hasAnyActiveSockets() {
-  return presenceNs.sockets.size > 0 || roomsNs.sockets.size > 0 || callsNs.sockets.size > 0;
+  return presenceNs.sockets.size > 0 || roomsNs.sockets.size > 0 || callsNs.sockets.size > 0 || gamesNs.sockets.size > 0;
 }
 
 function disconnectUnsupportedSockets(reason, predicate, payloadBuilder) {
@@ -668,6 +674,8 @@ function disconnectUnsupportedSockets(reason, predicate, payloadBuilder) {
         ? roomsNs
         : info.ns === '/calls'
           ? callsNs
+          : info.ns === '/games'
+            ? gamesNs
           : null;
     const socket = ns?.sockets.get(socketId);
     if (!socket) continue;
@@ -778,6 +786,51 @@ const roomsNs = io.of('/rooms');
 roomsNs.use(makeAuthMiddleware('/rooms'));
 const callsNs = io.of('/calls');
 callsNs.use(makeAuthMiddleware('/calls'));
+const gamesNs = io.of('/games');
+gamesNs.use(makeAuthMiddleware('/games'));
+
+let teenPattiSnapshotCache = null;
+let teenPattiSnapshotHash = '';
+
+function hashTeenPattiSnapshot(payload) {
+  try {
+    return JSON.stringify(payload || {});
+  } catch {
+    return '';
+  }
+}
+
+async function fetchTeenPattiSnapshotInternal(force = false) {
+  await getAppConfig();
+  if (!featureEnabled('teen_patti_enabled')) {
+    teenPattiSnapshotCache = null;
+    teenPattiSnapshotHash = '';
+    return null;
+  }
+
+  try {
+    const { data } = await api.get('/ws/games/teen-patti/snapshot', {
+      headers: internalApiHeaders(),
+    });
+    const payload = data && typeof data === 'object' ? data : null;
+    if (!payload?.ok) {
+      return null;
+    }
+    const nextHash = hashTeenPattiSnapshot(payload);
+    const changed = force || nextHash !== teenPattiSnapshotHash;
+    teenPattiSnapshotCache = payload;
+    teenPattiSnapshotHash = nextHash;
+
+    if (changed) {
+      gamesNs.emit('teen_patti:snapshot', payload);
+    }
+
+    return payload;
+  } catch (e) {
+    console.error('[games][ERR]', nowISO(), `teen patti snapshot fetch failed: ${e.message}`);
+    return teenPattiSnapshotCache;
+  }
+}
 
 function socketsInRoom(roomId) {
   const set = roomsNs.adapter.rooms.get(roomId);
@@ -1360,6 +1413,11 @@ sub.subscribe('calls:events', (err) => {
   else console.log('[calls][SUB]', nowISO(), 'subscribed channel calls:events');
 });
 
+sub.subscribe('games:teen_patti:events', (err) => {
+  if (err) console.error('[games][ERR]', nowISO(), 'subscribe games:teen_patti:events', err.message);
+  else console.log('[games][SUB]', nowISO(), 'subscribed channel games:teen_patti:events');
+});
+
 sub.on('message', async (channel, message) => {
   await getAppConfig();
   if (channel === 'rooms:events') {
@@ -1609,6 +1667,22 @@ sub.on('message', async (channel, message) => {
       }
     } catch (e) {
       console.error('[rooms][ERR]', nowISO(), 'rooms:pk-events parse', e.message, message);
+    }
+  } else if (channel === 'games:teen_patti:events') {
+    try {
+      const payload = JSON.parse(message || '{}');
+      console.log('[games][EVT]', nowISO(), JSON.stringify({
+        event: payload.event,
+        round_key: payload.round_key || payload.snapshot?.round?.round_key || null,
+        sockets: gamesNs.sockets.size,
+      }));
+      gamesNs.emit('games:event', payload);
+      if (payload.event) {
+        gamesNs.emit(payload.event, payload);
+      }
+      await fetchTeenPattiSnapshotInternal(true);
+    } catch (e) {
+      console.error('[games][ERR]', nowISO(), 'games:teen_patti:events parse', e.message, message);
     }
   }
 });
@@ -1913,6 +1987,40 @@ roomsNs.on('connection', (socket) => {
   });
 });
 
+gamesNs.on('connection', (socket) => {
+  addSocketMap(socket);
+  const uid = socket.user?.id;
+  console.log('[games][CONN]', nowISO(), `client connected sid=${socket.id} user=${uid} total=${gamesNs.sockets.size}`);
+
+  kickOtherSocketsInNs(uid, '/games', socket.id, 'new_login');
+
+  socket.on('games:teen_patti:subscribe', async () => {
+    await getAppConfig();
+    if (!featureEnabled('teen_patti_enabled')) {
+      socket.emit('feature:error', featureErrorPayload(
+        'TEEN_PATTI_DISABLED',
+        'Teen Patti is currently unavailable.',
+      ));
+      return;
+    }
+
+    socket.join('game:teen_patti');
+    const snapshot = await fetchTeenPattiSnapshotInternal(true);
+    if (snapshot) {
+      socket.emit('teen_patti:snapshot', snapshot);
+    }
+  });
+
+  socket.on('games:teen_patti:unsubscribe', () => {
+    socket.leave('game:teen_patti');
+  });
+
+  socket.on('disconnect', (reason) => {
+    removeSocketMap(socket);
+    console.log('[games][CONN]', nowISO(), `disconnect sid=${socket.id} user=${uid} reason=${reason} total=${gamesNs.sockets.size}`);
+  });
+});
+
 callsNs.on('connection', (socket) => {
   addSocketMap(socket);
   const uid = Number(socket.user.id);
@@ -1957,6 +2065,7 @@ setInterval(async () => {
     disconnectNamespace(presenceNs, 'maintenance_mode', payload);
     disconnectNamespace(roomsNs, 'maintenance_mode', payload);
     disconnectNamespace(callsNs, 'maintenance_mode', payload);
+    disconnectNamespace(gamesNs, 'maintenance_mode', payload);
     return;
   }
 
@@ -1980,6 +2089,14 @@ setInterval(async () => {
       featureErrorPayload('HOST_CALLING_DISABLED', 'Host calling is currently unavailable.'),
     );
   }
+
+  if (!latest.features.teen_patti_enabled) {
+    disconnectNamespace(
+      gamesNs,
+      'teen_patti_disabled',
+      featureErrorPayload('TEEN_PATTI_DISABLED', 'Teen Patti is currently unavailable.'),
+    );
+  }
 }, APP_CONFIG_POLL_MS);
 
 setInterval(async () => {
@@ -1988,6 +2105,13 @@ setInterval(async () => {
   }
   await getModerationSnapshot(true);
 }, MODERATION_CACHE_POLL_MS);
+
+setInterval(async () => {
+  if (gamesNs.sockets.size <= 0) {
+    return;
+  }
+  await fetchTeenPattiSnapshotInternal(false);
+}, 1000);
 
 // ===================================================================
 //                              Health & Debug

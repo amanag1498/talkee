@@ -32,6 +32,7 @@ class AppUrls {
   static String get wsPresence => '$socketOrigin/presence';
   static String get wsRooms => '$socketOrigin/rooms';
   static String get wsCalls => '$socketOrigin/calls';
+  static String get wsGames => '$socketOrigin/games';
   static String get privacyPolicyUrl => '$websiteOrigin/privacy-policy';
   static String get termsOfServiceUrl => '$websiteOrigin/terms-of-service';
   static String get accountDeletionUrl => '$websiteOrigin/account-deletion';

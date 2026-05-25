@@ -79,6 +79,20 @@ class SettingsController extends Controller
         ]);
     }
 
+    public function editGames()
+    {
+        return view('admin.settings.games', [
+            'definitions' => AppSettingsService::GAME_DEFINITIONS,
+            'values' => $this->settings->gameSettings(),
+            'groups' => [
+                'availability' => 'Availability',
+                'limits' => 'Bet Limits',
+                'timing' => 'Round Timing',
+                'economy' => 'Economy and Winner Selection',
+            ],
+        ]);
+    }
+
     public function updateApp(Request $request)
     {
         $rules = [];
@@ -145,5 +159,52 @@ class SettingsController extends Controller
         return redirect()
             ->route('admin.settings.live-rooms.edit')
             ->with('ok', 'Live room settings updated.');
+    }
+
+    public function updateGames(Request $request)
+    {
+        $rules = [];
+        foreach (AppSettingsService::GAME_DEFINITIONS as $key => $definition) {
+            $type = $definition['type'] ?? 'boolean';
+            if ($type === 'boolean') {
+                $rules[$key] = 'required|boolean';
+                continue;
+            }
+
+            if ($type === 'string' && !empty($definition['options'])) {
+                $rules[$key] = 'required|string|in:' . implode(',', $definition['options']);
+                continue;
+            }
+
+            $parts = ['required', $type === 'float' ? 'numeric' : 'integer'];
+            if (array_key_exists('min', $definition)) {
+                $parts[] = 'min:' . $definition['min'];
+            }
+            if (array_key_exists('max', $definition)) {
+                $parts[] = 'max:' . $definition['max'];
+            }
+            $rules[$key] = implode('|', $parts);
+        }
+
+        $validated = $request->validate($rules);
+        $games = $validated['games'];
+
+        if ((int) data_get($games, 'teen_patti.max_bet') < (int) data_get($games, 'teen_patti.min_bet')) {
+            throw ValidationException::withMessages([
+                'games.teen_patti.max_bet' => 'Maximum bet must be greater than or equal to minimum bet.',
+            ]);
+        }
+
+        if ((int) data_get($games, 'teen_patti.betting_lock_seconds') >= (int) data_get($games, 'teen_patti.round_duration_seconds')) {
+            throw ValidationException::withMessages([
+                'games.teen_patti.betting_lock_seconds' => 'Bet lock seconds must be less than round duration seconds.',
+            ]);
+        }
+
+        $this->settings->updateGameSettings($games);
+
+        return redirect()
+            ->route('admin.settings.games.edit')
+            ->with('ok', 'Game settings updated.');
     }
 }

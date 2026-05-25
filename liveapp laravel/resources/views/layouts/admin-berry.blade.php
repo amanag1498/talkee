@@ -595,6 +595,18 @@
                 <span class="pc-mtext">Live Room Settings</span>
               </a>
             </li>
+            <li class="pc-item">
+              <a href="{{ route('admin.settings.games.edit') }}" class="pc-link {{ request()->routeIs('admin.settings.games.*') ? 'active' : '' }}">
+                <span class="pc-micon"><i class="ti ti-device-gamepad-2"></i></span>
+                <span class="pc-mtext">Game Settings</span>
+              </a>
+            </li>
+            <li class="pc-item">
+              <a href="{{ route('admin.games.teen-patti.dashboard') }}" class="pc-link {{ request()->routeIs('admin.games.teen-patti.*') ? 'active' : '' }}">
+                <span class="pc-micon"><i class="ti ti-cards"></i></span>
+                <span class="pc-mtext">Teen Patti</span>
+              </a>
+            </li>
           </ul>
 
           <div class="pc-navbar-card bg-primary rounded mt-3">

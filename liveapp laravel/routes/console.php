@@ -14,6 +14,8 @@ use App\Services\AgencyBackfillService;
 use App\Services\LiveRoomPkService;
 use App\Services\AgencyWeeklyPayoutReportService;
 use App\Services\LeaderboardService;
+use App\Services\TeenPattiService;
+use App\Models\TeenPattiRound;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -136,6 +138,48 @@ Artisan::command('recharge:reconcile {--sync-pending} {--limit=100}', function (
         );
     }
 })->purpose('Detect inconsistent recharge orders and wallet credits');
+
+Artisan::command('teen-patti:tick {--round_id=}', function (TeenPattiService $service) {
+    $round = $this->option('round_id')
+        ? TeenPattiRound::query()->findOrFail((int) $this->option('round_id'))
+        : null;
+
+    $result = $service->tick($round);
+
+    $this->table(
+        ['Round', 'Status', 'Winning Pot', 'Locks At', 'Ends At'],
+        [[
+            $result->round_key,
+            $result->status,
+            $result->winning_pot ?? '—',
+            optional($result->locks_at)->toDateTimeString(),
+            optional($result->ends_at)->toDateTimeString(),
+        ]]
+    );
+})->purpose('Advance the Teen Patti round state machine');
+
+Artisan::command('teen-patti:reconcile {--round_id=} {--limit=10}', function (TeenPattiService $service) {
+    $rounds = $this->option('round_id')
+        ? TeenPattiRound::query()->whereKey((int) $this->option('round_id'))->get()
+        : TeenPattiRound::query()->latest('id')->limit((int) $this->option('limit'))->get();
+
+    $rows = [];
+    foreach ($rounds as $round) {
+        $report = $service->reconcileRound($round);
+        $rows[] = [
+            $round->round_key,
+            data_get($report, 'round.status'),
+            data_get($report, 'round.total_bets_count'),
+            data_get($report, 'round.winning_pot', '—'),
+            data_get($report, 'next_round_ready') ? 'yes' : 'no',
+        ];
+    }
+
+    $this->table(
+        ['Round', 'Status', 'Bets', 'Winning Pot', 'Next Round Ready'],
+        $rows,
+    );
+})->purpose('Reconcile Teen Patti totals and payouts for recent rounds');
 
 Artisan::command('agency:backfill', function (AgencyBackfillService $service) {
     $result = $service->run();

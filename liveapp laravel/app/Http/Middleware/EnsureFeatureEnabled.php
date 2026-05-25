@@ -33,6 +33,8 @@ class EnsureFeatureEnabled
             'entry_effects_enabled' => 'Entry effects are currently unavailable.',
             'wallet_recharge_enabled' => 'Wallet recharge is currently unavailable.',
             'host_calling_enabled' => 'Host calling is currently unavailable.',
+            'teen_patti_enabled' => 'Teen Patti is currently unavailable.',
+            'video_room_games_enabled' => 'Video room games are currently unavailable.',
             default => 'This feature is currently unavailable.',
         };
     }

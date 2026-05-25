@@ -35,6 +35,7 @@ import '../../../app/widgets/keep_awake_scope.dart';
 import '../../../services/app_settings_service.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/live_rooms_ws_service.dart';
+import '../../games/teen_patti/widgets/teen_patti_game_panel.dart';
 import '../../profile/widgets/public_profile_card_sheet.dart';
 import '../../wallet/services/wallet_api.dart';
 import '../../wallet/widgets/recharge_bottom_sheet.dart';
@@ -172,6 +173,7 @@ class _VideoCallPageState extends State<VideoCallPage>
       ValueNotifier<List<LiveRoomChatMessage>>(const <LiveRoomChatMessage>[]);
   Worker? _themeSyncWorker;
   bool _handlingBackNavigation = false;
+  bool _gamesSheetOpen = false;
 
   final _emojiKey = GlobalKey<_EmojiBurstState>();
 
@@ -1671,6 +1673,15 @@ class _VideoCallPageState extends State<VideoCallPage>
     final showGiftInChatFooter = true;
 
     if (_isHost) {
+      if (_showTeenPattiInVideoRoom) {
+        actions.add(
+          _FooterCircleAction(
+            icon: Icons.casino_rounded,
+            onTap: _openGamesSheet,
+            accent: const Color(0xFFFFD966),
+          ),
+        );
+      }
       actions.add(
         _ExpandableFooterCluster(
           primaryIcon: Icons.tune_rounded,
@@ -1756,6 +1767,12 @@ class _VideoCallPageState extends State<VideoCallPage>
               icon: Icons.cameraswitch_rounded,
               onTap: _flipCamera,
             ),
+            if (_showTeenPattiInVideoRoom)
+              _FooterActionItem(
+                icon: Icons.casino_rounded,
+                onTap: _openGamesSheet,
+                accent: const Color(0xFFFFD966),
+              ),
           ],
         ),
       );
@@ -1773,6 +1790,15 @@ class _VideoCallPageState extends State<VideoCallPage>
     const showGiftInChatFooter = true;
     final pending = _pendingRequestId != null && _requestStatus == 'pending';
     return <Widget>[
+      if (_showTeenPattiInVideoRoom)
+        _ResponsiveChatInputAction(
+          icon: Icons.casino_rounded,
+          label: 'Games',
+          compactLabel: 'Game',
+          onTap: _openGamesSheet,
+          accent: const Color(0xFFFFD966),
+          iconOnlyBelowWidth: 470,
+        ),
       if (showGiftInChatFooter)
         KeyedSubtree(
           key: _giftAnchors.keyFor(GiftAnchorRegistry.giftButton),
@@ -1799,6 +1825,28 @@ class _VideoCallPageState extends State<VideoCallPage>
         iconOnlyBelowWidth: 350,
       ),
     ];
+  }
+
+  bool get _showTeenPattiInVideoRoom {
+    final settings = Get.find<AppSettingsService>();
+    return settings.teenPattiEnabled && settings.videoRoomGamesEnabled;
+  }
+
+  Future<void> _openGamesSheet() async {
+    if (_gamesSheetOpen || !_showTeenPattiInVideoRoom) {
+      return;
+    }
+
+    setState(() => _gamesSheetOpen = true);
+    await showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: false,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const TeenPattiGamesSheet(),
+    );
+    if (!mounted) return;
+    setState(() => _gamesSheetOpen = false);
   }
 
   void _appendChatMessage(LiveRoomChatMessage message) {
@@ -4664,6 +4712,7 @@ class _VideoCallPageState extends State<VideoCallPage>
                   stickMessagesToBottom: false,
                   compactBubbles: _pkCapable && _pkActive,
                   inputActions: _buildChatInputActions(),
+                  trailingActions: _buildChatTrailingActions(),
                   showSendButton: false,
                   onSend: _sendChatMessage,
                   onMessageSenderTap: (message) {

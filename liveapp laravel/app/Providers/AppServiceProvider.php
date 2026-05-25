@@ -31,6 +31,7 @@ class AppServiceProvider extends ServiceProvider
                 app(AppSettingsService::class)->loadAppSettingsIntoConfig();
                 app(AppSettingsService::class)->loadCallSettingsIntoConfig();
                 app(AppSettingsService::class)->loadLiveRoomSettingsIntoConfig();
+                app(AppSettingsService::class)->loadGameSettingsIntoConfig();
             }
         } catch (\Throwable $e) {
             Log::warning('APP_SETTINGS_BOOT_SKIP', [
