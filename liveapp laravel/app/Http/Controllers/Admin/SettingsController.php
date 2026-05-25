@@ -163,8 +163,18 @@ class SettingsController extends Controller
 
     public function updateGames(Request $request)
     {
+        $selectedGame = $request->query('game', 'teen_patti');
+        if (!in_array($selectedGame, ['teen_patti', 'greedy'], true)) {
+            $selectedGame = 'teen_patti';
+        }
+
+        $selectedPrefix = "games.{$selectedGame}.";
         $rules = [];
         foreach (AppSettingsService::GAME_DEFINITIONS as $key => $definition) {
+            if (!str_starts_with($key, $selectedPrefix)) {
+                continue;
+            }
+
             $type = $definition['type'] ?? 'boolean';
             if ($type === 'boolean') {
                 $rules[$key] = 'required|boolean';
@@ -189,25 +199,25 @@ class SettingsController extends Controller
         $validated = $request->validate($rules);
         $games = $validated['games'];
 
-        if ((int) data_get($games, 'teen_patti.max_bet') < (int) data_get($games, 'teen_patti.min_bet')) {
+        if ($selectedGame === 'teen_patti' && (int) data_get($games, 'teen_patti.max_bet') < (int) data_get($games, 'teen_patti.min_bet')) {
             throw ValidationException::withMessages([
                 'games.teen_patti.max_bet' => 'Maximum bet must be greater than or equal to minimum bet.',
             ]);
         }
 
-        if ((int) data_get($games, 'teen_patti.betting_lock_seconds') >= (int) data_get($games, 'teen_patti.round_duration_seconds')) {
+        if ($selectedGame === 'teen_patti' && (int) data_get($games, 'teen_patti.betting_lock_seconds') >= (int) data_get($games, 'teen_patti.round_duration_seconds')) {
             throw ValidationException::withMessages([
                 'games.teen_patti.betting_lock_seconds' => 'Bet lock seconds must be less than round duration seconds.',
             ]);
         }
 
-        if ((int) data_get($games, 'greedy.max_bet') < (int) data_get($games, 'greedy.min_bet')) {
+        if ($selectedGame === 'greedy' && (int) data_get($games, 'greedy.max_bet') < (int) data_get($games, 'greedy.min_bet')) {
             throw ValidationException::withMessages([
                 'games.greedy.max_bet' => 'Greedy maximum bet must be greater than or equal to minimum bet.',
             ]);
         }
 
-        if ((int) data_get($games, 'greedy.betting_lock_seconds') >= (int) data_get($games, 'greedy.round_duration_seconds')) {
+        if ($selectedGame === 'greedy' && (int) data_get($games, 'greedy.betting_lock_seconds') >= (int) data_get($games, 'greedy.round_duration_seconds')) {
             throw ValidationException::withMessages([
                 'games.greedy.betting_lock_seconds' => 'Greedy bet lock seconds must be less than round duration seconds.',
             ]);
@@ -216,7 +226,7 @@ class SettingsController extends Controller
         $this->settings->updateGameSettings($games);
 
         return redirect()
-            ->route('admin.settings.games.edit')
+            ->route('admin.settings.games.edit', ['game' => $selectedGame])
             ->with('ok', 'Game settings updated.');
     }
 }

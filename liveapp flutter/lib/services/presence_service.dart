@@ -17,6 +17,8 @@ class PresenceService with WidgetsBindingObserver {
 
   IO.Socket? _sock;
   bool _connecting = false;
+  bool _observerRegistered = false;
+  bool _resumeInFlight = false;
   Timer? _hb;
   // Compatible with Stream<ConnectivityResult> and Stream<List<ConnectivityResult>>
   StreamSubscription<dynamic>? _connSub;
@@ -38,6 +40,8 @@ class PresenceService with WidgetsBindingObserver {
     ForceLogoutHandler? onForceLogout,
     NotifyHandler? onNotify,
   }) async {
+    final sameSession =
+        _url == wsPresenceUrl && _token == bearerToken && _sock != null;
     _url = wsPresenceUrl;
     _token = bearerToken;
     _deviceId = await DeviceIdService.getAndroidId();
@@ -47,12 +51,12 @@ class PresenceService with WidgetsBindingObserver {
     debugPrint(
       '[presence][${_ts()}] start -> url=$_url token.len=${_token?.length ?? 0}',
     );
-    WidgetsBinding.instance.addObserver(this);
+    if (!_observerRegistered) {
+      WidgetsBinding.instance.addObserver(this);
+      _observerRegistered = true;
+    }
 
-    await _connSub?.cancel();
-    _connSub = Connectivity().onConnectivityChanged.listen((
-      dynamic event,
-    ) async {
+    _connSub ??= Connectivity().onConnectivityChanged.listen((dynamic event) async {
       final results = _normalizeConnectivity(event);
       final online = _isAnyOnline(results);
       debugPrint('[presence][${_ts()}] connectivity=$results online=$online');
@@ -69,6 +73,11 @@ class PresenceService with WidgetsBindingObserver {
         await _connect();
       }
     });
+
+    if (sameSession) {
+      await _ensureConnected();
+      return;
+    }
 
     await _connect();
   }
@@ -89,7 +98,10 @@ class PresenceService with WidgetsBindingObserver {
     } catch (_) {}
     _sock = null;
 
-    WidgetsBinding.instance.removeObserver(this);
+    if (_observerRegistered) {
+      WidgetsBinding.instance.removeObserver(this);
+      _observerRegistered = false;
+    }
     _statusCtrl.add('stopped');
   }
 
@@ -157,15 +169,21 @@ class PresenceService with WidgetsBindingObserver {
   }
 
   Future<void> resumeOnline() async {
+    if (_resumeInFlight) return;
+    _resumeInFlight = true;
     final ok = await _ensureConnected();
-    if (!ok) {
-      debugPrint('[presence][${_ts()}] resumeOnline: failed to reconnect');
-      return;
+    try {
+      if (!ok) {
+        debugPrint('[presence][${_ts()}] resumeOnline: failed to reconnect');
+        return;
+      }
+      _sock?.emit('presence:online');
+      _sock?.emit('presence:subscribe');
+      debugPrint('[presence][${_ts()}] -> presence:online (manual resume)');
+      _startHB();
+    } finally {
+      _resumeInFlight = false;
     }
-    _sock?.emit('presence:online');
-    _sock?.emit('presence:subscribe');
-    debugPrint('[presence][${_ts()}] -> presence:online (manual resume)');
-    _startHB();
   }
 
   Future<void> _connect() async {
@@ -313,7 +331,6 @@ class PresenceService with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       await resumeOnline();
     } else if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
       try {
         _sock?.emit('presence:offline');

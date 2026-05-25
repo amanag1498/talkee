@@ -24,6 +24,7 @@ use App\Http\Controllers\Admin\LeaderboardReportController as AdminLeaderboardRe
 use App\Http\Controllers\Admin\SubscriptionPlanController;
 use App\Http\Controllers\Admin\UserSubscriptionController;
 use App\Http\Controllers\Admin\RechargePlanAdminController;
+use App\Http\Controllers\Admin\RechargeAuditAdminController;
 use App\Http\Controllers\Admin\BannerAdminController;
 use App\Http\Controllers\Admin\SettingsController as AdminSettingsController;
 use App\Http\Controllers\Admin\TeenPattiAdminController;
@@ -255,6 +256,8 @@ Route::middleware(['auth','not_blocked','role:admin'])->prefix('admin')->name('a
 
   Route::resource('subscription-plans', SubscriptionPlanController::class)->except(['show']);
   Route::resource('recharge-plans', RechargePlanAdminController::class)->except(['show']);
+  Route::get('recharge-audit', [RechargeAuditAdminController::class, 'index'])->name('recharge-audit.index');
+  Route::get('recharge-audit/{month}/pdf', [RechargeAuditAdminController::class, 'downloadMonthlyPdf'])->name('recharge-audit.pdf');
   Route::resource('user-subscriptions', UserSubscriptionController::class)->except(['show']);
   Route::post('user-subscriptions/{id}/cancel', [UserSubscriptionController::class,'cancel'])->name('user-subscriptions.cancel');
   

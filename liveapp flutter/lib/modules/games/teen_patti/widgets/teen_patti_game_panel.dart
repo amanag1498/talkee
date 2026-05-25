@@ -351,6 +351,7 @@ class TeenPattiGamePanel extends StatefulWidget {
 
 class _TeenPattiGamePanelState extends State<TeenPattiGamePanel>
     with TickerProviderStateMixin {
+  static const String _cardBackAsset = 'assets/games/teen_patti/card_back_1.jpeg';
   static const _chipOptions = <int>[50, 200, 500, 1000, 5000];
   static const _chipAssets = <int, String>{
     50: 'assets/games/teen_patti/gems_1.png',
@@ -731,28 +732,29 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel>
     final durationMs = max(1000, locksAt.difference(startsAt).inMilliseconds);
     final scheduled = <_ScheduledFakeBet>[];
     for (final pot in const ['A', 'B', 'C']) {
-      var remaining = round.fakeTotals[pot] ?? 0;
-      if (remaining <= 0) continue;
+      final totalFake = round.fakeTotals[pot] ?? 0;
+      if (totalFake <= 0) continue;
 
       final seededRandom = Random(
-        Object.hash(round.roundKey, pot, remaining, durationMs),
+        Object.hash(round.roundKey, pot, totalFake, durationMs),
       );
-      var index = 0;
-      while (remaining > 0) {
-        final choices = _chipOptions.where((chip) => chip <= remaining).toList(growable: false);
-        final amount =
-            choices.isEmpty
-                ? remaining
-                : choices[seededRandom.nextInt(choices.length)];
-        remaining -= amount;
-
-        final minOffset = min(700, max(0, durationMs - 200));
-        final maxOffset = max(minOffset + 1, durationMs - 700);
-        final offsetMs =
-            maxOffset <= minOffset
-                ? minOffset
-                : minOffset + seededRandom.nextInt(maxOffset - minOffset);
-
+      final chunkCount = _fakeBetChunkCount(totalFake);
+      final chunks = _splitFakeBetTotal(
+        total: totalFake,
+        chunkCount: chunkCount,
+        random: seededRandom,
+      );
+      final minOffset = min(900, max(0, durationMs - 300));
+      final maxOffset = max(minOffset + 1, durationMs - 650);
+      for (var index = 0; index < chunks.length; index++) {
+        final slotStart = minOffset + (((maxOffset - minOffset) * index) ~/ max(1, chunks.length));
+        final slotEnd = min(
+          maxOffset,
+          minOffset + (((maxOffset - minOffset) * (index + 1)) ~/ max(1, chunks.length)),
+        );
+        final jitterWindow = max(1, slotEnd - slotStart);
+        final offsetMs = slotStart + seededRandom.nextInt(jitterWindow);
+        final amount = chunks[index];
         scheduled.add(
           _ScheduledFakeBet(
             id: '${round.roundKey}-$pot-$index-$amount',
@@ -761,12 +763,66 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel>
             dueAt: startsAt.add(Duration(milliseconds: offsetMs)),
           ),
         );
-        index += 1;
       }
     }
 
     scheduled.sort((a, b) => a.dueAt.compareTo(b.dueAt));
     return scheduled;
+  }
+
+  int _fakeBetChunkCount(int total) {
+    if (total <= 200) return 1;
+    if (total <= 1000) return 2;
+    if (total <= 3000) return 3;
+    if (total <= 8000) return 4;
+    return 5;
+  }
+
+  List<int> _splitFakeBetTotal({
+    required int total,
+    required int chunkCount,
+    required Random random,
+  }) {
+    if (chunkCount <= 1 || total <= 0) {
+      return <int>[total];
+    }
+
+    final minimumChunk = _minimumFakeBetChunk(total);
+    var remaining = total;
+    final chunks = <int>[];
+
+    for (var index = 0; index < chunkCount; index++) {
+      final chunksLeft = chunkCount - index;
+      if (chunksLeft == 1) {
+        chunks.add(remaining);
+        break;
+      }
+
+      final reserve = minimumChunk * (chunksLeft - 1);
+      final average = ((remaining - reserve) / chunksLeft).round();
+      final jitter = max(1, average ~/ 3);
+      final proposed = average + random.nextInt((jitter * 2) + 1) - jitter;
+      final amount = proposed.clamp(minimumChunk, remaining - reserve);
+      chunks.add(amount);
+      remaining -= amount;
+    }
+
+    if (chunks.isEmpty) {
+      return <int>[total];
+    }
+
+    final summed = chunks.fold<int>(0, (sum, value) => sum + value);
+    if (summed != total) {
+      chunks[chunks.length - 1] += total - summed;
+    }
+    return chunks.where((value) => value > 0).toList(growable: false);
+  }
+
+  int _minimumFakeBetChunk(int total) {
+    if (total <= 500) return 50;
+    if (total <= 2000) return 200;
+    if (total <= 5000) return 500;
+    return 1000;
   }
 
   void _processDueFakeBets() {
@@ -2041,6 +2097,29 @@ class _CardImage extends StatelessWidget {
           width: width,
           height: width * 1.34,
           fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) {
+            return Image.asset(
+              _TeenPattiGamePanelState._cardBackAsset,
+              width: width,
+              height: width * 1.34,
+              fit: BoxFit.contain,
+              errorBuilder: (context, nestedError, nestedStackTrace) {
+                return Container(
+                  width: width,
+                  height: width * 1.34,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF3E2A56), Color(0xFF1C132B)],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                );
+              },
+            );
+          },
         ),
       ),
     );
@@ -2067,9 +2146,9 @@ class _CardFan extends StatelessWidget {
     final resolved = paths.length >= 3
         ? paths
         : const [
-            'assets/games/teen_patti/card_back_1.jpeg',
-            'assets/games/teen_patti/card_back_1.jpeg',
-            'assets/games/teen_patti/card_back_1.jpeg',
+            _TeenPattiGamePanelState._cardBackAsset,
+            _TeenPattiGamePanelState._cardBackAsset,
+            _TeenPattiGamePanelState._cardBackAsset,
           ];
 
     return SizedBox(

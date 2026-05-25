@@ -426,6 +426,12 @@
               </a>
             </li>
             <li class="pc-item">
+              <a href="{{ route('admin.recharge-audit.index') }}" class="pc-link {{ request()->routeIs('admin.recharge-audit.*') ? 'active' : '' }}">
+                <span class="pc-micon"><i class="ti ti-file-invoice"></i></span>
+                <span class="pc-mtext">Recharge Audit</span>
+              </a>
+            </li>
+            <li class="pc-item">
               <a href="{{ route('admin.entry-packs.index') }}" class="pc-link {{ request()->routeIs('admin.entry-packs.index', 'admin.entry-packs.create', 'admin.entry-packs.edit', 'admin.entry-packs.store', 'admin.entry-packs.update', 'admin.entry-packs.destroy') ? 'active' : '' }}">
                 <span class="pc-micon"><i class="ti ti-sparkles"></i></span>
                 <span class="pc-mtext">Entry Packs</span>
@@ -765,6 +771,7 @@
               request()->routeIs('admin.hosts.*') => 'Manage host identities, profile quality, agency linkage, and account readiness.',
               request()->routeIs('admin.agencies.*') => 'Oversee agencies, owner assignments, payouts, and operational standing.',
               request()->routeIs('admin.wallets.*') => 'Inspect balances, transaction history, and coin movement across the platform.',
+              request()->routeIs('admin.recharge-audit.*') => 'Audit recharge orders month by month, inspect gateway outcomes, and export a printable monthly recharge report.',
               request()->routeIs('admin.live-rooms.*') => 'Audit live room operations, engagement state, and stream-side administration.',
               request()->routeIs('admin.calls.*') => 'Monitor call volume, billing outcomes, earnings distribution, and completion quality.',
               request()->routeIs('admin.presence.*') => 'Watch realtime presence signals and system availability as they move across the network.',

@@ -69,7 +69,6 @@ class HomeController extends SuperController {
     }
     // Called when Home route becomes active again (app foreground / navigated back)
     _ensurePresence();
-    unawaited(PresenceService.instance.resumeOnline());
     _refreshNotifications();
     _startNotifPolling(); // (optional)
   }
