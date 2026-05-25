@@ -1761,19 +1761,13 @@ class _RecentWinnersStrip extends StatelessWidget {
               children: history.isEmpty
                   ? const [
                       _WinnerBadge(
-                        label: 'WAIT',
                         winnerPot: null,
-                        subtitle: 'No results yet',
                       ),
                     ]
                   : history
                       .map(
                         (round) => _WinnerBadge(
-                          label: round.roundKey.split('_').last.substring(0, 4),
                           winnerPot: round.winningPot,
-                          subtitle: round.settledAt == null
-                              ? 'Pending'
-                              : '${round.settledAt!.hour.toString().padLeft(2, '0')}:${round.settledAt!.minute.toString().padLeft(2, '0')}',
                         ),
                       )
                       .toList(),
@@ -1787,14 +1781,10 @@ class _RecentWinnersStrip extends StatelessWidget {
 
 class _WinnerBadge extends StatelessWidget {
   const _WinnerBadge({
-    required this.label,
     required this.winnerPot,
-    required this.subtitle,
   });
 
-  final String label;
   final String? winnerPot;
-  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -1825,19 +1815,7 @@ class _WinnerBadge extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(
-                child: Text(
-                  '#$label',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white54,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: .6,
-                  ),
-                ),
-              ),
+              const Spacer(),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                 decoration: BoxDecoration(
@@ -1858,20 +1836,11 @@ class _WinnerBadge extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           Text(
-            winnerPot == null ? 'Waiting for result' : 'Winning side',
+            winnerPot == null ? 'Waiting' : 'Winning pot',
             style: TextStyle(
               color: winnerColor,
               fontWeight: FontWeight.w800,
               fontSize: 12,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontWeight: FontWeight.w600,
-              fontSize: 11,
             ),
           ),
           const SizedBox(height: 10),

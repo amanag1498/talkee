@@ -21,7 +21,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:livekit_client/livekit_client.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart'
-    show RTCVideoRenderer, RTCVideoView, RTCVideoViewObjectFit;
+    show Helper, RTCVideoRenderer, RTCVideoView, RTCVideoViewObjectFit;
 import 'package:flutter_webrtc/flutter_webrtc.dart' as webrtc;
 
 import '../../banners/models/banner_item.dart';
@@ -175,6 +175,7 @@ class _VideoCallPageState extends State<VideoCallPage>
   Worker? _themeSyncWorker;
   bool _handlingBackNavigation = false;
   bool _gamesSheetOpen = false;
+  bool _audioRouteSyncInFlight = false;
 
   final _emojiKey = GlobalKey<_EmojiBurstState>();
 
@@ -581,6 +582,20 @@ class _VideoCallPageState extends State<VideoCallPage>
     } catch (_) {}
   }
 
+  Future<void> _applyPreferredAudioRoute() async {
+    if (_audioRouteSyncInFlight) return;
+    _audioRouteSyncInFlight = true;
+    try {
+      await Helper.setSpeakerphoneOnButPreferBluetooth();
+    } catch (_) {
+      try {
+        await Helper.setSpeakerphoneOn(true);
+      } catch (_) {}
+    } finally {
+      _audioRouteSyncInFlight = false;
+    }
+  }
+
   Future<void> _connect() async {
     final url = widget.room.wsUrl;
     final token = widget.room.token;
@@ -608,6 +623,7 @@ class _VideoCallPageState extends State<VideoCallPage>
       l.on<RoomReconnectedEvent>((_) async {
         if (!mounted) return;
         setState(() => _error = null);
+        await _applyPreferredAudioRoute();
         _syncJoinAnimations(room, animate: false);
         if (_pkCapable) {
           await _syncPkState();
@@ -675,6 +691,7 @@ class _VideoCallPageState extends State<VideoCallPage>
       });
 
       await room.connect(url, token);
+      await _applyPreferredAudioRoute();
       _trackedParticipantIds = _currentParticipantIds(room);
       _joinAnimationsArmed = true;
       _joinSocketRoom();
@@ -1803,11 +1820,23 @@ class _VideoCallPageState extends State<VideoCallPage>
       return actions;
     }
 
+    if (_pkActive && showGiftInChatFooter) {
+      actions.add(
+        _FooterCircleAction(
+          icon:
+              _giftBusy ? Icons.hourglass_top_rounded : Icons.redeem_rounded,
+          onTap: _giftBusy ? null : _openGiftSheet,
+          accent: const Color(0xFFFF8BC2),
+          busy: _giftBusy,
+        ),
+      );
+    }
+
     return actions;
   }
 
   List<Widget> _buildChatInputActions() {
-    if (_isHost || _currentRole == 'speaker' || _pkActive) {
+    if (_isHost || _currentRole == 'speaker') {
       return const <Widget>[];
     }
 
@@ -1836,18 +1865,19 @@ class _VideoCallPageState extends State<VideoCallPage>
             iconOnlyBelowWidth: 430,
           ),
         ),
-      _ResponsiveChatInputAction(
-        icon: pending ? Icons.close_rounded : Icons.video_call_rounded,
-        label: pending ? 'Cancel Join Call Request' : 'Join Call',
-        compactLabel: pending ? 'Cancel Join' : 'Join',
-        onTap:
-            _seatActionBusy
-                ? null
-                : (pending ? _cancelJoinRequest : _requestToJoinAsSpeaker),
-        accent: const Color(0xFF5D8BFF),
-        busy: _seatActionBusy,
-        iconOnlyBelowWidth: 350,
-      ),
+      if (!_pkActive)
+        _ResponsiveChatInputAction(
+          icon: pending ? Icons.close_rounded : Icons.video_call_rounded,
+          label: pending ? 'Cancel Join Call Request' : 'Join Call',
+          compactLabel: pending ? 'Cancel Join' : 'Join',
+          onTap:
+              _seatActionBusy
+                  ? null
+                  : (pending ? _cancelJoinRequest : _requestToJoinAsSpeaker),
+          accent: const Color(0xFF5D8BFF),
+          busy: _seatActionBusy,
+          iconOnlyBelowWidth: 350,
+        ),
     ];
   }
 
@@ -3207,6 +3237,7 @@ class _VideoCallPageState extends State<VideoCallPage>
       await room.localParticipant?.setMicrophoneEnabled(true);
       await _waitForLocalTrack(room, timeoutMs: 1000);
       await _attachLocalPreview(room);
+      await _applyPreferredAudioRoute();
       if (!mounted) return;
       setState(() {
         _currentRole = 'speaker';
@@ -3755,6 +3786,7 @@ class _VideoCallPageState extends State<VideoCallPage>
       });
 
       await room.connect(wsUrl, token);
+      await _applyPreferredAudioRoute();
       if (!mounted) {
         await room.disconnect();
         room.dispose();
@@ -4723,6 +4755,7 @@ class _VideoCallPageState extends State<VideoCallPage>
                   viewerThemeKey: viewerThemeKey,
                   roomId: widget.room.roomId,
                   roomType: widget.room.roomType,
+                  maxWidth: _isHost ? 360 : media.size.width,
                   topOffset: _pkCapable && _pkActive ? pkChatTopOffset : 0,
                   bottomOffset:
                       (_pkCapable && _pkActive

@@ -636,6 +636,7 @@ class GreedyGameService
         $phase = match (true) {
             $round->status === 'settled' => 'result',
             $round->status === 'cancelled' => 'cancelled',
+            $now->greaterThanOrEqualTo($round->ends_at) => 'settling',
             $now->greaterThanOrEqualTo($round->locks_at) => 'locked',
             default => 'betting',
         };
@@ -644,9 +645,11 @@ class GreedyGameService
             ? $round->bets->where('user_id', $viewer->id)->values()->map(fn (GreedyBet $bet) => $this->betPayload($bet))->all()
             : [];
 
-        $countdownTarget = $phase === 'betting'
-            ? CarbonImmutable::parse($round->locks_at)
-            : $this->displayUntil($round);
+        $countdownTarget = match ($phase) {
+            'betting' => CarbonImmutable::parse($round->locks_at),
+            'locked' => CarbonImmutable::parse($round->ends_at),
+            default => $this->displayUntil($round),
+        };
         $countdownSeconds = max(0, $now->diffInSeconds($countdownTarget, false));
         $realTotals = [
             'A' => (int) $round->total_bet_a,

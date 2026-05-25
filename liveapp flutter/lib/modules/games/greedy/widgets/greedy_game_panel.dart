@@ -75,6 +75,8 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
   List<_GreedyFlyingGem> _flyingGems = const <_GreedyFlyingGem>[];
   DateTime _now = DateTime.now();
   _GreedyRevealStage _revealStage = _GreedyRevealStage.betting;
+  bool _boundaryRefreshInFlight = false;
+  DateTime? _lastAutoRefreshAt;
 
   @override
   void initState() {
@@ -191,8 +193,17 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
       _syncLocalViewerBets(next.round);
     }
     _syncDisplayTotals(next, previousRound: previous?.round);
-    _updateRevealStage(next.round, previousPhase: previousPhase);
-    _maybeSpinForResult(next.round, previous?.round);
+    final displayRound = _displayRound(next.round);
+    _updateRevealStage(
+      next.round,
+      displayPhase: displayRound.phase,
+      previousPhase: previousPhase,
+    );
+    _maybeSpinForResult(
+      next.round,
+      previous?.round,
+      displayPhase: displayRound.phase,
+    );
 
     final round =
         syncViewerBets
@@ -243,8 +254,50 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
       _now = DateTime.now();
       _pruneFinishedGems();
       _syncDisplayTotals(_snapshot!, previousRound: _snapshot!.round);
+      _maybeRefreshForPhaseBoundary();
       setState(() {});
     });
+  }
+
+  void _maybeRefreshForPhaseBoundary() {
+    final snapshot = _snapshot;
+    if (snapshot == null || _loading || _placing || _boundaryRefreshInFlight) {
+      return;
+    }
+
+    final displayRound = _displayRound(snapshot.round);
+    final shouldRefresh =
+        displayRound.roundChanged ||
+        displayRound.phase == 'settling' ||
+        (displayRound.phase == 'locked' && snapshot.round.phase == 'betting');
+    if (!shouldRefresh) {
+      return;
+    }
+
+    final now = DateTime.now();
+    final minGap =
+        displayRound.phase == 'settling'
+            ? const Duration(milliseconds: 450)
+            : const Duration(milliseconds: 900);
+    final last = _lastAutoRefreshAt;
+    if (last != null && now.difference(last) < minGap) {
+      return;
+    }
+
+    _lastAutoRefreshAt = now;
+    _boundaryRefreshInFlight = true;
+    unawaited(_refreshBoundarySnapshot());
+  }
+
+  Future<void> _refreshBoundarySnapshot() async {
+    try {
+      final next = await _api.fetchSnapshot();
+      if (!mounted) return;
+      _applySnapshot(next, syncViewerBets: true);
+    } catch (_) {
+    } finally {
+      _boundaryRefreshInFlight = false;
+    }
   }
 
   void _syncLocalViewerBets(GreedyRound round) {
@@ -318,8 +371,12 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
     return 1;
   }
 
-  void _maybeSpinForResult(GreedyRound round, GreedyRound? previous) {
-    if (round.phase != 'result' || round.winningPot == null) {
+  void _maybeSpinForResult(
+    GreedyRound round,
+    GreedyRound? previous, {
+    required String displayPhase,
+  }) {
+    if (displayPhase != 'result' || round.winningPot == null) {
       return;
     }
     if (_lastSettledRoundKey == round.roundKey) {
@@ -403,8 +460,12 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
     return 0;
   }
 
-  void _updateRevealStage(GreedyRound round, {String? previousPhase}) {
-    switch (round.phase) {
+  void _updateRevealStage(
+    GreedyRound round, {
+    required String displayPhase,
+    String? previousPhase,
+  }) {
+    switch (displayPhase) {
       case 'betting':
         if (_revealStage != _GreedyRevealStage.betting) {
           _revealStage = _GreedyRevealStage.betting;
@@ -415,6 +476,11 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
           _revealStage = _GreedyRevealStage.locked;
           _pointerNudge();
           Haptics.light();
+        }
+        break;
+      case 'settling':
+        if (_revealStage.index < _GreedyRevealStage.locked.index) {
+          _revealStage = _GreedyRevealStage.locked;
         }
         break;
       case 'result':
@@ -611,6 +677,9 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
     if (snapshot == null || selectedPot == null || _placing) {
       return;
     }
+    if (_displayRound(snapshot.round).phase != 'betting') {
+      return;
+    }
 
     if (snapshot.walletBalance < _selectedAmount) {
       await showModalBottomSheet<void>(
@@ -687,6 +756,7 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
 
     final snapshot = _snapshot!;
     final round = snapshot.round;
+    final displayRound = _displayRound(round);
 
     return Container(
       key: _panelKey,
@@ -785,18 +855,18 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 22),
             children: [
               _GreedyHeader(
-                countdownSeconds: _displayCountdown(round),
+                countdownSeconds: displayRound.countdownSeconds,
                 walletBalance: snapshot.walletBalance,
-                phaseLabel: _phaseLabel(round.phase),
+                phaseLabel: _phaseLabel(displayRound.phase),
               ),
-              _buildWheel(round),
+              _buildWheel(round, phase: displayRound.phase),
               const SizedBox(height: 12),
-              _buildPotRail(round),
+              _buildPotRail(round, phase: displayRound.phase),
               const SizedBox(height: 12),
               _GreedyBetConsole(
                 selectedPot: _selectedPot,
                 selectedAmount: _selectedAmount,
-                phase: round.phase,
+                phase: displayRound.phase,
                 placing: _placing,
                 chipValues: _chipValues,
                 onSelectChip: (value) {
@@ -829,15 +899,61 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
     );
   }
 
-  int _displayCountdown(GreedyRound round) {
-    final target = switch (round.phase) {
-      'betting' => round.locksAt,
-      'locked' => round.endsAt,
-      'result' => round.displayUntil,
-      _ => round.displayUntil ?? round.endsAt ?? round.locksAt,
-    };
-    if (target == null) return round.countdownSeconds;
-    return max(0, target.difference(DateTime.now()).inSeconds);
+  _GreedyLiveRoundView _displayRound(GreedyRound round) {
+    final now = _now;
+    final displayUntil = round.displayUntil;
+    final locksAt = round.locksAt;
+    final endsAt = round.endsAt;
+
+    if (displayUntil != null && now.isAfter(displayUntil)) {
+      return _GreedyLiveRoundView(
+        source: round,
+        phase: 'restarting',
+        countdownSeconds: 0,
+        roundChanged: true,
+      );
+    }
+
+    if (round.status == 'settled' || round.status == 'cancelled') {
+      final remaining =
+          displayUntil == null ? 0 : displayUntil.difference(now).inSeconds;
+      return _GreedyLiveRoundView(
+        source: round,
+        phase: round.status == 'cancelled' ? 'cancelled' : 'result',
+        countdownSeconds: max(0, remaining),
+        roundChanged: remaining <= 0,
+      );
+    }
+
+    if (endsAt != null && !now.isBefore(endsAt)) {
+      final remaining =
+          displayUntil == null ? 0 : displayUntil.difference(now).inSeconds;
+      return _GreedyLiveRoundView(
+        source: round,
+        phase: 'settling',
+        countdownSeconds: max(0, remaining),
+        roundChanged: false,
+      );
+    }
+
+    if (locksAt != null && !now.isBefore(locksAt)) {
+      final remaining = endsAt == null ? 0 : endsAt.difference(now).inSeconds;
+      return _GreedyLiveRoundView(
+        source: round,
+        phase: 'locked',
+        countdownSeconds: max(0, remaining),
+        roundChanged: false,
+      );
+    }
+
+    final remaining =
+        locksAt == null ? round.countdownSeconds : locksAt.difference(now).inSeconds;
+    return _GreedyLiveRoundView(
+      source: round,
+      phase: 'betting',
+      countdownSeconds: max(0, remaining),
+      roundChanged: false,
+    );
   }
 
   Widget? _buildFlyingGem(_GreedyFlyingGem gem) {
@@ -866,16 +982,16 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
     );
   }
 
-  Widget _buildWheel(GreedyRound round) {
+  Widget _buildWheel(GreedyRound round, {required String phase}) {
     _wheelController.duration =
-        round.phase == 'result'
+        phase == 'result'
             ? const Duration(milliseconds: 2800)
             : const Duration(milliseconds: 900);
     final turns = Tween<double>(begin: _wheelStartTurns, end: _wheelEndTurns).animate(
       CurvedAnimation(parent: _wheelController, curve: Curves.easeOutQuart),
     );
     final accent =
-        round.phase == 'result' && round.winningPot != null
+        phase == 'result' && round.winningPot != null
             ? _potColor(round.winningPot!)
             : const Color(0xFFFFD56A);
 
@@ -980,11 +1096,11 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
                             multipliers: round.potMultipliers,
                             sectors: round.potSectors,
                             pulse:
-                                round.phase == 'betting'
+                                phase == 'betting'
                                     ? _pulseController.value
                                     : 0,
                             winningPot:
-                                round.phase == 'result' ? round.winningPot : null,
+                                phase == 'result' ? round.winningPot : null,
                             flash: _flashController.value,
                           ),
                           child: const SizedBox.expand(),
@@ -1022,7 +1138,7 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
             ),
             child: Center(
               child: Text(
-                round.phase == 'result'
+                phase == 'result'
                     ? (round.winningPot ?? '—')
                     : '${round.totalBetsCount}',
                 style: const TextStyle(
@@ -1065,21 +1181,21 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
     );
   }
 
-  Widget _buildPotRail(GreedyRound round) {
+  Widget _buildPotRail(GreedyRound round, {required String phase}) {
     return SizedBox(
       height: 164,
       child: Row(
         children:
             _pots.map((pot) {
               final selected = _selectedPot == pot;
-              final winning = round.phase == 'result' && round.winningPot == pot;
+              final winning = phase == 'result' && round.winningPot == pot;
               final yourAmount = _localViewerPotTotals[pot] ?? 0;
               return Expanded(
                 child: Padding(
                   padding: EdgeInsets.only(right: pot == _pots.last ? 0 : 8),
                   child: GestureDetector(
                     onTap:
-                        round.phase == 'betting'
+                        phase == 'betting'
                             ? () {
                               Haptics.selection();
                               SystemSound.play(SystemSoundType.click);
@@ -1091,7 +1207,7 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
                       pot: pot,
                       selected: selected,
                       winning: winning,
-                      pulse: round.phase == 'betting' ? _pulseController.value : 0,
+                      pulse: phase == 'betting' ? _pulseController.value : 0,
                       flash: _flashController.value,
                       totalAmount: _displayTotals[pot] ?? 0,
                       yourAmount: yourAmount,
@@ -1136,11 +1252,27 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
   String _phaseLabel(String phase) => switch (phase) {
     'betting' => 'BETTING',
     'locked' => 'LOCKED',
+    'settling' => 'SETTLING',
     'result' => 'RESULT',
+    'restarting' => 'NEXT ROUND',
     'cancelled' => 'Cancelled',
     _ => 'Greedy',
   };
 
+}
+
+class _GreedyLiveRoundView {
+  const _GreedyLiveRoundView({
+    required this.source,
+    required this.phase,
+    required this.countdownSeconds,
+    required this.roundChanged,
+  });
+
+  final GreedyRound source;
+  final String phase;
+  final int countdownSeconds;
+  final bool roundChanged;
 }
 
 class _GreedyHeader extends StatelessWidget {
@@ -1840,25 +1972,13 @@ class _GreedyHistoryStrip extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      round.roundKey,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white70, fontSize: 11),
-                    ),
                     const Spacer(),
                     Text(
-                      round.winningMultiplier == null
-                          ? 'Awaiting result'
-                          : '${round.winningMultiplier}x settled',
+                      round.winningPot ?? '—',
                       style: TextStyle(
-                        color:
-                            round.winningMultiplier == null
-                                ? Colors.white60
-                                : Colors.amber.shade200,
+                        color: round.winningPot == null ? Colors.white60 : accent,
                         fontWeight: FontWeight.w800,
-                        fontSize: 11,
+                        fontSize: 18,
                       ),
                     ),
                   ],
