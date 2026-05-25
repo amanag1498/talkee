@@ -125,6 +125,7 @@ Route::middleware(['auth','not_blocked','role:admin'])->prefix('admin')->name('a
         Route::post('/users/{user}/profile-frames', [UserAdminController::class, 'assignProfileFrame'])->name('users.profile-frames.store');
         Route::delete('/users/{user}/profile-frames/{userProfileFrame}', [UserAdminController::class, 'revokeProfileFrame'])->name('users.profile-frames.destroy');
         Route::post('/users/{user}/level', [UserAdminController::class, 'setLevel'])->name('users.level.set');
+        Route::post('/users/{user}/games', [UserAdminController::class, 'updateGameAccess'])->name('users.games.update');
         Route::get('/notifications', [AdminUserNotificationController::class,'index'])->name('notifications.index');   // Recent list
         Route::get('/notifications/compose', [AdminUserNotificationController::class,'compose'])->name('notifications.compose');
         Route::post('/notifications/send', [AdminUserNotificationController::class,'send'])->name('notifications.send');

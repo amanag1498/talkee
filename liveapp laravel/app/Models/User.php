@@ -176,6 +176,11 @@ class User extends Authenticatable
         return $this->hasMany(UserThemeUnlock::class);
     }
 
+    public function gameAccesses(): HasMany
+    {
+        return $this->hasMany(UserGameAccess::class);
+    }
+
     public function themePreference(): HasOne
     {
         return $this->hasOne(UserThemePreference::class);

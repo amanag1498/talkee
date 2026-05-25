@@ -22,6 +22,7 @@ use App\Models\UserProfileFrame;
 use App\Models\UserSubscription;
 use App\Models\WalletTransaction;
 use App\Services\AdminAuditService;
+use App\Services\GameAccessService;
 use App\Services\ProfileFrameService;
 use App\Services\UserLevelService;
 use Carbon\Carbon;
@@ -36,6 +37,7 @@ class UserAdminController extends Controller
         private UserLevelService $levels,
         private ProfileFrameService $profileFrames,
         private AdminAuditService $audits,
+        private GameAccessService $gameAccess,
     ) {
     }
 
@@ -76,6 +78,7 @@ class UserAdminController extends Controller
             'entryPacks.entryPack',
             'hostFollows.host',
             'profileFrameOwnerships.profileFrame',
+            'gameAccesses',
         ]);
 
         $walletTransactions = WalletTransaction::query()
@@ -199,6 +202,7 @@ class UserAdminController extends Controller
             'gifts_sent' => (int) LiveRoomGift::query()->where('sender_user_id', $user->id)->sum('total_coins'),
             'pk_participation' => $user->host ? LiveRoomPkBattle::query()->where(fn ($query) => $query->where('host_a_id', $user->host->id)->orWhere('host_b_id', $user->host->id))->count() : 0,
         ];
+        $gameAccessMap = $this->gameAccess->userAccessMap($user);
 
         return view('admin.users.show', compact(
             'user',
@@ -224,6 +228,7 @@ class UserAdminController extends Controller
             'equippedProfileFrame',
             'auditTrail',
             'overviewStats',
+            'gameAccessMap',
         ));
     }
 
@@ -348,6 +353,37 @@ public function deviceUnblock(User $user)
 
     return back()->with('ok', "Device unblocked: $deviceId (affected ".count($ids)." account(s))");
 }
+
+    public function updateGameAccess(Request $request, User $user)
+    {
+        $data = $request->validate([
+            'teen_patti' => 'nullable|boolean',
+            'greedy' => 'nullable|boolean',
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        $before = $this->gameAccess->userAccessMap($user);
+        $after = $this->gameAccess->syncUserAccess($user, [
+            GameAccessService::GAME_TEEN_PATTI => (bool) ($data['teen_patti'] ?? false),
+            GameAccessService::GAME_GREEDY => (bool) ($data['greedy'] ?? false),
+        ], $request->user());
+
+        $this->audits->log(
+            area: 'games',
+            action: 'user_game_access_updated',
+            admin: $request->user(),
+            targetUser: $user,
+            entity: $user,
+            before: $before,
+            after: $after,
+            reason: $data['reason'] ?? null,
+            meta: [
+                'managed_games' => array_keys($after),
+            ],
+        );
+
+        return back()->with('ok', 'Game access updated.');
+    }
 
     public function grantSubscription(Request $request, User $user)
     {

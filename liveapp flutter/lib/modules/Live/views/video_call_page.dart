@@ -83,6 +83,7 @@ class _VideoCallPageState extends State<VideoCallPage>
   bool _rendererReady = false;
   webrtc.MediaStream? _previewStream;
   LocalVideoTrack? _boundTrack;
+  int _previewBindGeneration = 0;
 
   bool _connecting = false;
   String? _error;
@@ -767,14 +768,35 @@ class _VideoCallPageState extends State<VideoCallPage>
     final t = _localCameraTrack(room);
     if (t == null) return;
     if (!force && _boundTrack == t && _renderer.srcObject != null) return;
-    _boundTrack = t;
+    final generation = ++_previewBindGeneration;
 
     try {
-      _renderer.srcObject = null;
-      await _previewStream?.dispose();
-      _previewStream = await webrtc.createLocalMediaStream('lk-preview');
-      await _previewStream!.addTrack(t.mediaStreamTrack);
-      _renderer.srcObject = _previewStream;
+      if (_boundTrack != t || force || _previewStream == null || _renderer.srcObject == null) {
+        final oldStream = _previewStream;
+        _previewStream = null;
+        _renderer.srcObject = null;
+        await oldStream?.dispose();
+        if (generation != _previewBindGeneration) return;
+
+        final nextStream = await webrtc.createLocalMediaStream('lk-preview');
+        if (generation != _previewBindGeneration) {
+          await nextStream.dispose();
+          return;
+        }
+
+        await nextStream.addTrack(t.mediaStreamTrack);
+        if (generation != _previewBindGeneration) {
+          await nextStream.dispose();
+          return;
+        }
+
+        _previewStream = nextStream;
+        _boundTrack = t;
+        _renderer.srcObject = nextStream;
+      } else if (_renderer.srcObject != _previewStream) {
+        _renderer.srcObject = _previewStream;
+      }
+
       if (mounted) setState(() {});
     } catch (e) {
       if (mounted) setState(() => _error = 'Preview bind failed: $e');
@@ -782,12 +804,14 @@ class _VideoCallPageState extends State<VideoCallPage>
   }
 
   Future<void> _detachPreview() async {
-    try {
-      _renderer.srcObject = null;
-      await _previewStream?.dispose();
-    } catch (_) {}
+    _previewBindGeneration += 1;
+    final oldStream = _previewStream;
     _previewStream = null;
     _boundTrack = null;
+    try {
+      _renderer.srcObject = null;
+      await oldStream?.dispose();
+    } catch (_) {}
   }
 
   Future<LocalVideoTrack?> _waitForLocalTrack(

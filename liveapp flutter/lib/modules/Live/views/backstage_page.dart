@@ -51,6 +51,7 @@ class _BackstagePageState extends State<BackstagePage>
   int _count = 0;
   bool _handoffToStage = false;
   bool _endCalled = false;
+  bool _bootstrapInFlight = false;
 
   @override
   void initState() {
@@ -69,6 +70,8 @@ class _BackstagePageState extends State<BackstagePage>
   }
 
   Future<void> _bootstrap() async {
+    if (_bootstrapInFlight) return;
+    _bootstrapInFlight = true;
     try {
       setState(() {
         _err = null;
@@ -99,6 +102,7 @@ class _BackstagePageState extends State<BackstagePage>
         _err = e.toString();
         phase = _Phase.error;
       });
+      _bootstrapInFlight = false;
     }
   }
 

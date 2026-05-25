@@ -132,6 +132,52 @@
       </div>
 
       <div class="card mb-3">
+        <div class="card-header"><h6 class="mb-0">Game Access</h6></div>
+        <div class="card-body">
+          <div class="small text-muted mb-3">
+            Default state is locked. Only users explicitly enabled here can open game APIs or see game access in app config.
+          </div>
+          <form method="post" action="{{ route('admin.users.games.update', $user) }}" class="row g-3">
+            @csrf
+            <div class="col-12">
+              <div class="border rounded-3 p-3">
+                <div class="d-flex justify-content-between align-items-center gap-3">
+                  <div>
+                    <div class="fw-semibold">Teen Patti</div>
+                    <div class="text-muted small">Unlock access for user #{{ $user->id }}</div>
+                  </div>
+                  <div class="form-check form-switch m-0">
+                    <input type="hidden" name="teen_patti" value="0">
+                    <input class="form-check-input" type="checkbox" name="teen_patti" value="1" id="game_access_teen_patti" @checked($gameAccessMap['teen_patti'] ?? false)>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="border rounded-3 p-3">
+                <div class="d-flex justify-content-between align-items-center gap-3">
+                  <div>
+                    <div class="fw-semibold">Greedy</div>
+                    <div class="text-muted small">Unlock access for user #{{ $user->id }}</div>
+                  </div>
+                  <div class="form-check form-switch m-0">
+                    <input type="hidden" name="greedy" value="0">
+                    <input class="form-check-input" type="checkbox" name="greedy" value="1" id="game_access_greedy" @checked($gameAccessMap['greedy'] ?? false)>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-12">
+              <input type="text" name="reason" class="form-control" placeholder="Reason for access change">
+            </div>
+            <div class="col-12 d-grid">
+              <button class="btn btn-primary">Save Game Access</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="card mb-3">
         <div class="card-header"><h6 class="mb-0">Profile Frames</h6></div>
         <div class="card-body">
           <div class="row g-2 mb-3">

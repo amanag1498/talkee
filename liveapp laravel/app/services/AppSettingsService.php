@@ -527,6 +527,7 @@ class AppSettingsService
                 'features' => $this->androidFeatureFlags(),
             ];
         });
+        $featureFlags = $this->androidFeatureFlags($user);
 
         $themes = $themeUnlocks ?: app(ThemeUnlockService::class);
         $themeTokenService = app(ThemeTokenService::class);
@@ -558,6 +559,7 @@ class AppSettingsService
         }
 
         return array_merge($base, [
+            'features' => $featureFlags,
             'active_theme_key' => $activeThemeKey,
             'premium_theme_variant' => $activeThemeKey,
             'fallback_theme_key' => 'midnight',
@@ -572,8 +574,17 @@ class AppSettingsService
         ]);
     }
 
-    public function androidFeatureFlags(): array
+    public function androidFeatureFlags(?User $user = null): array
     {
+        $games = app(GameAccessService::class);
+        $access = $games->userAccessMap($user);
+        $teenPattiEnabled = (bool) config('app_features.platform.android.teen_patti_enabled', false)
+            && (bool) ($access[GameAccessService::GAME_TEEN_PATTI] ?? false);
+        $greedyEnabled = (bool) config('app_features.platform.android.greedy_enabled', false)
+            && (bool) ($access[GameAccessService::GAME_GREEDY] ?? false);
+        $videoRoomGamesEnabled = (bool) config('app_features.platform.android.video_room_games_enabled', false)
+            && ($teenPattiEnabled || $greedyEnabled);
+
         return [
             'audio_rooms_enabled' => (bool) config('app_features.platform.android.audio_rooms_enabled', true),
             'video_rooms_enabled' => (bool) config('app_features.platform.android.video_rooms_enabled', true),
@@ -583,9 +594,9 @@ class AppSettingsService
             'entry_effects_enabled' => (bool) config('app_features.platform.android.entry_effects_enabled', true),
             'wallet_recharge_enabled' => (bool) config('app_features.platform.android.wallet_recharge_enabled', true),
             'host_calling_enabled' => (bool) config('app_features.platform.android.host_calling_enabled', true),
-            'teen_patti_enabled' => (bool) config('app_features.platform.android.teen_patti_enabled', false),
-            'greedy_enabled' => (bool) config('app_features.platform.android.greedy_enabled', false),
-            'video_room_games_enabled' => (bool) config('app_features.platform.android.video_room_games_enabled', false),
+            'teen_patti_enabled' => $teenPattiEnabled,
+            'greedy_enabled' => $greedyEnabled,
+            'video_room_games_enabled' => $videoRoomGamesEnabled,
         ];
     }
 

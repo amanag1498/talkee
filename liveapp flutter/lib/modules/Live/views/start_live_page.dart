@@ -54,6 +54,7 @@ class _LiveWaitingPageState extends State<LiveWaitingPage>
   // preflight toggles (visual)
   bool _micOn = true;
   bool _camOn = true;
+  bool _runInFlight = false;
 
   @override
   void initState() {
@@ -81,6 +82,8 @@ class _LiveWaitingPageState extends State<LiveWaitingPage>
   }
 
   Future<void> _run() async {
+    if (_runInFlight) return;
+    _runInFlight = true;
     try {
       setState(() => phase = _Phase.perm);
       final ok = await _ensurePermissions();
@@ -137,6 +140,7 @@ class _LiveWaitingPageState extends State<LiveWaitingPage>
     } catch (e) {
       Haptics.error();
       setState(() { errorMsg = e.toString(); phase = _Phase.error; });
+      _runInFlight = false;
     }
   }
 

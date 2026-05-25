@@ -437,16 +437,49 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
       final after = next[pot] ?? 0;
       final delta = after - before;
       if (delta <= 0) continue;
-      final burstCount = delta >= 2000 ? 3 : delta >= 500 ? 2 : 1;
-      for (var i = 0; i < burstCount; i++) {
+      final burstAmounts = _splitFakeGemBurst(delta);
+      for (var i = 0; i < burstAmounts.length; i++) {
         _launchGemToPot(
           pot: pot,
-          amount: max(100, (delta / burstCount).round()),
+          amount: burstAmounts[i],
           fromUserAction: false,
           staggerMs: i * 80,
         );
       }
     }
+  }
+
+  List<int> _splitFakeGemBurst(int delta) {
+    final remaining = delta;
+    if (remaining <= 100) {
+      return const <int>[100];
+    }
+
+    final chips = <int>[];
+    var left = remaining;
+    final maxTokens = left >= 2000 ? 3 : left >= 500 ? 2 : 1;
+    final options = _chipValues.reversed.toList(growable: false);
+
+    while (left > 0 && chips.length < maxTokens) {
+      final tokensLeft = maxTokens - chips.length;
+      final reserve = tokensLeft > 1 ? 100 * (tokensLeft - 1) : 0;
+      final candidate = options.firstWhere(
+        (chip) => chip <= max(100, left - reserve),
+        orElse: () => 100,
+      );
+      chips.add(candidate);
+      left -= candidate;
+      if (left < 100) {
+        break;
+      }
+    }
+
+    if (left > 0) {
+      final nextValue = (chips.isEmpty ? 0 : chips.removeLast()) + left;
+      chips.add(nextValue);
+    }
+
+    return chips.where((value) => value > 0).toList(growable: false);
   }
 
   void _pruneFinishedGems() {
@@ -1084,8 +1117,10 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
     final displayPayout =
         payout > 0 ? payout : yourBet * (round.winningMultiplier ?? 0);
 
-    showDialog<void>(
+    showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       barrierColor: const Color(0xE8110C14),
       builder:
           (_) => _GreedyResultDialog(
@@ -1302,36 +1337,21 @@ class _GreedyBetConsole extends StatelessWidget {
         ],
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Expanded(
-                      child: ShaderMask(
-                        shaderCallback: (rect) => const LinearGradient(
-                          colors: [Color(0xFFFFF2B0), Color(0xFFD9B96A)],
-                        ).createShader(rect),
-                        child: const Text(
-                          'CONTROL DECK',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            letterSpacing: 1.2,
-                          ),
-                        ),
-                      ),
-                    ),
-                    Flexible(
                       child: Wrap(
-                        alignment: WrapAlignment.end,
                         spacing: 8,
                         runSpacing: 6,
                         children: [
+                          const _ConsolePill(label: 'PLACE BET'),
                           if (selectedPot != null)
                             _ConsolePill(label: 'POT $selectedPot', premium: true),
                           _ConsolePill(
@@ -1343,73 +1363,77 @@ class _GreedyBetConsole extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  height: 52,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: chipValues.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 8),
-                    itemBuilder: (context, index) {
-                      final value = chipValues[index];
-                      final selected = value == selectedAmount;
-                      return GestureDetector(
-                        key: chipKeyFor(value),
-                        onTap: phase == 'betting' && !placing ? () => onSelectChip(value) : null,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
-                          curve: Curves.easeOut,
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          transform: Matrix4.identity()..translate(0.0, selected ? -3.0 : 0.0),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(999),
-                            gradient:
-                                selected
-                                    ? const LinearGradient(
-                                      colors: [Color(0xFFFFE9A7), Color(0xFFE6A11A)],
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                    )
-                                    : LinearGradient(
-                                      colors: [
-                                        Colors.white.withValues(alpha: .12),
-                                        Colors.black.withValues(alpha: .12),
-                                      ],
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
+                const SizedBox(height: 12),
+                Row(
+                  children: List.generate(chipValues.length, (index) {
+                    final value = chipValues[index];
+                    final selected = value == selectedAmount;
+                    return Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.only(right: index == chipValues.length - 1 ? 0 : 8),
+                        child: GestureDetector(
+                          key: chipKeyFor(value),
+                          onTap: phase == 'betting' && !placing ? () => onSelectChip(value) : null,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            curve: Curves.easeOut,
+                            height: 48,
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+                            transform: Matrix4.identity()..translate(0.0, selected ? -3.0 : 0.0),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(999),
+                              gradient:
+                                  selected
+                                      ? const LinearGradient(
+                                        colors: [Color(0xFFFFF1C2), Color(0xFFE3A31C)],
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                      )
+                                      : LinearGradient(
+                                        colors: [
+                                          Colors.white.withValues(alpha: .10),
+                                          const Color(0xFF110E16).withValues(alpha: .72),
+                                        ],
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                      ),
+                              border: Border.all(
+                                color: selected ? const Color(0xFFFFF3C2) : Colors.white12,
+                                width: selected ? 1.4 : 1,
+                              ),
+                              boxShadow: selected
+                                  ? const [
+                                    BoxShadow(
+                                      color: Color(0x4DE3A31C),
+                                      blurRadius: 14,
+                                      offset: Offset(0, 7),
                                     ),
-                            border: Border.all(
-                              color: selected ? const Color(0xFFFFF3C2) : Colors.white12,
-                              width: selected ? 1.4 : 1,
+                                    BoxShadow(
+                                      color: Color(0x26FFF5D1),
+                                      blurRadius: 2,
+                                      offset: Offset(0, -1),
+                                    ),
+                                  ]
+                                  : null,
                             ),
-                            boxShadow: selected
-                                ? const [
-                                  BoxShadow(
-                                    color: Color(0x55FFB300),
-                                    blurRadius: 16,
-                                    offset: Offset(0, 8),
-                                  ),
-                                  BoxShadow(
-                                    color: Color(0x33FFF5D1),
-                                    blurRadius: 2,
-                                    offset: Offset(0, -1),
-                                  ),
-                                ]
-                                : null,
-                          ),
-                          child: Text(
-                            _formatGreedyCoins(value),
-                            style: TextStyle(
-                              color: selected ? Colors.black : Colors.white,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 13,
-                              letterSpacing: .3,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                _formatGreedyCoins(value),
+                                style: TextStyle(
+                                  color: selected ? Colors.black : Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 12.5,
+                                  letterSpacing: .35,
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                    );
+                  }),
                 ),
               ],
             ),
@@ -1419,15 +1443,15 @@ class _GreedyBetConsole extends StatelessWidget {
             onTap: selectedPot == null || placing || phase != 'betting' ? null : onPlaceBet,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 160),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(18),
                 gradient: selectedPot == null || phase != 'betting'
                     ? const LinearGradient(
-                        colors: [Color(0xFF4A4340), Color(0xFF2B2624)],
+                        colors: [Color(0xFF423B3A), Color(0xFF262024)],
                       )
                     : const LinearGradient(
-                        colors: [Color(0xFFFFE18B), Color(0xFFE39A15), Color(0xFFB76C00)],
+                        colors: [Color(0xFFFFE6A7), Color(0xFFE29A17), Color(0xFF9E6203)],
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                       ),
@@ -1440,19 +1464,19 @@ class _GreedyBetConsole extends StatelessWidget {
                     ? null
                     : const [
                         BoxShadow(
-                          color: Color(0x66E39A15),
-                          blurRadius: 18,
-                          offset: Offset(0, 10),
+                          color: Color(0x52E39A15),
+                          blurRadius: 16,
+                          offset: Offset(0, 8),
                         ),
                         BoxShadow(
                           color: Colors.black45,
-                          blurRadius: 8,
-                          offset: Offset(0, 6),
+                          blurRadius: 7,
+                          offset: Offset(0, 5),
                         ),
                       ],
               ),
               child: SizedBox(
-                width: 78,
+                width: 84,
                 child: Center(
                   child: placing
                       ? const SizedBox(
@@ -1461,14 +1485,14 @@ class _GreedyBetConsole extends StatelessWidget {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : Text(
-                          selectedPot == null ? 'SELECT' : 'DROP',
+                          selectedPot == null ? 'PICK' : 'DROP',
                           style: TextStyle(
                             color: selectedPot == null || phase != 'betting'
                                 ? Colors.white70
                                 : Colors.black,
                             fontWeight: FontWeight.w900,
-                            fontSize: 16,
-                            letterSpacing: 1.0,
+                            fontSize: 14,
+                            letterSpacing: 1.1,
                           ),
                         ),
                 ),
@@ -1545,7 +1569,7 @@ class _GreedyPotCard extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOut,
-      padding: const EdgeInsets.fromLTRB(11, 12, 11, 10),
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
       transform: Matrix4.identity()..scale(selected ? 1.03 : 1.0),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
@@ -1600,18 +1624,18 @@ class _GreedyPotCard extends StatelessWidget {
                     style: TextStyle(
                       color: accent,
                       fontWeight: FontWeight.w900,
-                      fontSize: 11,
-                      letterSpacing: .8,
+                      fontSize: 10,
+                      letterSpacing: .7,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 1),
                   Text(
                     '${multiplier}X',
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w900,
-                      fontSize: 18,
-                      letterSpacing: .4,
+                      fontSize: 16,
+                      letterSpacing: .3,
                     ),
                   ),
                 ],
@@ -1619,7 +1643,7 @@ class _GreedyPotCard extends StatelessWidget {
               const Spacer(),
               if (winning || selected)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(999),
                     color: winning
@@ -1634,14 +1658,14 @@ class _GreedyPotCard extends StatelessWidget {
                     style: TextStyle(
                       color: winning ? accent : Colors.white,
                       fontWeight: FontWeight.w900,
-                      fontSize: 10,
-                      letterSpacing: .6,
+                      fontSize: 9,
+                      letterSpacing: .5,
                     ),
                   ),
                 ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Container(
             height: 6,
             decoration: BoxDecoration(
@@ -1655,9 +1679,9 @@ class _GreedyPotCard extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           SizedBox(
-            height: 24,
+            height: 22,
             child: Stack(
               clipBehavior: Clip.none,
               children: [
@@ -1687,37 +1711,22 @@ class _GreedyPotCard extends StatelessWidget {
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
-            child: RichText(
-              text: TextSpan(
-                children: [
-                  TextSpan(
-                    text: _formatGreedyCoins(totalAmount),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: .2,
-                    ),
-                  ),
-                  TextSpan(
-                    text: ' COIN PLACED',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: .55),
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: .7,
-                    ),
-                  ),
-                ],
+            child: Text(
+              _formatGreedyCoins(totalAmount),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                letterSpacing: .2,
               ),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Row(
             children: [
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
                     color: Colors.white.withValues(alpha: .06),
@@ -1731,8 +1740,8 @@ class _GreedyPotCard extends StatelessWidget {
                       style: TextStyle(
                         color: yourAmount > 0 ? Colors.white : Colors.white70,
                         fontWeight: FontWeight.w900,
-                        fontSize: 10,
-                        letterSpacing: .5,
+                        fontSize: 9,
+                        letterSpacing: .4,
                       ),
                     ),
                   ),
@@ -1884,185 +1893,341 @@ class _GreedyResultDialog extends StatefulWidget {
 
 class _GreedyResultDialogState extends State<_GreedyResultDialog>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _fade;
-  late final Animation<double> _scale;
-  late final Animation<Offset> _slide;
+  bool _badgeVisible = false;
+  bool _centerVisible = false;
+  bool _payoutVisible = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1250),
-    );
-    _fade = CurvedAnimation(parent: _controller, curve: const Interval(0.0, 0.55, curve: Curves.easeOut));
-    _scale = CurvedAnimation(parent: _controller, curve: const Interval(0.12, 0.72, curve: Curves.easeOutBack));
-    _slide = Tween<Offset>(
-      begin: const Offset(0, .08),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _controller, curve: const Interval(0.18, 0.80, curve: Curves.easeOutCubic)));
-    _controller.forward();
-    Haptics.medium();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+    Future<void>.delayed(const Duration(milliseconds: 100), () {
+      if (!mounted) return;
+      setState(() => _badgeVisible = true);
+      SystemSound.play(SystemSoundType.click);
+    });
+    Future<void>.delayed(const Duration(milliseconds: 260), () {
+      if (!mounted) return;
+      setState(() => _centerVisible = true);
+    });
+    Future<void>.delayed(const Duration(milliseconds: 460), () {
+      if (!mounted) return;
+      setState(() => _payoutVisible = true);
+      Haptics.medium();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _fade,
-      child: SlideTransition(
-        position: _slide,
-        child: ScaleTransition(
-          scale: _scale,
-          child: AlertDialog(
-            backgroundColor: const Color(0xFF120E17),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-            titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
-            contentPadding: const EdgeInsets.fromLTRB(24, 18, 24, 8),
-            title: Text(
-              widget.won ? 'PAYOUT' : 'ROUND RESULT',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                fontSize: 24,
-                letterSpacing: .4,
-              ),
+    final accent = _potColor(widget.winningPot);
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF1A111F), Color(0xFF0D0912)],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
             ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 108,
-                  height: 108,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors:
-                          widget.won
-                              ? [const Color(0xFFFFE39A), const Color(0xFFE39517)]
-                              : [const Color(0xFF6BAEFF), const Color(0xFF2250A6)],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _potColor(widget.winningPot).withValues(alpha: .32),
-                        blurRadius: 24,
-                        offset: const Offset(0, 12),
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: Text(
-                      widget.winningPot,
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 34,
-                        letterSpacing: .8,
-                      ),
-                    ),
-                  ),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: widget.won ? const Color(0xFFE1B12C) : Colors.white24,
+              width: 1.4,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: accent.withValues(alpha: .24),
+                blurRadius: 30,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 44,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: .24),
+                  borderRadius: BorderRadius.circular(999),
                 ),
-                const SizedBox(height: 16),
-                ShaderMask(
-                  shaderCallback: (rect) => LinearGradient(
-                    colors: [
-                      _potColor(widget.winningPot),
-                      Colors.white,
-                    ],
-                  ).createShader(rect),
-                  child: Text(
-                    'POT ${widget.winningPot}  •  ${widget.winningMultiplier}X',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 18,
-                      letterSpacing: .6,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
+              ),
+            AnimatedScale(
+              scale: _badgeVisible ? 1 : .92,
+              duration: const Duration(milliseconds: 240),
+              curve: Curves.easeOutBack,
+              child: AnimatedOpacity(
+                opacity: _badgeVisible ? 1 : .4,
+                duration: const Duration(milliseconds: 220),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
                     gradient: LinearGradient(
                       colors:
                           widget.won
                               ? [
-                                const Color(0x33FFD54F),
-                                const Color(0x2217A673),
+                                accent.withValues(alpha: .20),
+                                const Color(0xFFFFC107).withValues(alpha: .16),
                               ]
                               : [
-                                const Color(0x225AA7FF),
-                                const Color(0x221B2134),
+                                accent.withValues(alpha: .14),
+                                Colors.white.withValues(alpha: .08),
                               ],
                     ),
-                    border: Border.all(color: Colors.white10),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: widget.won ? const Color(0xFFFFC107) : accent.withValues(alpha: .42),
+                    ),
                     boxShadow: [
                       BoxShadow(
-                        color: _potColor(widget.winningPot).withValues(alpha: .16),
-                        blurRadius: 18,
-                        offset: const Offset(0, 10),
+                        color: accent.withValues(alpha: .16),
+                        blurRadius: 16,
+                        offset: const Offset(0, 8),
                       ),
                     ],
                   ),
-                  child: Column(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(
-                        'YOUR BET  ${_formatGreedyCoins(widget.yourBet)}',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: .7,
-                          fontSize: 11,
-                        ),
+                      Icon(
+                        widget.won ? Icons.workspace_premium_rounded : Icons.stars_rounded,
+                        color: widget.won ? const Color(0xFFFFC107) : accent,
                       ),
-                      const SizedBox(height: 10),
-                      TweenAnimationBuilder<int>(
-                        tween: IntTween(begin: 0, end: widget.won ? widget.payout : 0),
-                        duration: const Duration(milliseconds: 1450),
-                        curve: Curves.easeOutCubic,
-                        builder: (context, value, _) {
-                          return ShaderMask(
-                            shaderCallback: (rect) => LinearGradient(
-                              colors: widget.won
-                                  ? [const Color(0xFFFFE39A), const Color(0xFFF3A120)]
-                                  : [Colors.white70, Colors.white54],
-                            ).createShader(rect),
-                            child: Text(
-                              widget.won
-                                  ? 'PAYOUT  ${_formatGreedyCoins(value)}'
-                                  : 'MISS  0',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 28,
-                                letterSpacing: 1.0,
-                              ),
-                            ),
-                          );
-                        },
+                      const SizedBox(width: 10),
+                      Text(
+                        'Winning Pot ${widget.winningPot}',
+                        style: TextStyle(
+                          color: widget.won ? const Color(0xFFFFC107) : Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Close'),
               ),
+            ),
+            const SizedBox(height: 18),
+            AnimatedOpacity(
+              opacity: _centerVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 220),
+              child: AnimatedSlide(
+                offset: _centerVisible ? Offset.zero : const Offset(0, .08),
+                duration: const Duration(milliseconds: 240),
+                curve: Curves.easeOutCubic,
+                child: Container(
+                  height: 142,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(22),
+                    gradient: LinearGradient(
+                      colors: [
+                        accent.withValues(alpha: .16),
+                        Colors.black.withValues(alpha: .22),
+                      ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                    border: Border.all(color: accent.withValues(alpha: .34)),
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Container(
+                        width: 164,
+                        height: 114,
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(
+                            colors: [accent.withValues(alpha: .24), accent.withValues(alpha: 0)],
+                          ),
+                        ),
+                      ),
+                      Container(
+                        width: 114,
+                        height: 114,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            colors:
+                                widget.won
+                                    ? [const Color(0xFFFFE39A), const Color(0xFFE39517)]
+                                    : [accent.withValues(alpha: .88), accent.withValues(alpha: .52)],
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: accent.withValues(alpha: .32),
+                              blurRadius: 24,
+                              offset: const Offset(0, 12),
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Text(
+                            widget.winningPot,
+                            style: const TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 36,
+                              letterSpacing: .8,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: 16,
+                        child: ShaderMask(
+                          shaderCallback: (rect) => LinearGradient(
+                            colors: [accent, Colors.white],
+                          ).createShader(rect),
+                          child: Text(
+                            '${widget.winningMultiplier}X RETURN',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                              letterSpacing: .6,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            AnimatedOpacity(
+              opacity: _payoutVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 260),
+              child: _GreedyResultInfoTile(
+                title: 'Your Bet on Winning Pot',
+                value: widget.yourBet,
+                color: const Color(0xFFFFA726),
+                icon: Icons.local_atm_rounded,
+              ),
+            ),
+            const SizedBox(height: 10),
+            AnimatedOpacity(
+              opacity: _payoutVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 320),
+              child: _GreedyResultInfoTile(
+                title: widget.won ? 'Your Winning Amount' : 'Round Outcome',
+                value: widget.won ? widget.payout : 0,
+                color: widget.won ? const Color(0xFF66BB6A) : accent,
+                icon: widget.won ? Icons.workspace_premium_rounded : Icons.info_outline_rounded,
+                emptyLabel: widget.won ? null : 'Missed this round',
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                'Close',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _GreedyResultInfoTile extends StatelessWidget {
+  const _GreedyResultInfoTile({
+    required this.title,
+    required this.value,
+    required this.color,
+    required this.icon,
+    this.emptyLabel,
+  });
+
+  final String title;
+  final int value;
+  final Color color;
+  final IconData icon;
+  final String? emptyLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: LinearGradient(
+          colors: [color.withValues(alpha: .18), Colors.black.withValues(alpha: .20)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(color: color.withValues(alpha: .34)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: color.withValues(alpha: .16),
+            ),
+            child: Icon(icon, color: color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: .78),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: .5,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                emptyLabel != null && value == 0
+                    ? Text(
+                        emptyLabel!,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: .4,
+                        ),
+                      )
+                    : TweenAnimationBuilder<int>(
+                        tween: IntTween(begin: 0, end: value),
+                        duration: const Duration(milliseconds: 1200),
+                        curve: Curves.easeOutCubic,
+                        builder: (context, animatedValue, _) {
+                          return Text(
+                            _formatGreedyCoins(animatedValue),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: .3,
+                            ),
+                          );
+                        },
+                      ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
