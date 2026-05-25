@@ -12,6 +12,7 @@ use Carbon\CarbonInterface;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -20,6 +21,8 @@ class TeenPattiService
 {
     private const CARD_SUITS = ['hearts', 'spades', 'diamonds', 'clubs'];
     private const CARD_VALUES = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'jack', 'queen', 'king', 'ace'];
+    private const ACTIVITY_LEASE_KEY = 'games:teen_patti:active_lease';
+    private const ACTIVITY_LEASE_SECONDS = 180;
 
     public function publicSettings(): array
     {
@@ -98,15 +101,16 @@ class TeenPattiService
             throw new HttpException(403, 'Teen Patti is currently unavailable.');
         }
 
-        $round = $this->ensureCurrentRound();
-        $round = $this->refreshRoundState($round);
+        $this->touchActivityLease();
+        $round = $this->resolveCurrentRound(createIfIdle: true);
         $wallet = WalletService::getOrCreate($user);
 
         return [
             'settings' => $this->publicSettings(),
             'wallet_balance' => (int) $wallet->balance,
-            'round' => $this->roundPayload($round, $user),
+            'round' => $round ? $this->roundPayload($round, $user) : null,
             'history' => $this->historyPayload(8),
+            'engine_state' => $round ? 'active' : 'idle',
         ];
     }
 
@@ -119,15 +123,16 @@ class TeenPattiService
             ];
         }
 
-        $round = $this->ensureCurrentRound();
-        $round = $this->refreshRoundState($round);
+        $this->touchActivityLease();
+        $round = $this->resolveCurrentRound(createIfIdle: true);
 
         return [
             'ok' => true,
             'enabled' => true,
             'settings' => $this->publicSettings(),
-            'round' => $this->roundPayload($round),
+            'round' => $round ? $this->roundPayload($round) : null,
             'history' => $this->historyPayload(6),
+            'engine_state' => $round ? 'active' : 'idle',
         ];
     }
 
@@ -157,8 +162,11 @@ class TeenPattiService
             throw new HttpException(422, "Bet amount must be between {$this->minBet()} and {$this->maxBet()} coins.");
         }
 
-        $round = $this->ensureCurrentRound();
-        $round = $this->refreshRoundState($round);
+        $this->touchActivityLease();
+        $round = $this->resolveCurrentRound(createIfIdle: true);
+        if (!$round) {
+            throw new HttpException(409, 'Teen Patti is idle. Open the game again and retry.');
+        }
 
         $result = DB::transaction(function () use ($user, $round, $pot, $amount, $idempotencyKey) {
             /** @var TeenPattiRound $lockedRound */
@@ -268,7 +276,7 @@ class TeenPattiService
 
     public function adminDashboardPayload(): array
     {
-        $round = $this->enabled() ? $this->refreshRoundState($this->ensureCurrentRound()) : null;
+        $round = $this->enabled() ? $this->resolveCurrentRound(createIfIdle: false) : null;
 
         return [
             'settings' => $this->publicSettings(),
@@ -398,7 +406,7 @@ class TeenPattiService
         ];
     }
 
-    public function tick(?TeenPattiRound $round = null): TeenPattiRound
+    public function tick(?TeenPattiRound $round = null): ?TeenPattiRound
     {
         if (!$this->enabled()) {
             throw new HttpException(403, 'Teen Patti is currently unavailable.');
@@ -408,7 +416,7 @@ class TeenPattiService
             return $this->refreshRoundState($round->fresh());
         }
 
-        return $this->refreshRoundState($this->ensureCurrentRound());
+        return $this->resolveCurrentRound(createIfIdle: false);
     }
 
     public function reconcileRound(TeenPattiRound $round): array
@@ -580,6 +588,73 @@ class TeenPattiService
         }
 
         return TeenPattiRound::query()->latest('id')->firstOrFail();
+    }
+
+    public function pruneIdleRounds(int $hours = 24): int
+    {
+        $cutoff = now()->subHours(max(1, $hours));
+
+        return TeenPattiRound::query()
+            ->whereIn('status', ['settled', 'cancelled'])
+            ->where('created_at', '<', $cutoff)
+            ->where('total_bets_count', 0)
+            ->doesntHave('bets')
+            ->doesntHave('payouts')
+            ->delete();
+    }
+
+    private function resolveCurrentRound(bool $createIfIdle): ?TeenPattiRound
+    {
+        if (!$this->enabled()) {
+            throw new HttpException(403, 'Teen Patti is currently unavailable.');
+        }
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $round = TeenPattiRound::query()->latest('id')->first();
+            if (!$round) {
+                return $createIfIdle || $this->hasRecentActivityLease()
+                    ? $this->createRound(CarbonImmutable::now())
+                    : null;
+            }
+
+            $round = $this->refreshRoundState($round);
+
+            if (in_array($round->status, ['open', 'locked'], true)) {
+                return $round;
+            }
+
+            $displayUntil = $this->displayUntil($round);
+            if (now()->greaterThanOrEqualTo($displayUntil)) {
+                if (!$createIfIdle && !$this->hasRecentActivityLease()) {
+                    return $round;
+                }
+
+                $nextStart = $displayUntil;
+                if ($nextStart->lessThan(CarbonImmutable::now())) {
+                    $nextStart = CarbonImmutable::now();
+                }
+
+                return $this->createRound($nextStart);
+            }
+
+            return $round;
+        }
+
+        return TeenPattiRound::query()->latest('id')->first();
+    }
+
+    private function touchActivityLease(): void
+    {
+        Cache::put(
+            self::ACTIVITY_LEASE_KEY,
+            CarbonImmutable::now()->toIso8601String(),
+            now()->addSeconds(self::ACTIVITY_LEASE_SECONDS),
+        );
+    }
+
+    private function hasRecentActivityLease(): bool
+    {
+        return Cache::has(self::ACTIVITY_LEASE_KEY);
     }
 
     public function refreshRoundState(TeenPattiRound $round): TeenPattiRound

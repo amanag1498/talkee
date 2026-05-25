@@ -147,6 +147,10 @@ Artisan::command('teen-patti:tick {--round_id=}', function (TeenPattiService $se
         : null;
 
     $result = $service->tick($round);
+    if (!$result) {
+        $this->info('Teen Patti idle: no active game audience lease, no new round created.');
+        return;
+    }
 
     $this->table(
         ['Round', 'Status', 'Winning Pot', 'Locks At', 'Ends At'],
@@ -159,6 +163,11 @@ Artisan::command('teen-patti:tick {--round_id=}', function (TeenPattiService $se
         ]]
     );
 })->purpose('Advance the Teen Patti round state machine');
+
+Artisan::command('teen-patti:prune-idle {--hours=24}', function (TeenPattiService $service) {
+    $deleted = $service->pruneIdleRounds((int) $this->option('hours'));
+    $this->info("Deleted {$deleted} idle Teen Patti round(s).");
+})->purpose('Delete old zero-bet Teen Patti rounds');
 
 Artisan::command('teen-patti:reconcile {--round_id=} {--limit=10}', function (TeenPattiService $service) {
     $rounds = $this->option('round_id')
@@ -189,6 +198,10 @@ Artisan::command('greedy:tick {--round_id=}', function (GreedyGameService $servi
         : null;
 
     $result = $service->tick($round);
+    if (!$result) {
+        $this->info('Greedy idle: no active game audience lease, no new round created.');
+        return;
+    }
 
     $this->table(
         ['Round', 'Status', 'Winning Pot', 'Locks At', 'Ends At'],
@@ -201,6 +214,11 @@ Artisan::command('greedy:tick {--round_id=}', function (GreedyGameService $servi
         ]]
     );
 })->purpose('Advance the Greedy round state machine');
+
+Artisan::command('greedy:prune-idle {--hours=24}', function (GreedyGameService $service) {
+    $deleted = $service->pruneIdleRounds((int) $this->option('hours'));
+    $this->info("Deleted {$deleted} idle Greedy round(s).");
+})->purpose('Delete old zero-bet Greedy rounds');
 
 Artisan::command('greedy:reconcile {--round_id=} {--limit=10}', function (GreedyGameService $service) {
     $rounds = $this->option('round_id')

@@ -28,14 +28,29 @@ class _TeenPattiGamesSheetState extends State<TeenPattiGamesSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final title = switch (_selectedGame) {
+      'teen_patti' => 'Teen Patti',
+      'greedy' => 'Greedy',
+      _ => 'Games',
+    };
+    final subtitle = switch (_selectedGame) {
+      'teen_patti' => 'High-tempo card betting inside the live room',
+      'greedy' => 'Weighted spinner pots with premium reveal pacing',
+      _ => 'Choose a room game without leaving the current live session',
+    };
+
     return SafeArea(
       top: false,
       child: FractionallySizedBox(
         heightFactor: 0.94,
         child: DecoratedBox(
           decoration: const BoxDecoration(
-            color: Color(0xFF120C1D),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            gradient: LinearGradient(
+              colors: [Color(0xFF0F0A18), Color(0xFF191028), Color(0xFF0A0A12)],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(34)),
           ),
           child: Column(
             children: [
@@ -49,36 +64,156 @@ class _TeenPattiGamesSheetState extends State<TeenPattiGamesSheet> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
-                child: Row(
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
+                child: Stack(
                   children: [
-                    if (_selectedGame != null)
-                      IconButton(
-                        onPressed: () => setState(() => _selectedGame = null),
-                        icon: const Icon(Icons.arrow_back_rounded),
-                        color: Colors.white,
-                      )
-                    else
-                      const SizedBox(width: 48),
-                    Expanded(
-                      child: Text(
-                        switch (_selectedGame) {
-                          'teen_patti' => 'Teen Patti',
-                          'greedy' => 'Greedy',
-                          _ => 'Games',
-                        },
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
+                    Positioned(
+                      left: 18,
+                      top: 10,
+                      child: Container(
+                        width: 86,
+                        height: 86,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFFFFD966).withValues(alpha: .10),
                         ),
                       ),
                     ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).maybePop(),
-                      icon: const Icon(Icons.close_rounded),
-                      color: Colors.white70,
+                    Positioned(
+                      right: -6,
+                      top: -8,
+                      child: Container(
+                        width: 92,
+                        height: 92,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFF67A5FF).withValues(alpha: .10),
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(28),
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.white.withValues(alpha: .10),
+                            Colors.white.withValues(alpha: .04),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        border: Border.all(color: Colors.white.withValues(alpha: .12)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: .24),
+                            blurRadius: 24,
+                            offset: const Offset(0, 14),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              SizedBox(
+                                width: 42,
+                                child:
+                                    _selectedGame != null
+                                        ? IconButton(
+                                          onPressed:
+                                              () => setState(() => _selectedGame = null),
+                                          icon: const Icon(Icons.arrow_back_rounded),
+                                          color: Colors.white,
+                                          splashRadius: 20,
+                                        )
+                                        : const SizedBox.shrink(),
+                              ),
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(999),
+                                        color: const Color(0xFFFFD966).withValues(alpha: .12),
+                                        border: Border.all(
+                                          color: const Color(0xFFFFD966).withValues(alpha: .24),
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        'ROOM GAMES',
+                                        style: TextStyle(
+                                          color: Color(0xFFFFE8A3),
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 1.1,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      title,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: .2,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      subtitle,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(alpha: .68),
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w600,
+                                        height: 1.35,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              SizedBox(
+                                width: 42,
+                                child: IconButton(
+                                  onPressed: () => Navigator.of(context).maybePop(),
+                                  icon: const Icon(Icons.close_rounded),
+                                  color: Colors.white70,
+                                  splashRadius: 20,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (_selectedGame == null) ...[
+                            const SizedBox(height: 14),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _SheetFactPill(
+                                    icon: Icons.flash_on_rounded,
+                                    label: 'Instant room play',
+                                    accent: const Color(0xFFFFD966),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: _SheetFactPill(
+                                    icon: Icons.stacked_line_chart_rounded,
+                                    label: 'Live pot motion',
+                                    accent: const Color(0xFF67A5FF),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -122,222 +257,244 @@ class _GamesList extends StatelessWidget {
     final showGreedy = settings.greedyEnabled;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+      padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
       children: [
-        Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF241336), Color(0xFF100A18)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: const Color(0x33FFD54F)),
-            boxShadow: const [
-              BoxShadow(
-                color: Colors.black38,
-                blurRadius: 18,
-                offset: Offset(0, 10),
+        if (showTeenPatti)
+          _GameEntryCard(
+            title: 'Teen Patti',
+            description:
+                'Live round-based betting across A, B, and C pots with result reveals inside the room.',
+            chip: 'CARD TABLE',
+            accent: const Color(0xFFFFD966),
+            icon: ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: Image.asset(
+                'assets/games/teen_patti/logo_teenpatti.png',
+                width: 76,
+                height: 76,
+                fit: BoxFit.cover,
               ),
-            ],
+            ),
+            onTap: onOpenTeenPatti,
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 54,
-                height: 54,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  gradient: const LinearGradient(
-                    colors: [Color(0x66FFD54F), Color(0x22FFD54F)],
+        if (showTeenPatti && showGreedy) const SizedBox(height: 14),
+        if (showGreedy)
+          _GameEntryCard(
+            title: 'Greedy',
+            description:
+                'Weighted spinner pots with sharper multipliers, wheel drama, and layered result moments.',
+            chip: 'SPINNER TABLE',
+            accent: const Color(0xFF67A5FF),
+            icon: Container(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF5AA7FF), Color(0xFFE95BFF)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: const Icon(
+                Icons.blur_circular_rounded,
+                color: Colors.white,
+                size: 38,
+              ),
+            ),
+            onTap: onOpenGreedy,
+          ),
+        if (!showTeenPatti && !showGreedy)
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              gradient: LinearGradient(
+                colors: [
+                  Colors.white.withValues(alpha: .06),
+                  Colors.white.withValues(alpha: .03),
+                ],
+              ),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'No room games are enabled right now.',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
                   ),
                 ),
-                child: const Icon(
-                  Icons.casino_rounded,
-                  color: Color(0xFFFFE082),
-                  size: 28,
+                SizedBox(height: 6),
+                Text(
+                  'Enable Teen Patti or Greedy for this user to make games available in the live room.',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                  ),
                 ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _SheetFactPill extends StatelessWidget {
+  const _SheetFactPill({
+    required this.icon,
+    required this.label,
+    required this.accent,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        color: Colors.white.withValues(alpha: .05),
+        border: Border.all(color: Colors.white.withValues(alpha: .08)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: accent, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
               ),
-              const SizedBox(width: 14),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GameEntryCard extends StatelessWidget {
+  const _GameEntryCard({
+    required this.title,
+    required this.description,
+    required this.chip,
+    required this.accent,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String title;
+  final String description;
+  final String chip;
+  final Color accent;
+  final Widget icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(26),
+      child: Ink(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(26),
+          gradient: LinearGradient(
+            colors: [
+              Colors.white.withValues(alpha: .08),
+              Colors.white.withValues(alpha: .04),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          border: Border.all(color: Colors.white.withValues(alpha: .10)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: .20),
+              blurRadius: 18,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              icon,
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Live Table Games',
-                      style: TextStyle(
-                        color: Color(0xFFFFF2B0),
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: .3,
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        color: accent.withValues(alpha: .12),
+                        border: Border.all(color: accent.withValues(alpha: .24)),
+                      ),
+                      child: Text(
+                        chip,
+                        style: TextStyle(
+                          color: accent,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: .9,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 5),
+                    const SizedBox(height: 10),
                     Text(
-                      'Open a polished room game without leaving the live session.',
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      description,
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: .76),
-                        fontSize: 12,
+                        color: Colors.white.withValues(alpha: .72),
+                        height: 1.4,
                         fontWeight: FontWeight.w600,
-                        height: 1.35,
                       ),
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: .06),
+                  border: Border.all(color: Colors.white.withValues(alpha: .10)),
+                ),
+                child: const Icon(
+                  Icons.arrow_forward_rounded,
+                  color: Colors.white70,
+                  size: 20,
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 14),
-        if (showTeenPatti)
-          InkWell(
-            onTap: onOpenTeenPatti,
-            borderRadius: BorderRadius.circular(22),
-            child: Ink(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(22),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF26173C), Color(0xFF171124)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                border: Border.all(color: Colors.white12),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: Image.asset(
-                        'assets/games/teen_patti/logo_teenpatti.png',
-                        width: 68,
-                        height: 68,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Teen Patti',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          SizedBox(height: 6),
-                          Text(
-                            'Live round-based betting with A, B, and C pots inside the video room.',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              height: 1.35,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(
-                      Icons.arrow_forward_ios_rounded,
-                      color: Colors.white70,
-                      size: 18,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        if (showTeenPatti && showGreedy) const SizedBox(height: 12),
-        if (showGreedy)
-          InkWell(
-            onTap: onOpenGreedy,
-            borderRadius: BorderRadius.circular(22),
-            child: Ink(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(22),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF1B1F37), Color(0xFF11131F)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                border: Border.all(color: Colors.white12),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 68,
-                      height: 68,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF5AA7FF), Color(0xFFE95BFF)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.blur_circular_rounded,
-                        color: Colors.white,
-                        size: 34,
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Greedy',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          SizedBox(height: 6),
-                          Text(
-                            'Four weighted spinner pots with different multipliers inside the live room.',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              height: 1.35,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(
-                      Icons.arrow_forward_ios_rounded,
-                      color: Colors.white70,
-                      size: 18,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        if (!showTeenPatti && !showGreedy)
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              color: Colors.white.withValues(alpha: .04),
-              border: Border.all(color: Colors.white12),
-            ),
-            child: const Text(
-              'No room games are enabled for this build right now.',
-              style: TextStyle(
-                color: Colors.white70,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-      ],
+      ),
     );
   }
 }

@@ -12,6 +12,7 @@ use Carbon\CarbonInterface;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -19,6 +20,8 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 class GreedyGameService
 {
     private const POTS = ['A', 'B', 'C', 'D'];
+    private const ACTIVITY_LEASE_KEY = 'games:greedy:active_lease';
+    private const ACTIVITY_LEASE_SECONDS = 180;
 
     public function publicSettings(): array
     {
@@ -113,14 +116,16 @@ class GreedyGameService
             throw new HttpException(403, 'Greedy is currently unavailable.');
         }
 
-        $round = $this->refreshRoundState($this->ensureCurrentRound());
+        $this->touchActivityLease();
+        $round = $this->resolveCurrentRound(createIfIdle: true);
         $wallet = WalletService::getOrCreate($user);
 
         return [
             'settings' => $this->publicSettings(),
             'wallet_balance' => (int) $wallet->balance,
-            'round' => $this->roundPayload($round, $user),
+            'round' => $round ? $this->roundPayload($round, $user) : null,
             'history' => $this->historyPayload(8),
+            'engine_state' => $round ? 'active' : 'idle',
         ];
     }
 
@@ -130,14 +135,16 @@ class GreedyGameService
             return ['ok' => false, 'enabled' => false];
         }
 
-        $round = $this->refreshRoundState($this->ensureCurrentRound());
+        $this->touchActivityLease();
+        $round = $this->resolveCurrentRound(createIfIdle: true);
 
         return [
             'ok' => true,
             'enabled' => true,
             'settings' => $this->publicSettings(),
-            'round' => $this->roundPayload($round),
+            'round' => $round ? $this->roundPayload($round) : null,
             'history' => $this->historyPayload(6),
+            'engine_state' => $round ? 'active' : 'idle',
         ];
     }
 
@@ -167,7 +174,11 @@ class GreedyGameService
             throw new HttpException(422, "Bet amount must be between {$this->minBet()} and {$this->maxBet()} coins.");
         }
 
-        $round = $this->refreshRoundState($this->ensureCurrentRound());
+        $this->touchActivityLease();
+        $round = $this->resolveCurrentRound(createIfIdle: true);
+        if (!$round) {
+            throw new HttpException(409, 'Greedy is idle. Open the game again and retry.');
+        }
         $multipliers = $this->potMultipliers();
 
         [$bet, $alreadyProcessed] = DB::transaction(function () use ($user, $round, $pot, $amount, $idempotencyKey, $multipliers) {
@@ -266,7 +277,7 @@ class GreedyGameService
 
     public function adminDashboardPayload(): array
     {
-        $round = $this->enabled() ? $this->refreshRoundState($this->ensureCurrentRound()) : null;
+        $round = $this->enabled() ? $this->resolveCurrentRound(createIfIdle: false) : null;
 
         return [
             'settings' => $this->publicSettings(),
@@ -392,13 +403,17 @@ class GreedyGameService
         ];
     }
 
-    public function tick(?GreedyRound $round = null): GreedyRound
+    public function tick(?GreedyRound $round = null): ?GreedyRound
     {
         if (!$this->enabled()) {
             throw new HttpException(403, 'Greedy is currently unavailable.');
         }
 
-        return $this->refreshRoundState($round ? $round->fresh() : $this->ensureCurrentRound());
+        if ($round) {
+            return $this->refreshRoundState($round->fresh());
+        }
+
+        return $this->resolveCurrentRound(createIfIdle: false);
     }
 
     public function reconcileRound(GreedyRound $round): array
@@ -559,6 +574,69 @@ class GreedyGameService
         }
 
         return GreedyRound::query()->latest('id')->firstOrFail();
+    }
+
+    public function pruneIdleRounds(int $hours = 24): int
+    {
+        $cutoff = now()->subHours(max(1, $hours));
+
+        return GreedyRound::query()
+            ->whereIn('status', ['settled', 'cancelled'])
+            ->where('created_at', '<', $cutoff)
+            ->where('total_bets_count', 0)
+            ->doesntHave('bets')
+            ->doesntHave('payouts')
+            ->delete();
+    }
+
+    private function resolveCurrentRound(bool $createIfIdle): ?GreedyRound
+    {
+        if (!$this->enabled()) {
+            throw new HttpException(403, 'Greedy is currently unavailable.');
+        }
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $round = GreedyRound::query()->latest('id')->first();
+            if (!$round) {
+                return $createIfIdle || $this->hasRecentActivityLease()
+                    ? $this->createRound(CarbonImmutable::now())
+                    : null;
+            }
+
+            $round = $this->refreshRoundState($round);
+
+            if (in_array($round->status, ['open', 'locked'], true)) {
+                return $round;
+            }
+
+            $displayUntil = $this->displayUntil($round);
+            if (now()->greaterThanOrEqualTo($displayUntil)) {
+                if (!$createIfIdle && !$this->hasRecentActivityLease()) {
+                    return $round;
+                }
+
+                $nextStart = $displayUntil->lessThan(CarbonImmutable::now()) ? CarbonImmutable::now() : $displayUntil;
+                return $this->createRound($nextStart);
+            }
+
+            return $round;
+        }
+
+        return GreedyRound::query()->latest('id')->first();
+    }
+
+    private function touchActivityLease(): void
+    {
+        Cache::put(
+            self::ACTIVITY_LEASE_KEY,
+            CarbonImmutable::now()->toIso8601String(),
+            now()->addSeconds(self::ACTIVITY_LEASE_SECONDS),
+        );
+    }
+
+    private function hasRecentActivityLease(): bool
+    {
+        return Cache::has(self::ACTIVITY_LEASE_KEY);
     }
 
     public function refreshRoundState(GreedyRound $round): GreedyRound

@@ -3001,15 +3001,6 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     final busy = _seatActionBusy || _giftBusy;
     if (_isHost) {
       return <Widget>[
-        if (_showGamesInRoom)
-          _ChatInputActionPill(
-            icon: Icons.casino_rounded,
-            tokens: tokens,
-            accent: const Color(0xFFFFD966),
-            onTap: _openGamesSheet,
-            iconOnly: true,
-            tooltip: 'Games',
-          ),
         KeyedSubtree(
           key: _giftAnchors.keyFor(GiftAnchorRegistry.giftButton),
           child: _ChatInputActionPill(
@@ -3061,18 +3052,6 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     ];
 
     if (_isSpeaker) {
-      if (_showGamesInRoom) {
-        actions.add(
-          _ChatInputActionPill(
-            icon: Icons.casino_rounded,
-            tokens: tokens,
-            accent: const Color(0xFFFFD966),
-            onTap: _openGamesSheet,
-            iconOnly: true,
-            tooltip: 'Games',
-          ),
-        );
-      }
       actions.add(
         _ChatInputActionPill(
           icon: _mutedByHost
@@ -3124,15 +3103,15 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     return actions;
   }
 
-  List<Widget> _buildChatInputActions() {
-    if (_isHost || _isSpeaker) {
+  List<Widget> _buildChatFooterActions() {
+    if (!_showGamesInRoom) {
       return const <Widget>[];
     }
 
-    final busy = _seatActionBusy || _giftBusy;
     return <Widget>[
-      if (_showGamesInRoom)
-        _ChatInputActionPill(
+      Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: _ChatInputActionPill(
           icon: Icons.casino_rounded,
           tokens: _tokens,
           accent: const Color(0xFFFFD966),
@@ -3141,13 +3120,13 @@ class _AudioRoomPageState extends State<AudioRoomPage>
           iconOnly: false,
           tooltip: 'Games',
         ),
+      ),
     ];
   }
 
   bool get _showGamesInRoom {
     final settings = Get.find<AppSettingsService>();
-    return (settings.teenPattiEnabled || settings.greedyEnabled) &&
-        settings.videoRoomGamesEnabled;
+    return settings.teenPattiEnabled || settings.greedyEnabled;
   }
 
   Future<void> _openGamesSheet() async {
@@ -3354,7 +3333,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
                     bottomOffset: isCompactDevice ? 12 : 18,
                     maxHeightFactor: isCompactDevice ? 0.30 : 0.40,
                     showEmptyPrompt: false,
-                    inputActions: _buildChatInputActions(),
+                    footerActions: _buildChatFooterActions(),
                     trailingActions: _buildChatTrailingActions(),
                     showSendButton: false,
                     onSend: _sendChatMessage,
