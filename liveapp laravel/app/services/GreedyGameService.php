@@ -271,6 +271,7 @@ class GreedyGameService
         return [
             'settings' => $this->publicSettings(),
             'current_round' => $round ? $this->roundPayload($round) : null,
+            'company_summary' => $this->adminCompanySummary(),
             'recent_rounds' => GreedyRound::query()->latest('id')->limit(15)->get(),
             'recent_bets' => GreedyBet::query()->with(['user', 'round'])->latest('id')->limit(50)->get(),
             'recent_payouts' => GreedyPayout::query()->with(['user', 'bet', 'round'])->latest('id')->limit(50)->get(),
@@ -986,5 +987,33 @@ class GreedyGameService
     private function applyAdminTimeWindow(Builder $query, string $expression, CarbonInterface $start, CarbonInterface $end): void
     {
         $query->whereBetween(DB::raw($expression), [$start->toDateTimeString(), $end->toDateTimeString()]);
+    }
+
+    private function adminCompanySummary(): array
+    {
+        $window = $this->normalizeAdminReportWindow(['period' => '30d']);
+
+        $betQuery = GreedyBet::query();
+        $this->applyAdminTimeWindow($betQuery, 'COALESCE(placed_at, created_at)', $window['start'], $window['end']);
+
+        $payoutQuery = GreedyPayout::query();
+        $this->applyAdminTimeWindow($payoutQuery, 'COALESCE(settled_at, created_at)', $window['start'], $window['end']);
+
+        $refundQuery = GreedyBet::query()->whereNotNull('refunded_at');
+        $this->applyAdminTimeWindow($refundQuery, 'COALESCE(refunded_at, updated_at, created_at)', $window['start'], $window['end']);
+
+        $totalBetAmount = (int) ((clone $betQuery)->sum('amount') ?? 0);
+        $totalWinAmount = (int) ((clone $payoutQuery)->sum('payout_coins') ?? 0);
+        $refundedAmount = (int) ((clone $refundQuery)->sum('amount') ?? 0);
+
+        return [
+            'label' => $window['label'],
+            'start_date' => $window['start']->toDateString(),
+            'end_date' => $window['end']->toDateString(),
+            'total_bet_amount' => $totalBetAmount,
+            'total_win_amount' => $totalWinAmount,
+            'refunded_amount' => $refundedAmount,
+            'profit_amount' => $totalBetAmount - $totalWinAmount - $refundedAmount,
+        ];
     }
 }

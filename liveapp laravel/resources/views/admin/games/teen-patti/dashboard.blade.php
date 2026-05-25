@@ -8,6 +8,7 @@
     $recentRounds = collect($payload['recent_rounds'] ?? []);
     $recentBets = collect($payload['recent_bets'] ?? []);
     $recentPayouts = collect($payload['recent_payouts'] ?? []);
+    $companySummary = $payload['company_summary'] ?? [];
 
     $currentTotal = (int) data_get($round, 'totals.A', 0)
       + (int) data_get($round, 'totals.B', 0)
@@ -89,6 +90,46 @@
             <span class="tp-stat-label">Recent Payout Volume</span>
             <div class="tp-stat-value">{{ number_format($recentPayoutVolume) }}</div>
             <div class="tp-stat-meta">{{ $recentPayouts->count() }} credited payouts</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    @php $companyProfit = (int) data_get($companySummary, 'profit_amount', 0); @endphp
+    <div class="row g-3 mt-1">
+      <div class="col-md-6 col-xl-3">
+        <div class="card tp-stat-card h-100">
+          <div class="card-body">
+            <span class="tp-stat-label">Company Bet Volume</span>
+            <div class="tp-stat-value">{{ number_format((int) data_get($companySummary, 'total_bet_amount', 0)) }}</div>
+            <div class="tp-stat-meta">{{ data_get($companySummary, 'label', 'Last 30 days') }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-xl-3">
+        <div class="card tp-stat-card h-100">
+          <div class="card-body">
+            <span class="tp-stat-label">Win Amount Given</span>
+            <div class="tp-stat-value">{{ number_format((int) data_get($companySummary, 'total_win_amount', 0)) }}</div>
+            <div class="tp-stat-meta">Payouts credited to users</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-xl-3">
+        <div class="card tp-stat-card h-100">
+          <div class="card-body">
+            <span class="tp-stat-label">Refunded</span>
+            <div class="tp-stat-value">{{ number_format((int) data_get($companySummary, 'refunded_amount', 0)) }}</div>
+            <div class="tp-stat-meta">Refunded bets in same window</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-xl-3">
+        <div class="card tp-stat-card h-100">
+          <div class="card-body">
+            <span class="tp-stat-label">Company Profit</span>
+            <div class="tp-stat-value {{ $companyProfit >= 0 ? 'text-success' : 'text-danger' }}">{{ number_format($companyProfit) }}</div>
+            <div class="tp-stat-meta">Bet volume - payouts - refunds</div>
           </div>
         </div>
       </div>

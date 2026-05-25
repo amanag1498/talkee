@@ -7,6 +7,7 @@
   $recentRounds = $payload['recent_rounds'] ?? collect();
   $recentBets = $payload['recent_bets'] ?? collect();
   $recentPayouts = $payload['recent_payouts'] ?? collect();
+  $companySummary = $payload['company_summary'] ?? [];
   $multipliers = data_get($settings, 'pot_multipliers', []);
   $sectors = data_get($settings, 'pot_sectors', []);
 @endphp
@@ -34,6 +35,14 @@
     <div class="col-md-3"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="text-muted small">Visible In Room</div><div class="fs-4 fw-semibold">{{ data_get($settings, 'visible_in_video_room_strip') ? 'Yes' : 'No' }}</div></div></div></div>
     <div class="col-md-3"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="text-muted small">Fake Bets</div><div class="fs-4 fw-semibold">{{ data_get($settings, 'fake_bets_enabled') ? 'On' : 'Off' }}</div></div></div></div>
     <div class="col-md-3"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="text-muted small">Current Strategy</div><div class="fs-4 fw-semibold text-capitalize">{{ str_replace('_', ' ', data_get($settings, 'winning_strategy_mode', 'probability')) }}</div></div></div></div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-6 col-xl-3"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="text-muted small">Company Bet Volume</div><div class="fs-4 fw-semibold">{{ number_format((int) data_get($companySummary, 'total_bet_amount', 0)) }}</div><div class="small text-muted mt-1">{{ data_get($companySummary, 'label', 'Last 30 days') }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="text-muted small">Win Amount Given</div><div class="fs-4 fw-semibold">{{ number_format((int) data_get($companySummary, 'total_win_amount', 0)) }}</div><div class="small text-muted mt-1">Payouts credited to users</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="text-muted small">Refunded</div><div class="fs-4 fw-semibold">{{ number_format((int) data_get($companySummary, 'refunded_amount', 0)) }}</div><div class="small text-muted mt-1">Refunded bets in same window</div></div></div></div>
+    @php $companyProfit = (int) data_get($companySummary, 'profit_amount', 0); @endphp
+    <div class="col-md-6 col-xl-3"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="text-muted small">Company Profit</div><div class="fs-4 fw-semibold {{ $companyProfit >= 0 ? 'text-success' : 'text-danger' }}">{{ number_format($companyProfit) }}</div><div class="small text-muted mt-1">Bet volume - payouts - refunds</div></div></div></div>
   </div>
 
   <div class="row g-4 mb-4">

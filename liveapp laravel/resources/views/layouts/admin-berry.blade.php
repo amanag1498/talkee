@@ -350,11 +350,6 @@
               </a>
             </li>
             <li class="pc-item">
-              <a href="{{ route('admin.wallets.index') }}" class="pc-link {{ request()->routeIs('admin.wallets.*') ? 'active' : '' }}">
-                <span class="pc-micon"><i class="ti ti-coins"></i></span><span class="pc-mtext">Wallets</span>
-              </a>
-            </li>
-            <li class="pc-item">
               <a href="{{ route('admin.levels.index') }}" class="pc-link {{ request()->routeIs('admin.levels.*') ? 'active' : '' }}">
                 <span class="pc-micon"><i class="ti ti-layers-linked"></i></span><span class="pc-mtext">Levels</span>
               </a>
@@ -403,15 +398,44 @@
               </a>
             </li>
             <li class="pc-item">
-              <a href="{{ route('admin.banners.index') }}" class="pc-link {{ request()->routeIs('admin.banners.*') ? 'active' : '' }}">
-                <span class="pc-micon"><i class="ti ti-photo"></i></span>
-                <span class="pc-mtext">Banners</span>
+              <a href="{{ route('admin.calls.index') }}" class="pc-link {{ request()->routeIs('admin.calls.*') ? 'active' : '' }}">
+                <span class="pc-micon"><i class="ti ti-phone"></i></span>
+                <span class="pc-mtext">Calls</span>
+              </a>
+            </li>
+
+            <li class="pc-item pc-caption">
+              <label>Games</label>
+              <i class="ti ti-device-gamepad-2"></i>
+            </li>
+            <li class="pc-item">
+              <a href="{{ route('admin.games.teen-patti.dashboard') }}" class="pc-link {{ request()->routeIs('admin.games.teen-patti.*') ? 'active' : '' }}">
+                <span class="pc-micon"><i class="ti ti-cards"></i></span>
+                <span class="pc-mtext">Teen Patti</span>
+              </a>
+            </li>
+            <li class="pc-item">
+              <a href="{{ route('admin.games.greedy.dashboard') }}" class="pc-link {{ request()->routeIs('admin.games.greedy.*') ? 'active' : '' }}">
+                <span class="pc-micon"><i class="ti ti-casino"></i></span>
+                <span class="pc-mtext">Greedy</span>
+              </a>
+            </li>
+            <li class="pc-item">
+              <a href="{{ route('admin.settings.games.edit') }}" class="pc-link {{ request()->routeIs('admin.settings.games.*') ? 'active' : '' }}">
+                <span class="pc-micon"><i class="ti ti-adjustments-horizontal"></i></span>
+                <span class="pc-mtext">Game Settings</span>
               </a>
             </li>
 
             <li class="pc-item pc-caption">
               <label>Monetization</label>
               <i class="ti ti-coins"></i>
+            </li>
+            <li class="pc-item">
+              <a href="{{ route('admin.wallets.index') }}" class="pc-link {{ request()->routeIs('admin.wallets.*') ? 'active' : '' }}">
+                <span class="pc-micon"><i class="ti ti-coins"></i></span>
+                <span class="pc-mtext">Wallets</span>
+              </a>
             </li>
             <li class="pc-item">
               <a href="{{ route('admin.subscription-plans.index') }}" class="pc-link {{ request()->routeIs('admin.subscription-plans.*') ? 'active' : '' }}">
@@ -441,6 +465,12 @@
               <a href="{{ route('admin.gifts.index') }}" class="pc-link {{ request()->routeIs('admin.gifts.*') ? 'active' : '' }}">
                 <span class="pc-micon"><i class="ti ti-gift"></i></span>
                 <span class="pc-mtext">Gifts</span>
+              </a>
+            </li>
+            <li class="pc-item">
+              <a href="{{ route('admin.banners.index') }}" class="pc-link {{ request()->routeIs('admin.banners.*') ? 'active' : '' }}">
+                <span class="pc-micon"><i class="ti ti-photo"></i></span>
+                <span class="pc-mtext">Banners</span>
               </a>
             </li>
 
@@ -505,12 +535,6 @@
               <a href="{{ route('admin.agency-payout-reports.index') }}" class="pc-link {{ request()->routeIs('admin.agency-payout-reports*') ? 'active' : '' }}">
                 <span class="pc-micon"><i class="ti ti-cash-banknote"></i></span>
                 <span class="pc-mtext">Agency Payouts</span>
-              </a>
-            </li>
-            <li class="pc-item">
-              <a href="{{ route('admin.calls.index') }}" class="pc-link {{ request()->routeIs('admin.calls.*') ? 'active' : '' }}">
-                <span class="pc-micon"><i class="ti ti-phone"></i></span>
-                <span class="pc-mtext">Calls</span>
               </a>
             </li>
             <li class="pc-item">
@@ -599,24 +623,6 @@
               <a href="{{ route('admin.settings.live-rooms.edit') }}" class="pc-link {{ request()->routeIs('admin.settings.live-rooms.*') ? 'active' : '' }}">
                 <span class="pc-micon"><i class="ti ti-users-plus"></i></span>
                 <span class="pc-mtext">Live Room Settings</span>
-              </a>
-            </li>
-            <li class="pc-item">
-              <a href="{{ route('admin.settings.games.edit') }}" class="pc-link {{ request()->routeIs('admin.settings.games.*') ? 'active' : '' }}">
-                <span class="pc-micon"><i class="ti ti-device-gamepad-2"></i></span>
-                <span class="pc-mtext">Game Settings</span>
-              </a>
-            </li>
-            <li class="pc-item">
-              <a href="{{ route('admin.games.teen-patti.dashboard') }}" class="pc-link {{ request()->routeIs('admin.games.teen-patti.*') ? 'active' : '' }}">
-                <span class="pc-micon"><i class="ti ti-cards"></i></span>
-                <span class="pc-mtext">Teen Patti</span>
-              </a>
-            </li>
-            <li class="pc-item">
-              <a href="{{ route('admin.games.greedy.dashboard') }}" class="pc-link {{ request()->routeIs('admin.games.greedy.*') ? 'active' : '' }}">
-                <span class="pc-micon"><i class="ti ti-casino"></i></span>
-                <span class="pc-mtext">Greedy</span>
               </a>
             </li>
           </ul>

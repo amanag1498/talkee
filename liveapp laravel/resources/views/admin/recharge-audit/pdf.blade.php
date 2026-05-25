@@ -11,7 +11,7 @@
     .cards { width: 100%; border-collapse: separate; border-spacing: 10px 0; margin: 16px 0 22px; }
     .cards td { border: 1px solid #dbe1ea; border-radius: 12px; padding: 12px; vertical-align: top; }
     .label { color: #6b7280; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
-    .value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+    .value { font-size: 18px; font-weight: 700; margin-top: 4px; }
     table.audit { width: 100%; border-collapse: collapse; }
     table.audit th, table.audit td { border: 1px solid #dbe1ea; padding: 8px; text-align: left; }
     table.audit th { background: #f5f7fb; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
@@ -37,8 +37,16 @@
         <div class="value">{{ number_format((int) ($summary->successful_orders ?? 0)) }}</div>
       </td>
       <td>
-        <div class="label">Recharge Value</div>
+        <div class="label">Gross Amount</div>
         <div class="value">Rs {{ number_format((float) ($summary->rupees_total ?? 0), 2) }}</div>
+      </td>
+      <td>
+        <div class="label">Taxable Amount</div>
+        <div class="value">Rs {{ number_format((float) ($summary->taxable_total ?? 0), 2) }}</div>
+      </td>
+      <td>
+        <div class="label">GST @ 18%</div>
+        <div class="value">Rs {{ number_format((float) ($summary->gst_total ?? 0), 2) }}</div>
       </td>
       <td>
         <div class="label">Coins</div>
@@ -52,16 +60,20 @@
       <tr>
         <th>Order</th>
         <th>User</th>
-        <th>Plan</th>
-        <th>Status</th>
-        <th>Gateway</th>
-        <th>Amount</th>
+        <th>Gross Amount</th>
+        <th>Taxable Amount</th>
+        <th>GST (18%)</th>
         <th>Coins</th>
         <th>Created</th>
       </tr>
     </thead>
     <tbody>
       @forelse($orders as $order)
+        @php
+          $grossAmount = (float) $order->amount_rupees;
+          $taxableAmount = round($grossAmount / 1.18, 2);
+          $gstAmount = round($grossAmount - $taxableAmount, 2);
+        @endphp
         <tr>
           <td>
             <div>{{ $order->order_id }}</div>
@@ -71,16 +83,15 @@
             <div>{{ $order->user?->name ?? 'User #'.$order->user_id }}</div>
             <div class="muted">{{ $order->user?->email ?? '—' }}</div>
           </td>
-          <td>{{ $order->rechargePlan?->title ?? 'Plan #'.$order->recharge_plan_id }}</td>
-          <td class="status">{{ ucfirst($order->status) }}</td>
-          <td>{{ $order->gateway ?: 'manual' }}</td>
-          <td>Rs {{ number_format((float) $order->amount_rupees, 2) }}</td>
+          <td>Rs {{ number_format($grossAmount, 2) }}</td>
+          <td>Rs {{ number_format($taxableAmount, 2) }}</td>
+          <td>Rs {{ number_format($gstAmount, 2) }}</td>
           <td>{{ number_format((int) $order->total_coins) }}</td>
           <td>{{ $order->created_at?->format('d M Y, h:i A') }}</td>
         </tr>
       @empty
         <tr>
-          <td colspan="8" class="muted">No recharge orders found for this period.</td>
+          <td colspan="7" class="muted">No recharge orders found for this period.</td>
         </tr>
       @endforelse
     </tbody>

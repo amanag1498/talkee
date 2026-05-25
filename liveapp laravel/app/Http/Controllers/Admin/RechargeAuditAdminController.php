@@ -42,6 +42,8 @@ class RechargeAuditAdminController extends Controller
             ->selectRaw("SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_orders")
             ->selectRaw("SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_orders")
             ->selectRaw('SUM(amount_rupees) as rupees_total')
+            ->selectRaw('ROUND(SUM(amount_rupees) / 1.18, 2) as taxable_total')
+            ->selectRaw('ROUND(SUM(amount_rupees) - (SUM(amount_rupees) / 1.18), 2) as gst_total')
             ->selectRaw('SUM(total_coins) as coins_total')
             ->first();
 

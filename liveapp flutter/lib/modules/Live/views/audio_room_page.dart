@@ -14,6 +14,7 @@ import '../../../app/widgets/keep_awake_scope.dart';
 import '../../../services/app_settings_service.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/live_rooms_ws_service.dart';
+import '../../games/teen_patti/widgets/teen_patti_game_panel.dart';
 import '../../profile/controllers/host_follow_controller.dart';
 import '../../profile/widgets/public_profile_card_sheet.dart';
 import '../../wallet/services/wallet_api.dart';
@@ -65,6 +66,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
   bool _micBusy = false;
   bool _seatActionBusy = false;
   bool _giftBusy = false;
+  bool _gamesSheetOpen = false;
   bool _speakerTransitionBusy = false;
   String? _error;
   String? _seatError;
@@ -2999,6 +3001,15 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     final busy = _seatActionBusy || _giftBusy;
     if (_isHost) {
       return <Widget>[
+        if (_showGamesInRoom)
+          _ChatInputActionPill(
+            icon: Icons.casino_rounded,
+            tokens: tokens,
+            accent: const Color(0xFFFFD966),
+            onTap: _openGamesSheet,
+            iconOnly: true,
+            tooltip: 'Games',
+          ),
         KeyedSubtree(
           key: _giftAnchors.keyFor(GiftAnchorRegistry.giftButton),
           child: _ChatInputActionPill(
@@ -3050,6 +3061,18 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     ];
 
     if (_isSpeaker) {
+      if (_showGamesInRoom) {
+        actions.add(
+          _ChatInputActionPill(
+            icon: Icons.casino_rounded,
+            tokens: tokens,
+            accent: const Color(0xFFFFD966),
+            onTap: _openGamesSheet,
+            iconOnly: true,
+            tooltip: 'Games',
+          ),
+        );
+      }
       actions.add(
         _ChatInputActionPill(
           icon: _mutedByHost
@@ -3099,6 +3122,49 @@ class _AudioRoomPageState extends State<AudioRoomPage>
       ),
     );
     return actions;
+  }
+
+  List<Widget> _buildChatInputActions() {
+    if (_isHost || _isSpeaker) {
+      return const <Widget>[];
+    }
+
+    final busy = _seatActionBusy || _giftBusy;
+    return <Widget>[
+      if (_showGamesInRoom)
+        _ChatInputActionPill(
+          icon: Icons.casino_rounded,
+          tokens: _tokens,
+          accent: const Color(0xFFFFD966),
+          onTap: _openGamesSheet,
+          label: 'Games',
+          iconOnly: false,
+          tooltip: 'Games',
+        ),
+    ];
+  }
+
+  bool get _showGamesInRoom {
+    final settings = Get.find<AppSettingsService>();
+    return (settings.teenPattiEnabled || settings.greedyEnabled) &&
+        settings.videoRoomGamesEnabled;
+  }
+
+  Future<void> _openGamesSheet() async {
+    if (_gamesSheetOpen || !_showGamesInRoom) {
+      return;
+    }
+
+    setState(() => _gamesSheetOpen = true);
+    await showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: false,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const TeenPattiGamesSheet(),
+    );
+    if (!mounted) return;
+    setState(() => _gamesSheetOpen = false);
   }
 
   @override
@@ -3288,6 +3354,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
                     bottomOffset: isCompactDevice ? 12 : 18,
                     maxHeightFactor: isCompactDevice ? 0.30 : 0.40,
                     showEmptyPrompt: false,
+                    inputActions: _buildChatInputActions(),
                     trailingActions: _buildChatTrailingActions(),
                     showSendButton: false,
                     onSend: _sendChatMessage,
