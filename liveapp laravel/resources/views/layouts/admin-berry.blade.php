@@ -607,6 +607,12 @@
                 <span class="pc-mtext">Teen Patti</span>
               </a>
             </li>
+            <li class="pc-item">
+              <a href="{{ route('admin.games.greedy.dashboard') }}" class="pc-link {{ request()->routeIs('admin.games.greedy.*') ? 'active' : '' }}">
+                <span class="pc-micon"><i class="ti ti-casino"></i></span>
+                <span class="pc-mtext">Greedy</span>
+              </a>
+            </li>
           </ul>
 
           <div class="pc-navbar-card bg-primary rounded mt-3">

@@ -41,7 +41,7 @@
         </div>
         <div class="col-lg-4">
           <div class="admin-page-actions">
-            <a href="{{ route('admin.settings.games.edit') }}" class="btn btn-light border">Game Settings</a>
+            <a href="{{ route('admin.settings.games.edit', ['game' => 'teen_patti']) }}" class="btn btn-light border">Game Settings</a>
             <a href="{{ route('admin.games.teen-patti.rounds') }}" class="btn btn-light border">Rounds</a>
             <a href="{{ route('admin.games.teen-patti.bets') }}" class="btn btn-light border">Bets</a>
             <a href="{{ route('admin.games.teen-patti.payouts') }}" class="btn btn-light border">Payouts</a>
