@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\TeenPattiRound;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class TeenPattiBroadcaster
 {
@@ -11,11 +13,18 @@ class TeenPattiBroadcaster
 
     public static function broadcast(string $event, array $payload = []): void
     {
-        Redis::publish(self::CHANNEL, json_encode([
-            'event' => $event,
-            'at' => now()->toIso8601String(),
-            ...$payload,
-        ]));
+        try {
+            Redis::publish(self::CHANNEL, json_encode([
+                'event' => $event,
+                'at' => now()->toIso8601String(),
+                ...$payload,
+            ]));
+        } catch (Throwable $e) {
+            Log::warning('Teen Patti broadcast failed', [
+                'event' => $event,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     public static function roundSnapshot(TeenPattiRound $round, array $snapshot): void

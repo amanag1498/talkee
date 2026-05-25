@@ -228,6 +228,13 @@ class AppSettingsService
             'default' => true,
             'hint' => 'Controls whether the Games entry appears in the video room action strip.',
         ],
+        'games.teen_patti.fake_bets_enabled' => [
+            'label' => 'Enable Fake Bets Display',
+            'type' => 'boolean',
+            'group' => 'availability',
+            'default' => false,
+            'hint' => 'Adds virtual pot volume for player-facing game screens only. These bets are not stored or settled.',
+        ],
         'games.teen_patti.min_bet' => [
             'label' => 'Minimum Bet',
             'type' => 'integer',

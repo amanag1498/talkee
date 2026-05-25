@@ -90,6 +90,8 @@ class TeenPattiRound {
     required this.startsAt,
     required this.locksAt,
     required this.endsAt,
+    required this.settledAt,
+    required this.displayUntil,
     required this.winningPot,
     required this.winningHand,
     required this.losingHandOne,
@@ -109,6 +111,8 @@ class TeenPattiRound {
   final DateTime? startsAt;
   final DateTime? locksAt;
   final DateTime? endsAt;
+  final DateTime? settledAt;
+  final DateTime? displayUntil;
   final String? winningPot;
   final List<String> winningHand;
   final List<String> losingHandOne;
@@ -141,6 +145,8 @@ class TeenPattiRound {
       startsAt: toDate(json['starts_at']),
       locksAt: toDate(json['locks_at']),
       endsAt: toDate(json['ends_at']),
+      settledAt: toDate(json['settled_at']),
+      displayUntil: toDate(json['display_until']),
       winningPot: json['winning_pot']?.toString(),
       winningHand: toCards(json['winning_hand']),
       losingHandOne: toCards(json['losing_hand_one']),

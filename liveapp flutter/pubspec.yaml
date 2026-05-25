@@ -120,7 +120,4 @@ flutter:
   # see https://flutter.dev/to/font-from-package
   assets:
     - lib/modules/home/views/
-    - assets/games/teen_patti/background_teen_patti.jpg
-    - assets/games/teen_patti/logo_teenpatti.png
-    - assets/games/teen_patti/card_back_1.jpeg
-    - assets/games/teen_patti/cards/
+    - assets/games/teen_patti/

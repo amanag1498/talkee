@@ -25,6 +25,7 @@ class TeenPattiService
         return [
             'enabled' => $this->enabled(),
             'visible_in_video_room_strip' => $this->visibleInVideoRoomStrip(),
+            'fake_bets_enabled' => $this->fakeBetsEnabled(),
             'min_bet' => $this->minBet(),
             'max_bet' => $this->maxBet(),
             'round_duration_seconds' => $this->roundDurationSeconds(),
@@ -45,6 +46,11 @@ class TeenPattiService
     {
         return (bool) config('games.teen_patti.visible_in_video_room_strip', true)
             && (bool) config('app_features.platform.android.video_room_games_enabled', true);
+    }
+
+    public function fakeBetsEnabled(): bool
+    {
+        return (bool) config('games.teen_patti.fake_bets_enabled', false);
     }
 
     public function minBet(): int
@@ -205,9 +211,9 @@ class TeenPattiService
                 'type' => 'debit',
                 'coins' => $amount,
                 'category' => 'game_bet_debit',
-                'reference' => 'teen_patti_round:' . $lockedRound->id,
-                'reference_type' => 'teen_patti_round',
-                'reference_id' => $lockedRound->id,
+                'reference' => 'teen_patti_bet:' . $bet->id,
+                'reference_type' => 'teen_patti_bet',
+                'reference_id' => $bet->id,
                 'description' => "Teen Patti bet on pot {$pot}",
                 'balance_before' => $balanceBefore,
                 'balance_after' => $balanceAfter,
@@ -394,9 +400,9 @@ class TeenPattiService
                 'type' => 'credit',
                 'coins' => $refundCoins,
                 'category' => 'game_refund_credit',
-                'reference' => 'teen_patti_round:' . $lockedBet->teen_patti_round_id,
-                'reference_type' => 'teen_patti_round',
-                'reference_id' => $lockedBet->teen_patti_round_id,
+                'reference' => 'teen_patti_bet:' . $lockedBet->id,
+                'reference_type' => 'teen_patti_bet',
+                'reference_id' => $lockedBet->id,
                 'description' => 'Teen Patti bet refund',
                 'balance_before' => $balanceBefore,
                 'balance_after' => $balanceAfter,
@@ -639,6 +645,19 @@ class TeenPattiService
             ? CarbonImmutable::parse($round->locks_at)
             : $this->displayUntil($round);
         $countdownSeconds = max(0, $now->diffInSeconds($countdownTarget, false));
+        $realTotals = [
+            'A' => (int) $round->total_bet_a,
+            'B' => (int) $round->total_bet_b,
+            'C' => (int) $round->total_bet_c,
+        ];
+        $fakeTotals = $this->fakeBetsEnabled()
+            ? $this->fakeTotalsForRound($round, $phase)
+            : ['A' => 0, 'B' => 0, 'C' => 0];
+        $displayTotals = [
+            'A' => $realTotals['A'] + $fakeTotals['A'],
+            'B' => $realTotals['B'] + $fakeTotals['B'],
+            'C' => $realTotals['C'] + $fakeTotals['C'],
+        ];
 
         return [
             'id' => $round->id,
@@ -655,11 +674,9 @@ class TeenPattiService
             'losing_hand_one' => $round->losing_hand_one ?? [],
             'losing_hand_two' => $round->losing_hand_two ?? [],
             'countdown_seconds' => $countdownSeconds,
-            'totals' => [
-                'A' => (int) $round->total_bet_a,
-                'B' => (int) $round->total_bet_b,
-                'C' => (int) $round->total_bet_c,
-            ],
+            'totals' => $displayTotals,
+            'real_totals' => $realTotals,
+            'fake_totals' => $fakeTotals,
             'total_bets_count' => (int) $round->total_bets_count,
             'participant_count' => (int) $round->bets->pluck('user_id')->unique()->count(),
             'payout_multiplier' => $this->payoutMultiplier(),
@@ -704,9 +721,9 @@ class TeenPattiService
             'type' => 'credit',
             'coins' => $payoutCoins,
             'category' => 'game_payout_credit',
-            'reference' => 'teen_patti_round:' . $round->id,
-            'reference_type' => 'teen_patti_round',
-            'reference_id' => $round->id,
+            'reference' => 'teen_patti_bet:' . $bet->id,
+            'reference_type' => 'teen_patti_bet',
+            'reference_id' => $bet->id,
             'description' => "Teen Patti payout for pot {$winner}",
             'balance_before' => $balanceBefore,
             'balance_after' => $balanceAfter,
@@ -754,6 +771,27 @@ class TeenPattiService
             'losing_hand_one' => $this->drawCards(3),
             'losing_hand_two' => $this->drawCards(3),
         ];
+    }
+
+    private function fakeTotalsForRound(TeenPattiRound $round, string $phase): array
+    {
+        $seed = sprintf('%s|%s|%s', $round->round_key, $round->starts_at?->timestamp ?? 0, $phase);
+        $maxBet = max($this->minBet(), $this->maxBet());
+        $band = max($this->minBet(), (int) floor($maxBet * 1.8));
+
+        return [
+            'A' => $this->fakePotValue($seed . '|A', $band),
+            'B' => $this->fakePotValue($seed . '|B', $band),
+            'C' => $this->fakePotValue($seed . '|C', $band),
+        ];
+    }
+
+    private function fakePotValue(string $seed, int $band): int
+    {
+        $hash = abs(crc32($seed));
+        $multiplier = 3 + ($hash % 9);
+        $step = max($this->minBet(), (int) floor($band / 6));
+        return $multiplier * $step;
     }
 
     private function drawCards(int $count): array
