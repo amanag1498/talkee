@@ -23,7 +23,7 @@
         </div>
         <div class="col-lg-4">
           <div class="admin-page-actions">
-            <a href="{{ route('admin.games.teen-patti') }}" class="btn btn-light border">Back to Dashboard</a>
+            <a href="{{ route('admin.games.teen-patti.dashboard') }}" class="btn btn-light border">Back to Dashboard</a>
             <form method="post" action="{{ route('admin.games.teen-patti.tick') }}">
               @csrf
               <button class="btn btn-primary"><i class="ti ti-player-play me-1"></i> Tick Current Round</button>

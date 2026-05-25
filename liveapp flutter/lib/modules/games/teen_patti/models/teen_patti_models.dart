@@ -12,11 +12,19 @@ class TeenPattiSnapshot {
   final List<TeenPattiRound> history;
 
   factory TeenPattiSnapshot.fromJson(Map<String, dynamic> json) {
+    int toInt(dynamic value, int fallback) {
+      if (value is int) return value;
+      if (value is double) return value.round();
+      return int.tryParse(value?.toString() ?? '') ??
+          double.tryParse(value?.toString() ?? '')?.round() ??
+          fallback;
+    }
+
     return TeenPattiSnapshot(
       settings: TeenPattiSettings.fromJson(
         Map<String, dynamic>.from(json['settings'] as Map? ?? const {}),
       ),
-      walletBalance: int.tryParse('${json['wallet_balance'] ?? 0}') ?? 0,
+      walletBalance: toInt(json['wallet_balance'], 0),
       round: TeenPattiRound.fromJson(
         Map<String, dynamic>.from(json['round'] as Map? ?? const {}),
       ),
@@ -33,6 +41,7 @@ class TeenPattiSettings {
   const TeenPattiSettings({
     required this.enabled,
     required this.visibleInVideoRoomStrip,
+    required this.fakeBetsEnabled,
     required this.minBet,
     required this.maxBet,
     required this.roundDurationSeconds,
@@ -44,6 +53,7 @@ class TeenPattiSettings {
 
   final bool enabled;
   final bool visibleInVideoRoomStrip;
+  final bool fakeBetsEnabled;
   final int minBet;
   final int maxBet;
   final int roundDurationSeconds;
@@ -68,6 +78,10 @@ class TeenPattiSettings {
       visibleInVideoRoomStrip: toBool(
         json['visible_in_video_room_strip'],
         fallback: true,
+      ),
+      fakeBetsEnabled: toBool(
+        json['fake_bets_enabled'],
+        fallback: false,
       ),
       minBet: toInt(json['min_bet'], 10),
       maxBet: toInt(json['max_bet'], 1000),
@@ -98,6 +112,8 @@ class TeenPattiRound {
     required this.losingHandTwo,
     required this.countdownSeconds,
     required this.totals,
+    required this.realTotals,
+    required this.fakeTotals,
     required this.totalBetsCount,
     required this.participantCount,
     required this.payoutMultiplier,
@@ -119,14 +135,21 @@ class TeenPattiRound {
   final List<String> losingHandTwo;
   final int countdownSeconds;
   final Map<String, int> totals;
+  final Map<String, int> realTotals;
+  final Map<String, int> fakeTotals;
   final int totalBetsCount;
   final int participantCount;
   final int payoutMultiplier;
   final List<TeenPattiBet> viewerBets;
 
   factory TeenPattiRound.fromJson(Map<String, dynamic> json) {
-    int toInt(dynamic value, int fallback) =>
-        int.tryParse(value?.toString() ?? '') ?? fallback;
+    int toInt(dynamic value, int fallback) {
+      if (value is int) return value;
+      if (value is double) return value.round();
+      return int.tryParse(value?.toString() ?? '') ??
+          double.tryParse(value?.toString() ?? '')?.round() ??
+          fallback;
+    }
     DateTime? toDate(dynamic value) =>
         value == null ? null : DateTime.tryParse(value.toString());
     List<String> toCards(dynamic raw) =>
@@ -136,6 +159,8 @@ class TeenPattiRound {
             .toList();
 
     final totalsJson = Map<String, dynamic>.from(json['totals'] as Map? ?? const {});
+    final realTotalsJson = Map<String, dynamic>.from(json['real_totals'] as Map? ?? const {});
+    final fakeTotalsJson = Map<String, dynamic>.from(json['fake_totals'] as Map? ?? const {});
 
     return TeenPattiRound(
       id: toInt(json['id'], 0),
@@ -156,6 +181,16 @@ class TeenPattiRound {
         'A': toInt(totalsJson['A'], 0),
         'B': toInt(totalsJson['B'], 0),
         'C': toInt(totalsJson['C'], 0),
+      },
+      realTotals: <String, int>{
+        'A': toInt(realTotalsJson['A'], toInt(totalsJson['A'], 0)),
+        'B': toInt(realTotalsJson['B'], toInt(totalsJson['B'], 0)),
+        'C': toInt(realTotalsJson['C'], toInt(totalsJson['C'], 0)),
+      },
+      fakeTotals: <String, int>{
+        'A': toInt(fakeTotalsJson['A'], 0),
+        'B': toInt(fakeTotalsJson['B'], 0),
+        'C': toInt(fakeTotalsJson['C'], 0),
       },
       totalBetsCount: toInt(json['total_bets_count'], 0),
       participantCount: toInt(json['participant_count'], 0),

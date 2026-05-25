@@ -22,7 +22,7 @@
         </div>
         <div class="col-lg-4">
           <div class="admin-page-actions">
-            <a href="{{ route('admin.games.teen-patti') }}" class="btn btn-light border">Back to Dashboard</a>
+            <a href="{{ route('admin.games.teen-patti.dashboard') }}" class="btn btn-light border">Back to Dashboard</a>
           </div>
         </div>
       </div>

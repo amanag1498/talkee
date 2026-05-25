@@ -217,6 +217,10 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
   int _selectedChip = 50;
   int _selectedPotIndex = -1;
   int? _shownResultRoundId;
+  String? _activeFakeRoundKey;
+  Map<String, int> _displayTotals = const {'A': 0, 'B': 0, 'C': 0};
+  List<_ScheduledFakeBet> _scheduledFakeBets = const [];
+  Set<String> _appliedFakeBetIds = <String>{};
   List<_FlyingGem> _flyingGems = const [];
   DateTime _now = DateTime.now();
   DateTime? _lastAutoRefreshAt;
@@ -243,9 +247,10 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
     if (token == null || token.isEmpty) return;
 
     _snapshotSub?.cancel();
-    _ticker ??= Timer.periodic(const Duration(seconds: 1), (_) {
+    _ticker ??= Timer.periodic(const Duration(milliseconds: 300), (_) {
       if (!mounted) return;
       setState(() => _now = DateTime.now());
+      _processDueFakeBets();
       _maybeRefreshForPhaseBoundary();
     });
 
@@ -255,7 +260,20 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
               ? Map<String, dynamic>.from(payload['data'] as Map)
               : Map<String, dynamic>.from(payload);
       if (data.isEmpty || !mounted) return;
-      _applySnapshot(TeenPattiSnapshot.fromJson(data));
+      final next = TeenPattiSnapshot.fromJson(data);
+      final current = _snapshot;
+      if (current != null && !data.containsKey('wallet_balance')) {
+        _applySnapshot(
+          TeenPattiSnapshot(
+            settings: next.settings,
+            walletBalance: current.walletBalance,
+            round: next.round,
+            history: next.history,
+          ),
+        );
+        return;
+      }
+      _applySnapshot(next);
     });
     _eventSub?.cancel();
     _eventSub = _socket.eventStream.listen((payload) {
@@ -393,16 +411,172 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
       }
     });
 
+    _syncDisplayTotals(next);
     _animateRemoteBetDeltas(previous, next.round);
     _showResultDialogIfNeeded(next.round);
+  }
+
+  void _syncDisplayTotals(TeenPattiSnapshot snapshot) {
+    final round = snapshot.round;
+    final isNewRound = _activeFakeRoundKey != round.roundKey;
+    final nextFakeEvents =
+        snapshot.settings.fakeBetsEnabled
+            ? _buildFakeBetSchedule(round)
+            : const <_ScheduledFakeBet>[];
+
+    final appliedIds = <String>{
+      if (!isNewRound) ..._appliedFakeBetIds,
+      for (final event in nextFakeEvents)
+        if (!event.dueAt.isAfter(_now)) event.id,
+    };
+
+    final appliedFakeByPot = <String, int>{'A': 0, 'B': 0, 'C': 0};
+    for (final event in nextFakeEvents) {
+      if (!appliedIds.contains(event.id)) continue;
+      appliedFakeByPot[event.pot] = (appliedFakeByPot[event.pot] ?? 0) + event.amount;
+    }
+
+    final nextDisplayTotals =
+        snapshot.settings.fakeBetsEnabled
+            ? <String, int>{
+              'A': (round.realTotals['A'] ?? 0) + (appliedFakeByPot['A'] ?? 0),
+              'B': (round.realTotals['B'] ?? 0) + (appliedFakeByPot['B'] ?? 0),
+              'C': (round.realTotals['C'] ?? 0) + (appliedFakeByPot['C'] ?? 0),
+            }
+            : <String, int>{
+              'A': round.totals['A'] ?? 0,
+              'B': round.totals['B'] ?? 0,
+              'C': round.totals['C'] ?? 0,
+            };
+
+    setState(() {
+      _activeFakeRoundKey = round.roundKey;
+      _scheduledFakeBets = nextFakeEvents;
+      _appliedFakeBetIds = appliedIds;
+      _displayTotals = nextDisplayTotals;
+    });
+  }
+
+  List<_ScheduledFakeBet> _buildFakeBetSchedule(TeenPattiRound round) {
+    final startsAt = round.startsAt;
+    final locksAt = round.locksAt;
+    if (startsAt == null || locksAt == null || !locksAt.isAfter(startsAt)) {
+      return const [];
+    }
+
+    final durationMs = max(1000, locksAt.difference(startsAt).inMilliseconds);
+    final scheduled = <_ScheduledFakeBet>[];
+    for (final pot in const ['A', 'B', 'C']) {
+      var remaining = round.fakeTotals[pot] ?? 0;
+      if (remaining <= 0) continue;
+
+      final seededRandom = Random(
+        Object.hash(round.roundKey, pot, remaining, durationMs),
+      );
+      var index = 0;
+      while (remaining > 0) {
+        final choices = _chipOptions.where((chip) => chip <= remaining).toList(growable: false);
+        final amount =
+            choices.isEmpty
+                ? remaining
+                : choices[seededRandom.nextInt(choices.length)];
+        remaining -= amount;
+
+        final minOffset = min(700, max(0, durationMs - 200));
+        final maxOffset = max(minOffset + 1, durationMs - 700);
+        final offsetMs =
+            maxOffset <= minOffset
+                ? minOffset
+                : minOffset + seededRandom.nextInt(maxOffset - minOffset);
+
+        scheduled.add(
+          _ScheduledFakeBet(
+            id: '${round.roundKey}-$pot-$index-$amount',
+            pot: pot,
+            amount: amount,
+            dueAt: startsAt.add(Duration(milliseconds: offsetMs)),
+          ),
+        );
+        index += 1;
+      }
+    }
+
+    scheduled.sort((a, b) => a.dueAt.compareTo(b.dueAt));
+    return scheduled;
+  }
+
+  void _processDueFakeBets() {
+    final snapshot = _snapshot;
+    if (snapshot == null || !snapshot.settings.fakeBetsEnabled) return;
+    if (_scheduledFakeBets.isEmpty) return;
+
+    final dueEvents =
+        _scheduledFakeBets
+            .where(
+              (event) =>
+                  !_appliedFakeBetIds.contains(event.id) &&
+                  !event.dueAt.isAfter(_now),
+            )
+            .toList(growable: false);
+    if (dueEvents.isEmpty) return;
+
+    final nextDisplay = Map<String, int>.from(_displayTotals);
+    final nextApplied = <String>{..._appliedFakeBetIds};
+    for (final event in dueEvents) {
+      nextApplied.add(event.id);
+      nextDisplay[event.pot] = (nextDisplay[event.pot] ?? 0) + event.amount;
+    }
+
+    setState(() {
+      _displayTotals = nextDisplay;
+      _appliedFakeBetIds = nextApplied;
+    });
+
+    for (final event in dueEvents) {
+      _launchFakeBetAnimation(event);
+    }
+  }
+
+  void _launchFakeBetAnimation(_ScheduledFakeBet event) {
+    final panelBox = _panelKey.currentContext?.findRenderObject() as RenderBox?;
+    if (panelBox == null) return;
+    final rowBox = _chipRowKey.currentContext?.findRenderObject() as RenderBox?;
+    final potIndex = const ['A', 'B', 'C'].indexOf(event.pot);
+    final fallbackLocal = Offset(
+      panelBox.size.width * (.28 + (_random.nextDouble() * .44)),
+      panelBox.size.height * .82,
+    );
+    final baseLocal =
+        rowBox == null
+            ? fallbackLocal
+            : panelBox.globalToLocal(
+              rowBox.localToGlobal(
+                Offset(
+                  rowBox.size.width * (.20 + (_random.nextDouble() * .60)),
+                  rowBox.size.height * .55,
+                ),
+              ),
+            );
+    final startGlobal = panelBox.localToGlobal(
+      Offset(
+        baseLocal.dx + ((_random.nextDouble() * 28) - 14),
+        baseLocal.dy + ((_random.nextDouble() * 18) - 9),
+      ),
+    );
+
+    _launchFlyingGem(
+      imagePath: _assetForCoinAmount(event.amount),
+      potIndex: potIndex,
+      startGlobalPosition: startGlobal,
+    );
   }
 
   void _animateRemoteBetDeltas(TeenPattiRound? previous, TeenPattiRound next) {
     if (!mounted || previous == null) return;
     for (var index = 0; index < 3; index++) {
       final pot = ['A', 'B', 'C'][index];
-      final oldTotal = previous.totals[pot] ?? 0;
-      final newTotal = next.totals[pot] ?? 0;
+      final oldTotal = previous.realTotals[pot] ?? 0;
+      final newTotal = next.realTotals[pot] ?? 0;
       if (newTotal <= oldTotal) continue;
       final delta = newTotal - oldTotal;
       final imagePath = _assetForCoinAmount(delta);
@@ -582,7 +756,7 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
                       pot: pot,
                       width: cardWidth,
                       height: cardHeight,
-                      potCoins: round.totals[pot] ?? 0,
+                      potCoins: _displayTotals[pot] ?? 0,
                       myCoins: _myPotCoins(round, pot),
                       cards: _cardsForPot(round, pot),
                       selected: _selectedPotIndex == index,
@@ -604,62 +778,36 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel> {
             const SizedBox(height: 16),
             _RecentWinnersStrip(history: snapshot.history.take(5).toList()),
             const SizedBox(height: 18),
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Place Your Bet',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                _CoinBalancePill(balance: snapshot.walletBalance),
-              ],
+            _BettingConsole(
+              chipRowKey: _chipRowKey,
+              walletBalance: snapshot.walletBalance,
+              selectedPot:
+                  _selectedPotIndex == -1 ? null : ['A', 'B', 'C'][_selectedPotIndex],
+              selectedChip: _selectedChip,
+              phase: round.phase,
+              minBet: snapshot.settings.minBet,
+              maxBet: snapshot.settings.maxBet,
+              placingBet: _placingBet,
+              chipOptions: _chipOptions,
+              chipAssets: _chipAssets,
+              chipKeys: _chipKeys,
+              onTapChip: (chip, details) {
+                final enabled =
+                    chip >= snapshot.settings.minBet &&
+                    chip <= snapshot.settings.maxBet &&
+                    round.phase == 'betting';
+                if (!enabled) return;
+                setState(() => _selectedChip = chip);
+                if (_selectedPotIndex != -1) {
+                  _placeBet(
+                    ['A', 'B', 'C'][_selectedPotIndex],
+                    imagePath: _chipAssets[chip]!,
+                    startGlobalPosition: details.globalPosition,
+                  );
+                }
+              },
             ),
-            const SizedBox(height: 8),
-            Text(
-              _selectedPotIndex == -1
-                  ? 'Please select the pot to place bet'
-                  : 'Selected pot ${['A', 'B', 'C'][_selectedPotIndex]}',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: .82),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              key: _chipRowKey,
-              children:
-                  _chipOptions.map((chip) {
-                    final enabled =
-                        chip >= snapshot.settings.minBet &&
-                        chip <= snapshot.settings.maxBet &&
-                        round.phase == 'betting';
-                    return _BetGemButton(
-                      chipKey: _chipKeys[chip],
-                      value: chip,
-                      imagePath: _chipAssets[chip]!,
-                      active: chip == _selectedChip,
-                      enabled: enabled && !_placingBet,
-                      onTapDown: (details) {
-                        if (!enabled) return;
-                        setState(() => _selectedChip = chip);
-                        if (_selectedPotIndex != -1) {
-                          _placeBet(
-                            ['A', 'B', 'C'][_selectedPotIndex],
-                            imagePath: _chipAssets[chip]!,
-                            startGlobalPosition: details.globalPosition,
-                          );
-                        }
-                      },
-                    );
-                  }).toList(),
-            ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             _PhaseBanner(
               phase: round.phase,
               winningPot: round.winningPot,
@@ -825,21 +973,43 @@ class _TeenPattiHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 136,
+      height: 152,
       child: Column(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Stack(
+            alignment: Alignment.center,
             children: [
-              const Icon(Icons.help_outline, color: Colors.white, size: 22),
+              Row(
+                children: [
+                  const SizedBox(
+                    width: 40,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Icon(Icons.help_outline, color: Colors.white, size: 22),
+                    ),
+                  ),
+                  const Spacer(),
+                  _CoinBalancePill(balance: walletBalance, compact: true),
+                ],
+              ),
               Container(
+                constraints: const BoxConstraints(minWidth: 112),
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
                 decoration: BoxDecoration(
-                  color: Colors.redAccent.withValues(alpha: .86),
-                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.redAccent.withValues(alpha: .9),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white24),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 10,
+                      offset: Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: Text(
                   '00:${countdownSeconds.toString().padLeft(2, '0')}s',
+                  textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 17,
@@ -847,18 +1017,19 @@ class _TeenPattiHeader extends StatelessWidget {
                   ),
                 ),
               ),
-              _CoinBalancePill(balance: walletBalance, compact: true),
             ],
           ),
+          const SizedBox(height: 10),
           Expanded(
             child: Center(
               child: Image.asset(
                 'assets/games/teen_patti/logo_teenpatti.png',
-                width: MediaQuery.of(context).size.width * .58,
+                width: MediaQuery.of(context).size.width * .54,
                 fit: BoxFit.contain,
               ),
             ),
           ),
+          const SizedBox(height: 4),
           Text(
             gameStateLabel,
             style: const TextStyle(
@@ -947,28 +1118,74 @@ class _PhaseBanner extends StatelessWidget {
       'betting' => 'Betting Open',
       'locked' => 'Bets Locked',
       'result' => winningPot == null ? 'Result Ready' : 'Winner: Pot $winningPot',
+      'settling' => 'Winner Calculation Running',
+      'restarting' => 'Next Round Starting',
       'cancelled' => 'Round Cancelled',
       _ => 'Teen Patti',
     };
+    final subtitle = switch (phase) {
+      'betting' => 'Select a pot first, then tap a gem to place your bet.',
+      'locked' => 'Current round is frozen. Watch the result and wait for the next deal.',
+      'settling' => 'All bets are locked. Result animation will appear shortly.',
+      'result' => winningPot == null ? 'Result is ready to broadcast.' : 'Pot $winningPot has won this round.',
+      'restarting' => 'Board is preparing the next round.',
+      'cancelled' => 'This round was cancelled. Accepted bets should be refunded.',
+      _ => 'Teen Patti is active in this room.',
+    };
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: .08),
-        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          colors: [
+            Colors.white.withValues(alpha: .10),
+            Colors.white.withValues(alpha: .04),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white12),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.bolt_rounded, color: Color(0xFFFFD966)),
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFD966).withValues(alpha: .14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.bolt_rounded, color: Color(0xFFFFD966)),
+          ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              error?.isNotEmpty == true ? '$title • $error' : title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  error?.isNotEmpty == true ? error! : subtitle,
+                  style: TextStyle(
+                    color:
+                        error?.isNotEmpty == true
+                            ? const Color(0xFFFFB4B4)
+                            : Colors.white70,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -985,39 +1202,99 @@ class _RecentWinnersStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
       decoration: BoxDecoration(
-        color: Colors.deepPurple.shade800.withValues(alpha: .8),
-        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          colors: [
+            Colors.deepPurple.shade900.withValues(alpha: .92),
+            const Color(0xFF251236).withValues(alpha: .92),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white10),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 14,
+            offset: Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12),
-            child: Text(
-              'Last 5 Winners',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFFFD54F).withValues(alpha: .18),
+                ),
+                child: const Icon(
+                  Icons.emoji_events_rounded,
+                  color: Color(0xFFFFD54F),
+                  size: 18,
+                ),
               ),
-            ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Last 5 Winners',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Recent winning pots and round finishes',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                '${history.length}/5',
+                style: const TextStyle(
+                  color: Colors.white54,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: history.isEmpty
                   ? const [
-                      _WinnerBadge(label: 'No results yet', winnerPot: null),
+                      _WinnerBadge(
+                        label: 'WAIT',
+                        winnerPot: null,
+                        subtitle: 'No results yet',
+                      ),
                     ]
                   : history
                       .map(
                         (round) => _WinnerBadge(
                           label: round.roundKey.split('_').last.substring(0, 4),
                           winnerPot: round.winningPot,
+                          subtitle: round.settledAt == null
+                              ? 'Pending'
+                              : '${round.settledAt!.hour.toString().padLeft(2, '0')}:${round.settledAt!.minute.toString().padLeft(2, '0')}',
                         ),
                       )
                       .toList(),
@@ -1030,40 +1307,108 @@ class _RecentWinnersStrip extends StatelessWidget {
 }
 
 class _WinnerBadge extends StatelessWidget {
-  const _WinnerBadge({required this.label, required this.winnerPot});
+  const _WinnerBadge({
+    required this.label,
+    required this.winnerPot,
+    required this.subtitle,
+  });
 
   final String label;
   final String? winnerPot;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
+    final winnerColor = switch (winnerPot) {
+      'A' => const Color(0xFF64B5F6),
+      'B' => const Color(0xFFFF8A65),
+      'C' => const Color(0xFF81C784),
+      _ => const Color(0xFFB0BEC5),
+    };
     return Container(
-      margin: const EdgeInsets.only(right: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      width: 124,
+      margin: const EdgeInsets.only(right: 12),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: .28),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white12),
+        gradient: LinearGradient(
+          colors: [
+            winnerColor.withValues(alpha: .26),
+            Colors.black.withValues(alpha: .22),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: winnerColor.withValues(alpha: .34)),
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '#$label',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white54,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: .6,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  color: winnerColor.withValues(alpha: .18),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: winnerColor.withValues(alpha: .34)),
+                ),
+                child: Text(
+                  winnerPot == null ? 'WAIT' : 'POT $winnerPot',
+                  style: TextStyle(
+                    color: winnerColor,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 10,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
           Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
+            winnerPot == null ? 'Waiting for result' : 'Winning side',
+            style: TextStyle(
+              color: winnerColor,
               fontWeight: FontWeight.w800,
               fontSize: 12,
             ),
           ),
           const SizedBox(height: 4),
           Text(
-            winnerPot == null ? '—' : 'Pot $winnerPot',
+            subtitle,
             style: const TextStyle(
-              color: Color(0xFFFFD54F),
-              fontWeight: FontWeight.w700,
+              color: Colors.white70,
+              fontWeight: FontWeight.w600,
               fontSize: 11,
             ),
+          ),
+          const SizedBox(height: 10),
+          LinearProgressIndicator(
+            value: winnerPot == null
+                ? .28
+                : switch (winnerPot) {
+                  'A' => .36,
+                  'B' => .66,
+                  'C' => .92,
+                  _ => .20,
+                },
+            minHeight: 6,
+            borderRadius: BorderRadius.circular(999),
+            backgroundColor: Colors.white10,
+            valueColor: AlwaysStoppedAnimation<Color>(winnerColor),
           ),
         ],
       ),
@@ -1107,7 +1452,14 @@ class _BoardPotCard extends StatelessWidget {
         height: height,
         padding: EdgeInsets.all(width * .05),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: .1),
+          gradient: LinearGradient(
+            colors: [
+              Colors.white.withValues(alpha: selected ? .16 : .11),
+              Colors.black.withValues(alpha: .12),
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
           borderRadius: BorderRadius.circular(width * .10),
           boxShadow: [
             BoxShadow(
@@ -1123,54 +1475,115 @@ class _BoardPotCard extends StatelessWidget {
         ),
         child: Column(
           children: [
-            SizedBox(
+            Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: width * .085,
+                vertical: height * .014,
+              ),
+              decoration: BoxDecoration(
+                color:
+                    revealedWinner
+                        ? Colors.greenAccent.withValues(alpha: .14)
+                        : selected
+                            ? Colors.white.withValues(alpha: .16)
+                            : Colors.black.withValues(alpha: .18),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color:
+                      revealedWinner
+                          ? Colors.greenAccent.withValues(alpha: .44)
+                          : selected
+                              ? Colors.white24
+                              : Colors.white10,
+                ),
+              ),
+              child: Text(
+                revealedWinner
+                    ? 'Winner Pot $pot'
+                    : selected
+                        ? 'Pot $pot Selected'
+                        : 'Pot $pot',
+                style: TextStyle(
+                  color: revealedWinner ? Colors.greenAccent : Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: width * .078,
+                ),
+              ),
+            ),
+            SizedBox(height: height * .018),
+            Container(
               key: potKey,
               height: height * .34,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Positioned(
-                    left: 0,
-                    child: _CardImage(path: cards[0], width: width * .46, opacity: .7),
-                  ),
-                  Positioned(
-                    left: width * .12,
-                    child: _CardImage(path: cards[1], width: width * .46, opacity: .85),
-                  ),
-                  Positioned(
-                    left: width * .24,
-                    child: _CardImage(path: cards[2], width: width * .46),
-                  ),
-                ],
+              alignment: Alignment.center,
+              child: SizedBox(
+                width: width * .82,
+                child: Stack(
+                  alignment: Alignment.center,
+                  clipBehavior: Clip.none,
+                  children: [
+                    Transform.translate(
+                      offset: Offset(-width * .13, 0),
+                      child: _CardImage(
+                        path: cards[0],
+                        width: width * .44,
+                        opacity: .7,
+                      ),
+                    ),
+                    Transform.translate(
+                      offset: Offset(0, -2),
+                      child: _CardImage(
+                        path: cards[1],
+                        width: width * .44,
+                        opacity: .86,
+                      ),
+                    ),
+                    Transform.translate(
+                      offset: Offset(width * .13, 0),
+                      child: _CardImage(
+                        path: cards[2],
+                        width: width * .44,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             SizedBox(height: height * .025),
             Text(
-              'Pot: $potCoins',
+              '$potCoins',
               style: TextStyle(
-                fontSize: width * .10,
-                fontWeight: FontWeight.bold,
+                fontSize: width * .115,
+                fontWeight: FontWeight.w900,
                 color: Colors.white,
               ),
             ),
             Text(
-              'Me: $myCoins',
+              'Total Bet',
+              style: TextStyle(
+                fontSize: width * .065,
+                color: Colors.white54,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            SizedBox(height: height * .012),
+            Text(
+              'You: $myCoins',
               style: TextStyle(
                 fontSize: width * .082,
-                color: Colors.white70,
-              ),
-            ),
-            SizedBox(height: height * .02),
-            Text(
-              revealedWinner
-                  ? 'Winner'
-                  : (bettingOpen ? 'Tap pot $pot' : 'Waiting'),
-              style: TextStyle(
-                color: revealedWinner ? Colors.greenAccent : Colors.white70,
+                color: selected ? Colors.white : Colors.white70,
                 fontWeight: FontWeight.w700,
-                fontSize: width * .074,
               ),
             ),
+            const Spacer(),
+            if (bettingOpen)
+              Text(
+                selected ? 'Ready for gem bet' : 'Tap to target',
+                style: TextStyle(
+                  color: selected ? const Color(0xFFFFE082) : Colors.white54,
+                  fontWeight: FontWeight.w700,
+                  fontSize: width * .064,
+                ),
+              ),
           ],
         ),
       ),
@@ -1260,6 +1673,166 @@ class _BetGemButton extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BettingConsole extends StatelessWidget {
+  const _BettingConsole({
+    required this.chipRowKey,
+    required this.walletBalance,
+    required this.selectedPot,
+    required this.selectedChip,
+    required this.phase,
+    required this.minBet,
+    required this.maxBet,
+    required this.placingBet,
+    required this.chipOptions,
+    required this.chipAssets,
+    required this.chipKeys,
+    required this.onTapChip,
+  });
+
+  final GlobalKey chipRowKey;
+  final int walletBalance;
+  final String? selectedPot;
+  final int selectedChip;
+  final String phase;
+  final int minBet;
+  final int maxBet;
+  final bool placingBet;
+  final List<int> chipOptions;
+  final Map<int, String> chipAssets;
+  final Map<int, GlobalKey> chipKeys;
+  final void Function(int chip, TapDownDetails details) onTapChip;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.black.withValues(alpha: .24),
+            Colors.black.withValues(alpha: .12),
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Bet Console',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              _CoinBalancePill(balance: walletBalance),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _SelectionChip(
+                label: selectedPot == null ? 'Select Pot' : 'Pot $selectedPot',
+                active: selectedPot != null,
+              ),
+              const SizedBox(width: 8),
+              _SelectionChip(
+                label:
+                    'Gem ${selectedChip >= 1000 ? '${selectedChip ~/ 1000}K' : selectedChip}',
+                active: true,
+              ),
+              const Spacer(),
+              Text(
+                '$minBet-$maxBet',
+                style: const TextStyle(
+                  color: Colors.white54,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            selectedPot == null
+                ? 'Tap a pot board, then tap a gem to place a bet.'
+                : phase == 'betting'
+                    ? 'Pot $selectedPot is armed. Tap any enabled gem below.'
+                    : 'Round is not accepting bets right now.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: .80),
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            key: chipRowKey,
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children:
+                chipOptions.map((chip) {
+                  final enabled =
+                      chip >= minBet && chip <= maxBet && phase == 'betting';
+                  return _BetGemButton(
+                    chipKey: chipKeys[chip],
+                    value: chip,
+                    imagePath: chipAssets[chip]!,
+                    active: chip == selectedChip,
+                    enabled: enabled && !placingBet,
+                    onTapDown: (details) => onTapChip(chip, details),
+                  );
+                }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SelectionChip extends StatelessWidget {
+  const _SelectionChip({required this.label, required this.active});
+
+  final String label;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color:
+            active
+                ? const Color(0xFFFFD54F).withValues(alpha: .16)
+                : Colors.white10,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color:
+              active
+                  ? const Color(0xFFFFD54F).withValues(alpha: .44)
+                  : Colors.white12,
+        ),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: active ? const Color(0xFFFFE082) : Colors.white70,
+          fontWeight: FontWeight.w800,
+          fontSize: 11,
         ),
       ),
     );
@@ -1576,4 +2149,18 @@ class _FlyingGem {
       targetTop: targetTop ?? this.targetTop,
     );
   }
+}
+
+class _ScheduledFakeBet {
+  const _ScheduledFakeBet({
+    required this.id,
+    required this.pot,
+    required this.amount,
+    required this.dueAt,
+  });
+
+  final String id;
+  final String pot;
+  final int amount;
+  final DateTime dueAt;
 }
