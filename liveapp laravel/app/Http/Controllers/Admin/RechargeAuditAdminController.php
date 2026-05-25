@@ -41,11 +41,10 @@ class RechargeAuditAdminController extends Controller
             ->selectRaw("SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_orders")
             ->selectRaw("SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_orders")
             ->selectRaw("SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_orders")
-            ->selectRaw('SUM(amount_rupees) as rupees_total')
-            ->selectRaw('ROUND(SUM(amount_rupees) / 1.18, 2) as taxable_total')
-            ->selectRaw('ROUND(SUM(amount_rupees) - (SUM(amount_rupees) / 1.18), 2) as gst_total')
-            ->selectRaw('SUM(total_coins) as coins_total')
+            ->selectRaw('COALESCE(SUM(amount_rupees), 0) as rupees_total')
+            ->selectRaw('COALESCE(SUM(total_coins), 0) as coins_total')
             ->first();
+        $summary = $this->withGstBreakdown($summary);
 
         $gatewayBreakdown = (clone $query)
             ->selectRaw("COALESCE(NULLIF(gateway, ''), 'manual') as gateway_name")
@@ -82,9 +81,10 @@ class RechargeAuditAdminController extends Controller
             ->selectRaw("SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_orders")
             ->selectRaw("SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_orders")
             ->selectRaw("SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_orders")
-            ->selectRaw('SUM(amount_rupees) as rupees_total')
-            ->selectRaw('SUM(total_coins) as coins_total')
+            ->selectRaw('COALESCE(SUM(amount_rupees), 0) as rupees_total')
+            ->selectRaw('COALESCE(SUM(total_coins), 0) as coins_total')
             ->first();
+        $summary = $this->withGstBreakdown($summary);
 
         $data = [
             'orders' => $orders,
@@ -145,5 +145,17 @@ class RechargeAuditAdminController extends Controller
         }
 
         return now()->startOfMonth();
+    }
+
+    private function withGstBreakdown(object $summary): object
+    {
+        $grossAmount = (float) ($summary->rupees_total ?? 0);
+        $taxableAmount = round($grossAmount / 1.18, 2);
+        $gstAmount = round($grossAmount - $taxableAmount, 2);
+
+        $summary->taxable_total = $taxableAmount;
+        $summary->gst_total = $gstAmount;
+
+        return $summary;
     }
 }

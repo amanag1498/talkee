@@ -51,7 +51,7 @@
   </section>
 
   <section class="row g-3">
-    <div class="col-xl-3 col-md-6">
+    <div class="col-xl-2 col-md-6">
       <div class="card h-100">
         <div class="card-body">
           <div class="text-muted small">Orders</div>
@@ -60,7 +60,7 @@
         </div>
       </div>
     </div>
-    <div class="col-xl-3 col-md-6">
+    <div class="col-xl-2 col-md-6">
       <div class="card h-100">
         <div class="card-body">
           <div class="text-muted small">Successful</div>
@@ -69,21 +69,39 @@
         </div>
       </div>
     </div>
-    <div class="col-xl-3 col-md-6">
+    <div class="col-xl-2 col-md-6">
       <div class="card h-100">
         <div class="card-body">
-          <div class="text-muted small">Recharge Value</div>
+          <div class="text-muted small">Gross Amount</div>
           <div class="fs-2 fw-bold">Rs {{ number_format((float) ($summary->rupees_total ?? 0), 2) }}</div>
-          <div class="small text-muted mt-1">Coins {{ number_format((int) ($summary->coins_total ?? 0)) }}</div>
+          <div class="small text-muted mt-1">GST inclusive</div>
         </div>
       </div>
     </div>
-    <div class="col-xl-3 col-md-6">
+    <div class="col-xl-2 col-md-6">
       <div class="card h-100">
         <div class="card-body">
-          <div class="text-muted small">Exceptions</div>
-          <div class="fs-2 fw-bold text-danger">{{ number_format((int) (($summary->failed_orders ?? 0) + ($summary->cancelled_orders ?? 0))) }}</div>
-          <div class="small text-muted mt-1">Failed + cancelled</div>
+          <div class="text-muted small">Taxable Amount</div>
+          <div class="fs-2 fw-bold">Rs {{ number_format((float) ($summary->taxable_total ?? 0), 2) }}</div>
+          <div class="small text-muted mt-1">Base amount</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-xl-2 col-md-6">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="text-muted small">GST @ 18%</div>
+          <div class="fs-2 fw-bold">Rs {{ number_format((float) ($summary->gst_total ?? 0), 2) }}</div>
+          <div class="small text-muted mt-1">Tax component</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-xl-2 col-md-6">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="text-muted small">Coins</div>
+          <div class="fs-2 fw-bold">{{ number_format((int) ($summary->coins_total ?? 0)) }}</div>
+          <div class="small text-muted mt-1">Recharge credits</div>
         </div>
       </div>
     </div>
