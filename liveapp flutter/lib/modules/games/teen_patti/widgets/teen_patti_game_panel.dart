@@ -661,11 +661,17 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel>
     );
   }
 
-  Future<void> _loadSnapshot() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _loadSnapshot({bool silent = false}) async {
+    if (!silent || _snapshot == null) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    } else if (_error != null) {
+      setState(() {
+        _error = null;
+      });
+    }
     try {
       final snapshot = await _api.fetchSnapshot();
       if (!mounted) return;
@@ -757,7 +763,7 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel>
         return;
       }
       _lastAutoRefreshAt = DateTime.now();
-      unawaited(_loadSnapshot());
+      unawaited(_loadSnapshot(silent: true));
     }
   }
 

@@ -62,6 +62,7 @@ dependencies:
   flutter_image_compress: ^2.4.0
   path_provider: ^2.1.5
   path: ^1.9.1
+  package_info_plus: ^8.0.2
   razorpay_flutter: ^1.4.5
   audioplayers: ^6.6.0
   # your existing: get, dio, etc.

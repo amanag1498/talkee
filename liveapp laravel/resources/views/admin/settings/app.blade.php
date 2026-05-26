@@ -83,6 +83,18 @@
                             @if(($definition['type'] ?? 'boolean') === 'csv_integer_list') inputmode="numeric" @endif
                           >
                         </div>
+                      @elseif(($definition['type'] ?? 'boolean') === 'integer')
+                        <div class="flex-shrink-0" style="min-width: 140px;">
+                          <input
+                            type="number"
+                            class="form-control form-control-sm @error($key) is-invalid @enderror"
+                            name="{{ $inputName }}"
+                            value="{{ old($key, $values[$key] ?? $definition['default'] ?? '') }}"
+                            @if(array_key_exists('min', $definition)) min="{{ $definition['min'] }}" @endif
+                            @if(array_key_exists('max', $definition)) max="{{ $definition['max'] }}" @endif
+                            step="1"
+                          >
+                        </div>
                       @else
                         <div class="form-check form-switch m-0">
                           <input type="hidden" name="{{ $inputName }}" value="0">

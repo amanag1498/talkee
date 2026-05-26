@@ -42,6 +42,28 @@ class AppSettingsService
             'default' => false,
             'hint' => 'Signals clients that a mandatory upgrade flow should be enforced.',
         ],
+        'app_features.android_min_version_code' => [
+            'label' => 'Android Min Version Code',
+            'type' => 'integer',
+            'group' => 'general',
+            'default' => 1,
+            'min' => 1,
+            'hint' => 'Minimum Android build number allowed when force upgrade is enabled.',
+        ],
+        'app_features.android_min_version_name' => [
+            'label' => 'Android Min Version Name',
+            'type' => 'string',
+            'group' => 'general',
+            'default' => '1.0.0',
+            'hint' => 'Human-readable Android version label shown in admin and app payloads.',
+        ],
+        'app_features.android_update_message' => [
+            'label' => 'Android Update Message',
+            'type' => 'string',
+            'group' => 'general',
+            'default' => 'Please update Talkieo to continue using the app.',
+            'hint' => 'Blocking message shown to Android users during a mandatory upgrade.',
+        ],
         'app_features.host_goals.followers' => [
             'label' => 'Follower Goal Milestones',
             'type' => 'csv_integer_list',
@@ -602,17 +624,17 @@ class AppSettingsService
 
     public function minimumAndroidVersionCode(): int
     {
-        return max(1, (int) env('ANDROID_MIN_VERSION_CODE', 1));
+        return max(1, (int) config('app_features.android_min_version_code', env('ANDROID_MIN_VERSION_CODE', 1)));
     }
 
     public function minimumAndroidVersionName(): string
     {
-        return (string) env('ANDROID_MIN_VERSION_NAME', '1.0.0');
+        return (string) config('app_features.android_min_version_name', env('ANDROID_MIN_VERSION_NAME', '1.0.0'));
     }
 
     public function androidUpdateMessage(): string
     {
-        return (string) env('ANDROID_UPDATE_MESSAGE', 'Please update Talkieo to continue using the app.');
+        return (string) config('app_features.android_update_message', env('ANDROID_UPDATE_MESSAGE', 'Please update Talkieo to continue using the app.'));
     }
 
     public function publicHostGoalSettings(): array

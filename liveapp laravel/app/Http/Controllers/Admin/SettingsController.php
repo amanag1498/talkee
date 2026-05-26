@@ -114,6 +114,18 @@ class SettingsController extends Controller
                 continue;
             }
 
+            if ($type === 'integer') {
+                $parts = ['required', 'integer'];
+                if (array_key_exists('min', $definition)) {
+                    $parts[] = 'min:' . $definition['min'];
+                }
+                if (array_key_exists('max', $definition)) {
+                    $parts[] = 'max:' . $definition['max'];
+                }
+                $rules[$key] = implode('|', $parts);
+                continue;
+            }
+
             $rules[$key] = 'required|boolean';
         }
 

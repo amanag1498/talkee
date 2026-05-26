@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:flutter/widgets.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../app/theme/brand.dart';
 import 'api_client.dart';
@@ -17,11 +18,11 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   static const String _kThemeVariantOverride = 'premium_theme_variant_override';
 
   static const String androidPlatform = 'android';
-  static const String appVersionName = String.fromEnvironment(
+  static String appVersionName = String.fromEnvironment(
     'APP_VERSION_NAME',
     defaultValue: '1.0.0',
   );
-  static const int appVersionCode = int.fromEnvironment(
+  static int appVersionCode = int.fromEnvironment(
     'APP_VERSION_CODE',
     defaultValue: 1,
   );
@@ -40,8 +41,25 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   Future<void> initialize() async {
     WidgetsBinding.instance.addObserver(this);
     _hydrateCachedTheme();
+    await _hydrateRuntimeVersion();
     await refresh();
     await syncDailyActivity();
+  }
+
+  Future<void> _hydrateRuntimeVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      final runtimeName = info.version.trim();
+      final runtimeCode = int.tryParse(info.buildNumber.trim());
+      if (runtimeName.isNotEmpty) {
+        appVersionName = runtimeName;
+      }
+      if (runtimeCode != null && runtimeCode > 0) {
+        appVersionCode = runtimeCode;
+      }
+    } catch (_) {
+      // Fall back to compile-time values when platform package info is unavailable.
+    }
   }
 
   Future<void> refresh() async {

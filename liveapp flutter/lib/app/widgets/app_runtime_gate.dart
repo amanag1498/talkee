@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/app_settings_service.dart';
+
+const String _kAndroidPackageId = 'com.techybugs.talkee';
 
 class AppRuntimeGate extends StatelessWidget {
   const AppRuntimeGate({super.key, required this.child});
@@ -19,6 +22,8 @@ class AppRuntimeGate extends StatelessWidget {
           eyebrow: 'Update required',
           title: 'A newer app version is required.',
           message: settings.forceUpgradeMessage,
+          primaryActionLabel: 'Update now',
+          onPrimaryAction: _openAndroidStoreListing,
         );
       }
 
@@ -43,12 +48,16 @@ class _BlockingStateScreen extends StatelessWidget {
     required this.eyebrow,
     required this.title,
     required this.message,
+    this.primaryActionLabel,
+    this.onPrimaryAction,
   });
 
   final IconData icon;
   final String eyebrow;
   final String title;
   final String message;
+  final String? primaryActionLabel;
+  final Future<void> Function()? onPrimaryAction;
 
   @override
   Widget build(BuildContext context) {
@@ -115,6 +124,32 @@ class _BlockingStateScreen extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  if (primaryActionLabel != null && onPrimaryAction != null) ...[
+                    const SizedBox(height: 22),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: () {
+                          onPrimaryAction!.call();
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFE63E6D),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: Text(
+                          primaryActionLabel!,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -123,4 +158,18 @@ class _BlockingStateScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+Future<void> _openAndroidStoreListing() async {
+  final marketUri = Uri.parse('market://details?id=$_kAndroidPackageId');
+  final webUri = Uri.parse(
+    'https://play.google.com/store/apps/details?id=$_kAndroidPackageId',
+  );
+
+  if (await canLaunchUrl(marketUri)) {
+    await launchUrl(marketUri, mode: LaunchMode.externalApplication);
+    return;
+  }
+
+  await launchUrl(webUri, mode: LaunchMode.externalApplication);
 }
