@@ -77,6 +77,9 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
   _GreedyRevealStage _revealStage = _GreedyRevealStage.betting;
   bool _boundaryRefreshInFlight = false;
   DateTime? _lastAutoRefreshAt;
+  String? _countdownAnchorRoundKey;
+  int _countdownAnchorSeconds = 0;
+  DateTime? _countdownAnchorAt;
 
   @override
   void initState() {
@@ -192,6 +195,9 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
     if (syncViewerBets) {
       _syncLocalViewerBets(next.round);
     }
+    _countdownAnchorRoundKey = next.round.roundKey;
+    _countdownAnchorSeconds = next.round.countdownSeconds;
+    _countdownAnchorAt = _now;
     _syncDisplayTotals(next, previousRound: previous?.round);
     final displayRound = _displayRound(next.round);
     _updateRevealStage(
@@ -900,60 +906,26 @@ class _GreedyGamePanelState extends State<GreedyGamePanel>
   }
 
   _GreedyLiveRoundView _displayRound(GreedyRound round) {
-    final now = _now;
-    final displayUntil = round.displayUntil;
-    final locksAt = round.locksAt;
-    final endsAt = round.endsAt;
-
-    if (displayUntil != null && now.isAfter(displayUntil)) {
-      return _GreedyLiveRoundView(
-        source: round,
-        phase: 'restarting',
-        countdownSeconds: 0,
-        roundChanged: true,
-      );
-    }
-
-    if (round.status == 'settled' || round.status == 'cancelled') {
-      final remaining =
-          displayUntil == null ? 0 : displayUntil.difference(now).inSeconds;
-      return _GreedyLiveRoundView(
-        source: round,
-        phase: round.status == 'cancelled' ? 'cancelled' : 'result',
-        countdownSeconds: max(0, remaining),
-        roundChanged: remaining <= 0,
-      );
-    }
-
-    if (endsAt != null && !now.isBefore(endsAt)) {
-      final remaining =
-          displayUntil == null ? 0 : displayUntil.difference(now).inSeconds;
-      return _GreedyLiveRoundView(
-        source: round,
-        phase: 'settling',
-        countdownSeconds: max(0, remaining),
-        roundChanged: false,
-      );
-    }
-
-    if (locksAt != null && !now.isBefore(locksAt)) {
-      final remaining = endsAt == null ? 0 : endsAt.difference(now).inSeconds;
-      return _GreedyLiveRoundView(
-        source: round,
-        phase: 'locked',
-        countdownSeconds: max(0, remaining),
-        roundChanged: false,
-      );
-    }
-
-    final remaining =
-        locksAt == null ? round.countdownSeconds : locksAt.difference(now).inSeconds;
+    final remaining = _syncedCountdownSeconds(round);
+    final phase =
+        round.status == 'cancelled'
+            ? 'cancelled'
+            : (round.phase.isEmpty ? 'betting' : round.phase);
     return _GreedyLiveRoundView(
       source: round,
-      phase: 'betting',
+      phase: phase,
       countdownSeconds: max(0, remaining),
-      roundChanged: false,
+      roundChanged: remaining <= 0,
     );
+  }
+
+  int _syncedCountdownSeconds(GreedyRound round) {
+    if (_countdownAnchorRoundKey != round.roundKey || _countdownAnchorAt == null) {
+      return max(0, round.countdownSeconds);
+    }
+
+    final elapsed = _now.difference(_countdownAnchorAt!).inSeconds;
+    return max(0, _countdownAnchorSeconds - elapsed);
   }
 
   Widget? _buildFlyingGem(_GreedyFlyingGem gem) {

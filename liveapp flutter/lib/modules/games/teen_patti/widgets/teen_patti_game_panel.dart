@@ -553,6 +553,9 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel>
   List<_FlyingGem> _flyingGems = const [];
   DateTime _now = DateTime.now();
   DateTime? _lastAutoRefreshAt;
+  String? _countdownAnchorRoundKey;
+  int _countdownAnchorSeconds = 0;
+  DateTime? _countdownAnchorAt;
 
   @override
   void initState() {
@@ -763,7 +766,8 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel>
     bool loading = false,
     bool syncViewerBets = true,
   }) {
-    final previous = _snapshot?.round;
+    final previousSnapshot = _snapshot;
+    final previous = previousSnapshot?.round;
     final allowedChips =
         _chipOptions
             .where(
@@ -781,6 +785,9 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel>
       _selectedChip = nextSelectedChip;
       _loading = loading;
       _error = null;
+      _countdownAnchorRoundKey = next.round.roundKey;
+      _countdownAnchorSeconds = next.round.countdownSeconds;
+      _countdownAnchorAt = _now;
       if (_selectedPotIndex > 2) {
         _selectedPotIndex = -1;
       }
@@ -791,7 +798,7 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel>
     }
     _syncDisplayTotals(next);
     _animateRemoteBetDeltas(previous, next.round);
-    _showResultDialogIfNeeded(next.round);
+    _showResultDialogIfNeeded(next, previousSnapshot);
   }
 
   void _applyLocalViewerBet(String roundKey, String pot, int amount) {
@@ -1073,13 +1080,35 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel>
     }
   }
 
-  void _showResultDialogIfNeeded(TeenPattiRound round) {
+  void _showResultDialogIfNeeded(
+    TeenPattiSnapshot snapshot,
+    TeenPattiSnapshot? previousSnapshot,
+  ) {
+    final round = snapshot.round;
+    final historyHead =
+        snapshot.history.isEmpty ? null : snapshot.history.first;
+    final previousRound = previousSnapshot?.round;
+
+    if (previousRound != null &&
+        previousRound.id > 0 &&
+        previousRound.id != round.id &&
+        previousRound.phase != 'result' &&
+        historyHead != null &&
+        historyHead.id == previousRound.id &&
+        historyHead.phase == 'result') {
+      _presentResultDialog(historyHead);
+      return;
+    }
+
+    _presentResultDialog(round);
+  }
+
+  void _presentResultDialog(TeenPattiRound round) {
     if (!mounted || round.phase != 'result' || round.id <= 0) return;
     if (_shownResultRoundId == round.id) return;
     _shownResultRoundId = round.id;
     Haptics.success();
     SystemSound.play(SystemSoundType.alert);
-    unawaited(_loadSnapshot());
     final winningPot = round.winningPot;
     final localWinningBet =
         winningPot == null ? 0 : (_localViewerRoundKey == round.roundKey ? (_localViewerPotTotals[winningPot] ?? 0) : 0);
@@ -1496,61 +1525,26 @@ class _TeenPattiGamePanelState extends State<TeenPattiGamePanel>
   }
 
   _LiveRoundView _displayRound(TeenPattiRound round) {
-    final now = _now;
-    final displayUntil = round.displayUntil;
-    final locksAt = round.locksAt;
-    final endsAt = round.endsAt;
-
-    if (displayUntil != null && now.isAfter(displayUntil)) {
-      return _LiveRoundView(
-        source: round,
-        phase: 'restarting',
-        countdownSeconds: 0,
-        roundChanged: true,
-      );
-    }
-
-    if (round.status == 'settled' || round.status == 'cancelled') {
-      final remaining =
-          displayUntil == null ? 0 : displayUntil.difference(now).inSeconds;
-      return _LiveRoundView(
-        source: round,
-        phase: round.status == 'cancelled' ? 'cancelled' : 'result',
-        countdownSeconds: max(0, remaining),
-        roundChanged: remaining <= 0,
-      );
-    }
-
-    if (endsAt != null && !now.isBefore(endsAt)) {
-      final remaining =
-          displayUntil == null ? 0 : displayUntil.difference(now).inSeconds;
-      return _LiveRoundView(
-        source: round,
-        phase: 'settling',
-        countdownSeconds: max(0, remaining),
-        roundChanged: false,
-      );
-    }
-
-    if (locksAt != null && !now.isBefore(locksAt)) {
-      final remaining =
-          endsAt == null ? 0 : endsAt.difference(now).inSeconds;
-      return _LiveRoundView(
-        source: round,
-        phase: 'locked',
-        countdownSeconds: max(0, remaining),
-        roundChanged: false,
-      );
-    }
-
-    final remaining =
-        locksAt == null ? round.countdownSeconds : locksAt.difference(now).inSeconds;
+    final remaining = _syncedCountdownSeconds(round);
+    final phase =
+        round.status == 'cancelled'
+            ? 'cancelled'
+            : (round.phase.isEmpty ? 'betting' : round.phase);
     return _LiveRoundView(
       source: round,
-      phase: 'betting',
+      phase: phase,
       countdownSeconds: max(0, remaining),
-      roundChanged: false,
+      roundChanged: remaining <= 0,
     );
+  }
+
+  int _syncedCountdownSeconds(TeenPattiRound round) {
+    if (_countdownAnchorRoundKey != round.roundKey || _countdownAnchorAt == null) {
+      return max(0, round.countdownSeconds);
+    }
+
+    final elapsed = _now.difference(_countdownAnchorAt!).inSeconds;
+    return max(0, _countdownAnchorSeconds - elapsed);
   }
 }
 

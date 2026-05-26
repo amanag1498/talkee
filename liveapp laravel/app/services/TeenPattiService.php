@@ -739,8 +739,8 @@ class TeenPattiService
 
     private function createRound(CarbonImmutable $startsAt): TeenPattiRound
     {
-        $lockAt = $startsAt->addSeconds(max(1, $this->roundDurationSeconds() - $this->bettingLockSeconds()));
-        $endsAt = $startsAt->addSeconds($this->roundDurationSeconds());
+        $lockAt = $startsAt->addSeconds($this->roundDurationSeconds());
+        $endsAt = $lockAt->addSeconds($this->bettingLockSeconds());
         $displayUntil = $endsAt->addSeconds($this->resultDisplaySeconds());
 
         $round = TeenPattiRound::query()->create([
@@ -817,9 +817,11 @@ class TeenPattiService
             ? $round->bets->where('user_id', $viewer->id)->values()->map(fn (TeenPattiBet $bet) => $this->betPayload($bet))->all()
             : [];
 
-        $countdownTarget = $phase === 'betting'
-            ? CarbonImmutable::parse($round->locks_at)
-            : $this->displayUntil($round);
+        $countdownTarget = match ($phase) {
+            'betting' => CarbonImmutable::parse($round->locks_at),
+            'locked' => CarbonImmutable::parse($round->ends_at),
+            default => $this->displayUntil($round),
+        };
         $countdownSeconds = max(0, $now->diffInSeconds($countdownTarget, false));
         $realTotals = [
             'A' => (int) $round->total_bet_a,
