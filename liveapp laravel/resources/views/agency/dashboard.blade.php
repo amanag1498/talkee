@@ -5,6 +5,9 @@
 @section('page_actions')
   <a class="btn btn-light border" href="{{ $hostsIndexRoute ?? route('agency.hosts.index') }}">Hosts</a>
   <a class="btn btn-light border" href="{{ $callsRoute ?? route('agency.calls.index') }}">Call Reports</a>
+  @if($agency)
+    <a class="btn btn-light border" href="{{ $walletRoute ?? (request()->routeIs('admin.*') ? route('admin.agencies.wallet.show', $agency) : route('agency.wallet.show')) }}">Wallet</a>
+  @endif
   <a class="btn btn-primary" href="{{ $payoutReportsRoute ?? route('agency.payout-reports.index') }}">Weekly Payout Reports</a>
 @endsection
 
@@ -101,6 +104,15 @@
             <small class="text-muted">Approved Unpaid Amount</small>
             <div class="stat-value mt-1">{{ number_format($summary['approved_unpaid_amount'] ?? 0) }}</div>
             <div class="stat-meta mt-2">Offline payout pending review/payment</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-xl-3">
+        <div class="card agency-stat-card">
+          <div class="card-body">
+            <small class="text-muted">Agency Wallet</small>
+            <div class="stat-value mt-1">{{ number_format($walletSummary['balance'] ?? 0) }}</div>
+            <div class="stat-meta mt-2">Loaded {{ number_format($walletSummary['total_loaded'] ?? 0) }} · Sent {{ number_format($walletSummary['total_distributed'] ?? 0) }}</div>
           </div>
         </div>
       </div>

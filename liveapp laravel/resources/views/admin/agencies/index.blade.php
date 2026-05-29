@@ -48,6 +48,9 @@
             <a href="{{ route('admin.agencies.dashboard',$a) }}" class="btn btn-sm btn-light border me-2">
               <i class="ti ti-layout-dashboard me-1"></i>Dashboard
             </a>
+            <a href="{{ route('admin.agencies.wallet.show',$a) }}" class="btn btn-sm btn-light border me-2">
+              <i class="ti ti-wallet me-1"></i>Wallet
+            </a>
             <a href="{{ route('admin.agencies.edit',$a) }}" class="btn btn-sm btn-primary me-2">
               <i class="ti ti-edit me-1"></i>Edit
             </a>

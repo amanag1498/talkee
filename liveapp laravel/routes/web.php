@@ -39,10 +39,12 @@ use App\Http\Controllers\Admin\LiveRoomPkBattleAdminController;
 use App\Http\Controllers\Admin\ModerationController as AdminModerationController;
 use App\Http\Controllers\MediaController;
 use App\Http\Controllers\Admin\AgencyReportController as AdminAgencyReportController;
+use App\Http\Controllers\Admin\AgencyWalletAdminController;
 use App\Http\Controllers\Agency\CallReportController as AgencyCallReportController;
 use App\Http\Controllers\Agency\HostController as AgencyHostController;
 use App\Http\Controllers\Agency\LiveRoomController as AgencyLiveRoomController;
 use App\Http\Controllers\Agency\PkBattleController as AgencyPkBattleController;
+use App\Http\Controllers\Agency\WalletController as AgencyWalletController;
 use App\Http\Controllers\Host\CallReportController as HostCallReportController;
 use App\Http\Controllers\Admin\AgencyPayoutReportController as AdminAgencyPayoutReportController;
 use App\Http\Controllers\Agency\PayoutReportController as AgencyPayoutReportController;
@@ -104,6 +106,8 @@ Route::middleware(['auth','not_blocked','role:agency'])->prefix('agency')->name(
   Route::get('/payout-reports', [AgencyPayoutReportController::class, 'index'])->name('payout-reports.index');
   Route::get('/payout-reports/{agency_payout_report}', [AgencyPayoutReportController::class, 'show'])->name('payout-reports.show');
   Route::get('/payout-reports/{agency_payout_report}/export', [AgencyPayoutReportController::class, 'export'])->name('payout-reports.export');
+  Route::get('/wallet', [AgencyWalletController::class, 'show'])->name('wallet.show');
+  Route::post('/wallet/credit-user', [AgencyWalletController::class, 'creditUser'])->name('wallet.credit-user');
   Route::get('/profile', [AgencyProfileController::class, 'show'])->name('profile.show');
 });
 
@@ -153,6 +157,9 @@ Route::middleware(['auth','not_blocked','role:admin'])->prefix('admin')->name('a
     Route::get('/agencies/{agency}/audio-rooms/{live_room}', [\App\Http\Controllers\Admin\AgencyAdminController::class, 'audioRoomShow'])->name('agencies.audio-rooms.show');
     Route::get('/agencies/{agency}/pk-battles', [\App\Http\Controllers\Admin\AgencyAdminController::class, 'pkBattles'])->name('agencies.pk-battles.index');
     Route::get('/agencies/{agency}/pk-battles/{pk_battle}', [\App\Http\Controllers\Admin\AgencyAdminController::class, 'pkBattleShow'])->name('agencies.pk-battles.show');
+    Route::get('/agencies/{agency}/wallet', [AgencyWalletAdminController::class, 'show'])->name('agencies.wallet.show');
+    Route::post('/agencies/{agency}/wallet/load', [AgencyWalletAdminController::class, 'load'])->name('agencies.wallet.load');
+    Route::post('/agencies/{agency}/wallet/credit-user', [AgencyWalletAdminController::class, 'creditUser'])->name('agencies.wallet.credit-user');
     Route::get('/agencies/{agency}/profile', [\App\Http\Controllers\Admin\AgencyAdminController::class, 'profile'])->name('agencies.profile.show');
     Route::get('/agencies/{agency}/edit',   [\App\Http\Controllers\Admin\AgencyAdminController::class, 'edit'])->name('agencies.edit');
     Route::put('/agencies/{agency}',        [\App\Http\Controllers\Admin\AgencyAdminController::class, 'update'])->name('agencies.update');
@@ -186,6 +193,7 @@ Route::middleware(['auth','not_blocked','role:admin'])->prefix('admin')->name('a
   Route::resource('profile-frames', ProfileFrameAdminController::class)->except(['show']);
   Route::get('reports/agencies', [AdminAgencyReportController::class, 'index'])->name('reports.agencies');
   Route::get('reports/agencies/{agency}', [AdminAgencyReportController::class, 'show'])->name('reports.agencies.show');
+  Route::get('reports/agency-wallets', [AgencyWalletAdminController::class, 'report'])->name('reports.agency-wallets.index');
   Route::get('agency-payout-reports', [AdminAgencyPayoutReportController::class, 'index'])->name('agency-payout-reports.index');
   Route::post('agency-payout-reports/generate', [AdminAgencyPayoutReportController::class, 'generate'])->name('agency-payout-reports.generate');
   Route::get('agency-payout-reports/{agency_payout_report}', [AdminAgencyPayoutReportController::class, 'show'])->name('agency-payout-reports.show');

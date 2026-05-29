@@ -13,6 +13,9 @@
           <div class="fs-3 fw-semibold">
             {{ number_format($coinSupply ?? 0) }}
           </div>
+          <div class="small text-white-50 mt-2">
+            Users {{ number_format($walletSummary['user_coin_supply'] ?? 0) }} · Agencies {{ number_format($walletSummary['agency_coin_supply'] ?? 0) }}
+          </div>
         </div>
         <div class="avtar avtar-lg"><i class="ti ti-coins text-white"></i></div>
       </div>

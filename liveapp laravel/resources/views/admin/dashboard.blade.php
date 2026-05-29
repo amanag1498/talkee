@@ -175,7 +175,7 @@
           <div>
             <small class="text-white-50">Coin Supply</small>
             <div class="fs-3 fw-semibold">{{ number_format($stats['coinSupply']) }}</div>
-            <div class="small text-white-50 mt-2">Current total wallet coins</div>
+            <div class="small text-white-50 mt-2">Users {{ number_format($stats['userCoinSupply'] ?? 0) }} · Agencies {{ number_format($stats['agencyCoinSupply'] ?? 0) }}</div>
           </div>
           <div class="stat-icon bg-white bg-opacity-10"><i class="ti ti-coins text-white"></i></div>
         </div>

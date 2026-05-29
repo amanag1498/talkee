@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\PaymentOrder;
 use App\Models\User;
+use App\Models\AgencyWallet;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\AdminAuditService;
@@ -42,13 +43,17 @@ class WalletAdminController extends Controller
             $q->where('is_blocked', $request->boolean('blocked'));
         }
         $users = $q->orderBy('id','desc')->paginate(20);
-        $coinSupply = Wallet::query()->sum('balance');
+        $userCoinSupply = (int) Wallet::query()->sum('balance');
+        $agencyCoinSupply = (int) AgencyWallet::query()->sum('balance');
+        $coinSupply = $userCoinSupply + $agencyCoinSupply;
         $reconciliation = $this->reconciliationService->anomalies();
         $walletSummary = [
             'total_credits' => (int) WalletTransaction::query()->where('type', 'credit')->sum('coins'),
             'total_debits' => (int) WalletTransaction::query()->where('type', 'debit')->sum('coins'),
             'positive_wallets' => Wallet::query()->where('balance', '>', 0)->count(),
             'top_spenders' => WalletTransaction::query()->where('type', 'debit')->distinct('wallet_id')->count('wallet_id'),
+            'user_coin_supply' => $userCoinSupply,
+            'agency_coin_supply' => $agencyCoinSupply,
             'recharge_conversion' => PaymentOrder::query()->count() > 0
                 ? round((PaymentOrder::query()->where('status', 'success')->count() / max(1, PaymentOrder::query()->count())) * 100, 1)
                 : 0,

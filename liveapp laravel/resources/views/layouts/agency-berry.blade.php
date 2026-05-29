@@ -109,6 +109,7 @@
         $hostsIndexRoute = $hostsIndexRoute ?? route('agency.hosts.index');
         $callsRoute = $callsRoute ?? route('agency.calls.index');
         $payoutReportsRoute = $payoutReportsRoute ?? route('agency.payout-reports.index');
+        $walletRoute = $walletRoute ?? (request()->routeIs('admin.*') ? route('admin.agencies.wallet.show', $agency) : route('agency.wallet.show'));
         $profileRoute = $profileRoute ?? route('agency.profile.show');
         $videoRoomsRoute = $videoRoomsRoute ?? route('agency.video-rooms.index');
         $audioRoomsRoute = $audioRoomsRoute ?? route('agency.audio-rooms.index');
@@ -158,6 +159,11 @@
             <li class="pc-item">
               <a href="{{ $payoutReportsRoute }}" class="pc-link {{ request()->routeIs('agency.payout-reports.*') || request()->routeIs('admin.agency-payout-reports.*') ? 'active' : '' }}">
                 <span class="pc-micon"><i class="ti ti-cash-banknote"></i></span><span class="pc-mtext">Weekly Payouts</span>
+              </a>
+            </li>
+            <li class="pc-item">
+              <a href="{{ $walletRoute }}" class="pc-link {{ request()->routeIs('agency.wallet.*') || request()->routeIs('admin.agencies.wallet.*') ? 'active' : '' }}">
+                <span class="pc-micon"><i class="ti ti-wallet"></i></span><span class="pc-mtext">Agency Wallet</span>
               </a>
             </li>
             <li class="pc-item pc-caption"><label>Agency</label><i class="ti ti-building"></i></li>

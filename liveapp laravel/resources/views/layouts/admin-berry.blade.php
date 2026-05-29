@@ -532,6 +532,12 @@
               </a>
             </li>
             <li class="pc-item">
+              <a href="{{ route('admin.reports.agency-wallets.index') }}" class="pc-link {{ request()->routeIs('admin.reports.agency-wallets.*') ? 'active' : '' }}">
+                <span class="pc-micon"><i class="ti ti-wallet"></i></span>
+                <span class="pc-mtext">Agency Wallets</span>
+              </a>
+            </li>
+            <li class="pc-item">
               <a href="{{ route('admin.agency-payout-reports.index') }}" class="pc-link {{ request()->routeIs('admin.agency-payout-reports*') ? 'active' : '' }}">
                 <span class="pc-micon"><i class="ti ti-cash-banknote"></i></span>
                 <span class="pc-mtext">Agency Payouts</span>

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Agency extends Model
 {
@@ -39,5 +40,15 @@ class Agency extends Model
     public function payoutReports(): HasMany
     {
         return $this->hasMany(AgencyPayoutReport::class)->latest('period_start');
+    }
+
+    public function wallet(): HasOne
+    {
+        return $this->hasOne(AgencyWallet::class);
+    }
+
+    public function coinTransfers(): HasMany
+    {
+        return $this->hasMany(AgencyCoinTransfer::class)->latest('id');
     }
 }

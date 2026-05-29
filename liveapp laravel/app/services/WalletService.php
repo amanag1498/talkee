@@ -40,22 +40,29 @@ class WalletService
     }
 
     /** Admin/manual coin credit (no money involved) */
-    public static function credit(User $user, int $coins, ?string $reference = null, array $meta = []): WalletTransaction
+    public static function credit(
+        User $user,
+        int $coins,
+        ?string $reference = null,
+        array $meta = [],
+        array $attributes = [],
+        ?string $description = 'Admin credit',
+    ): WalletTransaction
     {
         if ($coins <= 0) throw new InvalidArgumentException('Coins must be positive.');
-        return DB::transaction(function () use ($user, $coins, $reference, $meta) {
+        return DB::transaction(function () use ($user, $coins, $reference, $meta, $attributes, $description) {
             $wallet = self::lockWallet($user);
             $balanceBefore = (int) $wallet->balance;
             $balanceAfter = $balanceBefore + $coins;
             $wallet->update(['balance' => $balanceAfter]);
 
-            return self::createTransaction($wallet, [
+            return self::createTransaction($wallet, array_merge([
                 'type'     => 'credit',
                 'coins'    => $coins,
                 'category' => 'adjustment',
                 'reference'=> $reference,
                 'meta'     => $meta,
-            ], $balanceBefore, $balanceAfter, 'Admin credit');
+            ], $attributes), $balanceBefore, $balanceAfter, $description);
         });
     }
 

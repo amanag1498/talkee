@@ -12,6 +12,7 @@
     'game_bet_debit' => 'Teen Patti bet debit',
     'game_payout_credit' => 'Teen Patti payout credit',
     'game_refund_credit' => 'Teen Patti refund credit',
+    'agency_credit' => 'Agency wallet credit',
     'audio_call' => 'Audio call',
     'video_call' => 'Video call',
     'adjustment' => 'Adjustment',
@@ -34,6 +35,7 @@
           'game_bet_debit' => 'Teen Patti bet debit',
           'game_payout_credit' => 'Teen Patti payout credit',
           'game_refund_credit' => 'Teen Patti refund credit',
+          'agency_credit' => 'Agency wallet credit',
           'audio_call' => 'Audio call spend',
           'video_call' => 'Video call spend',
           'adjustment' => $type === 'credit' ? 'Wallet credit' : 'Wallet debit',
@@ -389,6 +391,15 @@
                 @endif
                 @if($tx->description)
                   <small class="d-block text-muted">{{ $tx->description }}</small>
+                @endif
+                @if(data_get($tx->meta, 'agency_id'))
+                  <small class="d-block text-muted">Agency #{{ data_get($tx->meta, 'agency_id') }}{{ data_get($tx->meta, 'agency_name') ? ' · '.data_get($tx->meta, 'agency_name') : '' }}</small>
+                @endif
+                @if(data_get($tx->meta, 'credited_by_admin_user_id'))
+                  <small class="d-block text-muted">Credited by admin #{{ data_get($tx->meta, 'credited_by_admin_user_id') }}{{ data_get($tx->meta, 'credited_by_admin_name') ? ' · '.data_get($tx->meta, 'credited_by_admin_name') : '' }}</small>
+                @endif
+                @if(data_get($tx->meta, 'credited_by_agency_user_id'))
+                  <small class="d-block text-muted">Credited by agency user #{{ data_get($tx->meta, 'credited_by_agency_user_id') }}{{ data_get($tx->meta, 'credited_by_agency_user_name') ? ' · '.data_get($tx->meta, 'credited_by_agency_user_name') : '' }}</small>
                 @endif
                 <small class="text-muted">{{ data_get($tx->meta,'note') }}</small>
               </td>

@@ -8,6 +8,7 @@ use App\Models\HostRequest;
 use App\Models\HostEnrollRequest;
 use App\Models\User;
 use App\Models\Agency;
+use App\Models\AgencyWallet;
 use App\Models\Host;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
@@ -25,8 +26,10 @@ class DashboardController extends Controller
             'totalAgencies' => Agency::count(),
             'totalHosts'    => Host::count(),
             'blockedUsers'  => User::where('is_blocked', true)->count(),
-            'coinSupply'    => (int) Wallet::sum('balance'), // integer “coins”
+            'userCoinSupply' => (int) Wallet::sum('balance'),
+            'agencyCoinSupply' => (int) AgencyWallet::sum('balance'),
         ];
+        $stats['coinSupply'] = $stats['userCoinSupply'] + $stats['agencyCoinSupply'];
 
         $latestAgency = AgencyRequest::with('user')->latest()->limit(5)->get();
         $latestHost   = HostRequest::with('user')->latest()->limit(5)->get();

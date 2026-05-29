@@ -9,6 +9,7 @@ use App\Models\LiveRoom;
 use App\Models\LiveRoomPkBattle;
 use App\Services\NotifyUser;
 use App\Services\AgencyDashboardService;
+use App\Services\AgencyWalletService;
 use App\Services\CallReportService;
 use Illuminate\Http\Request;
 
@@ -16,6 +17,7 @@ class AgencyAdminController extends Controller
 {
     public function __construct(
         private AgencyDashboardService $dashboardService,
+        private AgencyWalletService $agencyWalletService,
         private CallReportService $callReportService,
     )
     {
@@ -46,11 +48,13 @@ class AgencyAdminController extends Controller
     {
         $agency->load('owner');
         $dashboard = $this->dashboardService->build($agency);
+        $walletSummary = $this->agencyWalletService->summary($agency);
         $this->previewRoutes($agency, $overviewRoute, $hostsIndexRoute, $callsRoute, $payoutReportsRoute, $profileRoute, $videoRoomsRoute, $audioRoomsRoute, $pkBattlesRoute);
 
         return view('agency.dashboard', compact(
             'agency',
             'dashboard',
+            'walletSummary',
             'overviewRoute',
             'hostsIndexRoute',
             'callsRoute',
