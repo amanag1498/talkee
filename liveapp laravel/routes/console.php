@@ -18,10 +18,36 @@ use App\Services\TeenPattiService;
 use App\Models\TeenPattiRound;
 use App\Services\GreedyGameService;
 use App\Models\GreedyRound;
+use App\Services\ProdUserDataPurgeService;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+Artisan::command('prod:purge-user-data {--keep-user=1} {--dry-run} {--confirm=}', function (ProdUserDataPurgeService $service) {
+    $keepUserId = (int) $this->option('keep-user');
+    $dryRun = (bool) $this->option('dry-run');
+
+    if (! $dryRun && $this->option('confirm') !== ProdUserDataPurgeService::CONFIRMATION_TOKEN) {
+        $this->error('Refusing to delete production data without exact confirmation.');
+        $this->line('Run dry first: php artisan prod:purge-user-data --keep-user=1 --dry-run');
+        $this->line('Real run: php artisan prod:purge-user-data --keep-user=1 --confirm='.ProdUserDataPurgeService::CONFIRMATION_TOKEN);
+
+        return 1;
+    }
+
+    $plan = $dryRun ? $service->plan($keepUserId) : $service->purge($keepUserId);
+    $total = collect($plan)->sum('rows');
+
+    $this->table(['Operation', 'Table', 'Rows'], collect($plan)
+        ->map(fn (array $row) => [$row['operation'], $row['table'], $row['rows']])
+        ->all());
+
+    $this->info(($dryRun ? 'Dry run only. ' : 'Purge complete. ')."Affected rows: {$total}.");
+    $this->warn('Preserved catalog/master tables: user_levels, themes, profile_frames, recharge_plans, gifts, entry_packs, subscription_plans, app_settings, banners, moderation_rules.');
+
+    return 0;
+})->purpose('Delete user, host, agency, wallet, room, game, and transaction data while preserving app catalog/master data');
 
 Artisan::command('queue:work-safe {connection?}', function (?string $connection = null) {
     $connection ??= config('queue.default');
