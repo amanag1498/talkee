@@ -76,6 +76,14 @@ class RazorpayCheckoutService {
       prefill['contact'] = phone;
     }
 
+    final method = <String, dynamic>{
+      'card': true,
+      'netbanking': true,
+      'wallet': true,
+      'upi': true,
+      ...checkout.method,
+    };
+
     final options = <String, dynamic>{
       'key': checkout.key,
       'amount': checkout.amount,
@@ -83,6 +91,7 @@ class RazorpayCheckoutService {
       'name': checkout.name,
       'description': checkout.description,
       'order_id': checkout.gatewayOrderId,
+      'method': method,
       'retry': {
         'enabled': true,
         'max_count': 1,

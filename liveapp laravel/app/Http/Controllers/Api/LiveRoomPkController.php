@@ -22,7 +22,12 @@ class LiveRoomPkController extends Controller
         ]);
 
         $targetRoom = LiveRoom::query()->where('room_id', $data['target_room_id'])->firstOrFail();
-        $battle = $this->pk->invite($room, $targetRoom, $request->user(), (int) ($data['duration_seconds'] ?? 300));
+        $battle = $this->pk->invite(
+            $room,
+            $targetRoom,
+            $request->user(),
+            array_key_exists('duration_seconds', $data) ? (int) $data['duration_seconds'] : null,
+        );
 
         return response()->json(['ok' => true, 'data' => $this->pk->payload($battle)]);
     }

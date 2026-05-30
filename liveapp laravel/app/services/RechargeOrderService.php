@@ -355,6 +355,12 @@ class RechargeOrderService
             'currency' => $this->razorpay->currency(),
             'name' => config('app.name', 'Talkieo'),
             'description' => $order->rechargePlan?->title ?: 'Wallet recharge',
+            'method' => [
+                'card' => true,
+                'netbanking' => true,
+                'wallet' => true,
+                'upi' => true,
+            ],
             'prefill' => array_filter([
                 'name' => trim((string) $user->name),
                 'email' => trim((string) $user->email),

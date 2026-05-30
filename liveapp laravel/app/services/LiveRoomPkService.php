@@ -27,7 +27,7 @@ class LiveRoomPkService
     {
     }
 
-    public function invite(LiveRoom $room, LiveRoom $targetRoom, User $actor, int $durationSeconds = 300): LiveRoomPkBattle
+    public function invite(LiveRoom $room, LiveRoom $targetRoom, User $actor, ?int $durationSeconds = null): LiveRoomPkBattle
     {
         $host = $this->assertHostOwnsRoom($actor, $room);
         $targetHost = $targetRoom->host;
@@ -45,7 +45,10 @@ class LiveRoomPkService
             throw new HttpException(409, 'Cannot invite your own room.');
         }
 
-        $durationSeconds = max(60, min(900, $durationSeconds));
+        $durationSeconds = max(
+            60,
+            min(900, $durationSeconds ?? (int) config('live_rooms.pk.default_duration_seconds', 300)),
+        );
 
         return DB::transaction(function () use ($room, $targetRoom, $host, $targetHost, $durationSeconds) {
             $roomA = LiveRoom::query()->whereKey($room->id)->lockForUpdate()->firstOrFail();

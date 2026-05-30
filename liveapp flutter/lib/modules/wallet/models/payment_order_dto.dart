@@ -65,6 +65,7 @@ class PaymentCheckoutDto {
   final String currency;
   final String name;
   final String description;
+  final Map<String, dynamic> method;
   final Map<String, dynamic> prefill;
 
   const PaymentCheckoutDto({
@@ -75,6 +76,7 @@ class PaymentCheckoutDto {
     required this.currency,
     required this.name,
     required this.description,
+    this.method = const <String, dynamic>{},
     this.prefill = const <String, dynamic>{},
   });
 
@@ -87,6 +89,10 @@ class PaymentCheckoutDto {
       currency: (json['currency'] ?? 'INR').toString(),
       name: (json['name'] ?? 'Talkieo').toString(),
       description: (json['description'] ?? 'Wallet recharge').toString(),
+      method:
+          json['method'] is Map
+              ? Map<String, dynamic>.from(json['method'] as Map)
+              : const <String, dynamic>{},
       prefill:
           json['prefill'] is Map
               ? Map<String, dynamic>.from(json['prefill'] as Map)

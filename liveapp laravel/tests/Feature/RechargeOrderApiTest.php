@@ -174,7 +174,8 @@ class RechargeOrderApiTest extends TestCase
             ->assertJsonPath('data.status', 'created')
             ->assertJsonPath('data.checkout.gateway', 'razorpay')
             ->assertJsonPath('data.checkout.key', 'rzp_test_key')
-            ->assertJsonPath('data.checkout.order_id', 'order_test_123');
+            ->assertJsonPath('data.checkout.order_id', 'order_test_123')
+            ->assertJsonPath('data.checkout.method.upi', true);
 
         $this->assertNotEmpty($gateway->createdOrders);
     }

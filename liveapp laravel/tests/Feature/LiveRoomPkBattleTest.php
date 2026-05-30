@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Gift;
 use App\Models\Host;
+use App\Models\AppSetting;
 use App\Models\LiveRoom;
 use App\Models\LiveRoomParticipant;
 use App\Models\LiveRoomPkBattle;
@@ -15,6 +16,7 @@ use App\Models\UserSubscription;
 use App\Models\Wallet;
 use App\Services\LiveKitRoomAdminService;
 use App\Services\LiveRoomPkService;
+use App\Services\AppSettingsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Redis;
 use Laravel\Sanctum\Sanctum;
@@ -53,6 +55,32 @@ class LiveRoomPkBattleTest extends TestCase
         $this->postJson("/api/live/rooms/{$roomB->room_id}/pk/{$battleId}/reject")
             ->assertOk()
             ->assertJsonPath('data.status', 'rejected');
+    }
+
+    public function test_pk_invite_uses_admin_configured_default_duration(): void
+    {
+        AppSetting::query()->create([
+            'key' => 'live_rooms.pk.default_duration_seconds',
+            'value' => '180',
+        ]);
+        app(AppSettingsService::class)->loadLiveRoomSettingsIntoConfig();
+
+        [$hostAUser, $roomA] = $this->makeLiveRoom('duration-a');
+        [, $roomB] = $this->makeLiveRoom('duration-b');
+
+        Sanctum::actingAs($hostAUser);
+
+        $this->postJson("/api/live/rooms/{$roomA->room_id}/pk/invite", [
+            'target_room_id' => $roomB->room_id,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.duration_seconds', 180);
+
+        $this->assertDatabaseHas('live_room_pk_battles', [
+            'room_a_id' => $roomA->id,
+            'room_b_id' => $roomB->id,
+            'duration_seconds' => 180,
+        ]);
     }
 
     public function test_cannot_invite_own_room(): void

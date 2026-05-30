@@ -56,6 +56,34 @@
               </div>
             </div>
           @endforeach
+
+          <div class="col-lg-6">
+            <div class="border rounded-3 p-3 h-100">
+              <h6 class="mb-3">PK Battles</h6>
+              <div class="row g-3">
+                @foreach ($definitions as $key => $definition)
+                  @continue(!str_starts_with($key, 'live_rooms.pk.'))
+                  @php($field = str_replace('live_rooms.pk.', '', $key))
+                  <div class="col-12">
+                    <label class="form-label">{{ $definition['label'] }}</label>
+                    <input
+                      type="number"
+                      name="live_rooms[pk][{{ $field }}]"
+                      class="form-control @error("live_rooms.pk.{$field}") is-invalid @enderror"
+                      value="{{ old("live_rooms.pk.{$field}", $values[$key]) }}"
+                      min="{{ $definition['min'] ?? 0 }}"
+                      @if(isset($definition['max'])) max="{{ $definition['max'] }}" @endif
+                      step="1"
+                    >
+                    @error("live_rooms.pk.{$field}")
+                      <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                    <small class="text-muted">{{ $definition['hint'] }}</small>
+                  </div>
+                @endforeach
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -9,4 +9,7 @@ return [
         'max_participants' => (int) env('LIVE_AUDIO_MAX_PARTICIPANTS', 50),
         'max_speakers' => (int) env('LIVE_AUDIO_MAX_SPEAKERS', 8),
     ],
+    'pk' => [
+        'default_duration_seconds' => (int) env('LIVE_PK_DEFAULT_DURATION_SECONDS', 300),
+    ],
 ];

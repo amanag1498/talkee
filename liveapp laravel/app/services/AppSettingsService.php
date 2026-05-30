@@ -239,6 +239,14 @@ class AppSettingsService
             'max' => 100,
             'hint' => 'Default speaker cap for audio rooms. Must stay lower than audio max participants.',
         ],
+        'live_rooms.pk.default_duration_seconds' => [
+            'label' => 'PK Battle Duration Seconds',
+            'type' => 'integer',
+            'min' => 60,
+            'max' => 900,
+            'default' => 300,
+            'hint' => 'Admin-controlled PK battle timer. 300 seconds equals 5 minutes.',
+        ],
     ];
 
     public const GAME_DEFINITIONS = [
