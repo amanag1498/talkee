@@ -5,6 +5,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
@@ -16,7 +17,9 @@ import '../modules/notifications/controllers/notification_controller.dart';
 
 /// Top-level background handler (MUST be top-level or a static function).
 /// Register this in main() with: FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+@pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
   // Background isolate: you cannot touch UI or Get here.
   // Do light work only (analytics, logging).
 }
