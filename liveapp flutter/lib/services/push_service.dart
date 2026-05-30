@@ -1,4 +1,6 @@
 // lib/services/push_service.dart
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -8,6 +10,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../app/routes/app_routes.dart';
 import 'api_client.dart';
+import '../modules/Live/services/live_service.dart';
 // ⬇️ ADD: import the controller so we can refresh it
 import '../modules/notifications/controllers/notification_controller.dart';
 
@@ -59,7 +62,7 @@ class PushService {
       initSettings,
       onDidReceiveNotificationResponse: (details) {
         // User tapped a local notif while app was foreground/background
-        _openNotificationsScreen();
+        unawaited(_handleLocalNotificationTap(details.payload));
         _refreshNotificationsIfAny();
       },
     );
@@ -72,14 +75,14 @@ class PushService {
 
     // 🔔 App opened via tapping push (background -> foreground)
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      _openNotificationsScreen();
+      unawaited(_handleRemoteNotificationTap(message));
       _refreshNotificationsIfAny();
     });
 
     // 🔔 App launched from a terminated state by tapping push
     final initialMsg = await _fm.getInitialMessage();
     if (initialMsg != null) {
-      _openNotificationsScreen();
+      unawaited(_handleRemoteNotificationTap(initialMsg));
       _refreshNotificationsIfAny();
     }
 
@@ -163,8 +166,81 @@ class PushService {
     await _fln.show(
       DateTime.now().millisecondsSinceEpoch ~/ 1000,
       title, body, details,
-      payload: 'notifications',
+      payload: jsonEncode(message.data),
     );
+  }
+
+  Future<void> _handleRemoteNotificationTap(RemoteMessage message) async {
+    await _handleNotificationData(Map<String, dynamic>.from(message.data));
+  }
+
+  Future<void> _handleLocalNotificationTap(String? payload) async {
+    if (payload == null || payload.trim().isEmpty || payload == 'notifications') {
+      _openNotificationsScreen();
+      return;
+    }
+
+    try {
+      final decoded = jsonDecode(payload);
+      if (decoded is Map) {
+        await _handleNotificationData(Map<String, dynamic>.from(decoded));
+        return;
+      }
+    } catch (_) {}
+
+    _openNotificationsScreen();
+  }
+
+  Future<void> _handleNotificationData(Map<String, dynamic> data) async {
+    final meta = _decodeMeta(data['meta']);
+    final screen = (data['screen'] ?? meta['screen'] ?? '').toString();
+    final roomId = (data['room_id'] ?? meta['room_id'] ?? '').toString().trim();
+
+    if (screen == 'room' && roomId.isNotEmpty) {
+      final opened = await _openLiveRoom(roomId, (meta['room_type'] ?? data['room_type'])?.toString());
+      if (opened) return;
+    }
+
+    _openNotificationsScreen();
+  }
+
+  Map<String, dynamic> _decodeMeta(dynamic raw) {
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    if (raw is String && raw.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+    return const <String, dynamic>{};
+  }
+
+  Future<bool> _openLiveRoom(String roomId, String? hintedRoomType) async {
+    try {
+      final live = Get.find<LiveService>();
+      final normalizedType = (hintedRoomType ?? '').toLowerCase();
+      final room = normalizedType == 'audio'
+          ? await live.joinAudioRoom(roomId)
+          : await live.join(roomId, role: 'viewer');
+      final route = room.roomType == 'audio' ? Routes.liveAudio : Routes.liveVideo;
+
+      if (Get.currentRoute == route) {
+        Get.offNamed(route, arguments: {
+          'room': room,
+          'viewer_only': true,
+          'initial_mic_on': false,
+        });
+      } else {
+        Get.toNamed(route, arguments: {
+          'room': room,
+          'viewer_only': true,
+          'initial_mic_on': false,
+        });
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   void _openNotificationsScreen() {

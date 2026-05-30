@@ -316,6 +316,9 @@ class LiveRoomController extends Controller
             if (!$wasStarted && $room->status === 'live') {
                 LiveRoomBroadcaster::broadcast($room, 'live');
                 $this->notifyScheduledRoomLive($room, $host, $user);
+                $this->notifyLiveRoomStartedFollowers($room, $host, $user, LiveRoomReminder::query()
+                    ->where('live_room_id', $room->id)
+                    ->pluck('user_id'));
                 Log::info('LIVE_ROOM_START_EXISTING_BROADCAST', ['room_id' => $room->room_id, 'event' => 'live']);
             } else {
                 $afterMeta = $room->meta ?? [];
@@ -397,6 +400,8 @@ class LiveRoomController extends Controller
 
         if ($room->status === 'scheduled') {
             $this->notifyScheduledRoomCreated($room, $host, $user);
+        } elseif ($room->status === 'live') {
+            $this->notifyLiveRoomStartedFollowers($room, $host, $user);
         }
 
         $entryEffect = null;
@@ -590,6 +595,50 @@ class LiveRoomController extends Controller
                 'room_id' => $room->room_id,
                 'host_id' => $hostUser->id,
                 'host_name' => $hostName,
+                'started_at' => optional($room->started_at)?->toIso8601String(),
+            ],
+        ]);
+    }
+
+    private function notifyLiveRoomStartedFollowers(LiveRoom $room, Host $host, User $hostUser, $excludeUserIds = []): void
+    {
+        if ($host->is_blocked || $hostUser->is_blocked) {
+            return;
+        }
+
+        $excluded = collect($excludeUserIds)->filter()->map(fn ($id) => (int) $id)->unique()->values();
+        $audienceQuery = HostFollower::query()
+            ->where('host_id', $host->id)
+            ->where('notify_when_online', true);
+
+        if ($excluded->isNotEmpty()) {
+            $audienceQuery->whereNotIn('user_id', $excluded->all());
+        }
+
+        $audience = $audienceQuery->pluck('user_id');
+        if ($audience->isEmpty()) {
+            return;
+        }
+
+        $hostName = $host->stage_name ?: ($hostUser->name ?: 'A host');
+        $roomType = (string) ($room->room_type ?? 'video');
+        $roomLabel = $roomType === 'audio' ? 'audio room' : 'video room';
+        $roomArticle = $roomType === 'audio' ? 'an' : 'a';
+
+        NotifyUser::sendMany($audience, [
+            'type' => 'host_live_started',
+            'title' => $hostName . ' is live now',
+            'body' => $hostName . ' started ' . $roomArticle . ' ' . $roomLabel . '.',
+            'screen' => 'room',
+            'room_id' => $room->room_id,
+            'meta' => [
+                'room_id' => $room->room_id,
+                'room_type' => $roomType,
+                'host_id' => $host->id,
+                'host_user_id' => $hostUser->id,
+                'host_name' => $hostName,
+                'notification_type' => 'host_live_started',
+                'screen' => 'room',
                 'started_at' => optional($room->started_at)?->toIso8601String(),
             ],
         ]);
