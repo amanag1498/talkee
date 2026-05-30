@@ -77,6 +77,26 @@ class ProdUserDataPurgeCommandTest extends TestCase
         $this->assertDatabaseCount('users', 2);
     }
 
+    public function test_auto_increment_reset_requires_confirmation_for_real_run(): void
+    {
+        User::factory()->create(['id' => 1]);
+
+        $this->artisan('prod:reset-purged-auto-increments', ['--keep-user' => 1])
+            ->assertExitCode(1);
+    }
+
+    public function test_auto_increment_reset_dry_run_is_safe_on_non_mysql_testing_driver(): void
+    {
+        User::factory()->create(['id' => 1]);
+
+        $this->artisan('prod:reset-purged-auto-increments', [
+            '--keep-user' => 1,
+            '--dry-run' => true,
+        ])->assertExitCode(0);
+
+        $this->assertDatabaseHas('users', ['id' => 1]);
+    }
+
     private function seedCatalogData(): void
     {
         DB::table('user_levels')->insert([

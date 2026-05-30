@@ -132,6 +132,67 @@ class ProdUserDataPurgeService
         return $plan;
     }
 
+    public function autoIncrementResetPlan(int $keepUserId = 1): array
+    {
+        $this->assertKeepUserExists($keepUserId);
+
+        if (! $this->supportsAutoIncrementReset()) {
+            return [[
+                'operation' => 'skip',
+                'table' => '*',
+                'rows' => 0,
+                'next_auto_increment' => null,
+                'status' => 'unsupported_driver: '.DB::connection()->getDriverName(),
+            ]];
+        }
+
+        $rows = [];
+        foreach ($this->autoIncrementResetTables() as $table) {
+            if (! Schema::hasTable($table) || ! $this->hasAutoIncrementColumn($table)) {
+                continue;
+            }
+
+            $rowCount = DB::table($table)->count();
+            $nextAutoIncrement = $table === 'users'
+                ? $this->nextUsersAutoIncrement($keepUserId)
+                : 1;
+
+            $rows[] = [
+                'operation' => 'reset_auto_increment',
+                'table' => $table,
+                'rows' => $rowCount,
+                'next_auto_increment' => $nextAutoIncrement,
+                'status' => $table === 'users' || $rowCount === 0
+                    ? 'ready'
+                    : 'skipped_not_empty',
+            ];
+        }
+
+        return $rows;
+    }
+
+    public function resetAutoIncrements(int $keepUserId = 1): array
+    {
+        $plan = $this->autoIncrementResetPlan($keepUserId);
+
+        if (! $this->supportsAutoIncrementReset()) {
+            return $plan;
+        }
+
+        foreach ($plan as $row) {
+            if (($row['status'] ?? null) !== 'ready') {
+                continue;
+            }
+
+            $this->resetTableAutoIncrement(
+                $row['table'],
+                (int) $row['next_auto_increment'],
+            );
+        }
+
+        return $plan;
+    }
+
     private function scopedDeleteCounts(int $keepUserId): array
     {
         $rows = [];
@@ -213,6 +274,43 @@ class ProdUserDataPurgeService
         }
 
         DB::table($table)->delete();
+    }
+
+    private function autoIncrementResetTables(): array
+    {
+        return [...self::FULL_DELETE_TABLES, ...self::FINAL_DELETE_TABLES, 'users'];
+    }
+
+    private function supportsAutoIncrementReset(): bool
+    {
+        return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true);
+    }
+
+    private function hasAutoIncrementColumn(string $table): bool
+    {
+        $database = DB::connection()->getDatabaseName();
+
+        return DB::table('information_schema.COLUMNS')
+            ->where('TABLE_SCHEMA', $database)
+            ->where('TABLE_NAME', $table)
+            ->where('EXTRA', 'like', '%auto_increment%')
+            ->exists();
+    }
+
+    private function nextUsersAutoIncrement(int $keepUserId): int
+    {
+        $maxUserId = (int) DB::table('users')->max('id');
+
+        return max($keepUserId + 1, $maxUserId + 1);
+    }
+
+    private function resetTableAutoIncrement(string $table, int $nextAutoIncrement): void
+    {
+        DB::statement(sprintf(
+            'ALTER TABLE `%s` AUTO_INCREMENT = %d',
+            str_replace('`', '``', $table),
+            $nextAutoIncrement,
+        ));
     }
 
     private function assertKeepUserExists(int $keepUserId): void

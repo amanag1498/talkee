@@ -49,6 +49,37 @@ Artisan::command('prod:purge-user-data {--keep-user=1} {--dry-run} {--confirm=}'
     return 0;
 })->purpose('Delete user, host, agency, wallet, room, game, and transaction data while preserving app catalog/master data');
 
+Artisan::command('prod:reset-purged-auto-increments {--keep-user=1} {--dry-run} {--confirm=}', function (ProdUserDataPurgeService $service) {
+    $keepUserId = (int) $this->option('keep-user');
+    $dryRun = (bool) $this->option('dry-run');
+
+    if (! $dryRun && $this->option('confirm') !== ProdUserDataPurgeService::CONFIRMATION_TOKEN) {
+        $this->error('Refusing to reset production auto-increments without exact confirmation.');
+        $this->line('Run dry first: php artisan prod:reset-purged-auto-increments --keep-user=1 --dry-run');
+        $this->line('Real run: php artisan prod:reset-purged-auto-increments --keep-user=1 --confirm='.ProdUserDataPurgeService::CONFIRMATION_TOKEN);
+
+        return 1;
+    }
+
+    $plan = $dryRun
+        ? $service->autoIncrementResetPlan($keepUserId)
+        : $service->resetAutoIncrements($keepUserId);
+
+    $this->table(['Operation', 'Table', 'Rows', 'Next Auto Increment', 'Status'], collect($plan)
+        ->map(fn (array $row) => [
+            $row['operation'],
+            $row['table'],
+            $row['rows'],
+            $row['next_auto_increment'] ?? '-',
+            $row['status'],
+        ])
+        ->all());
+
+    $this->info($dryRun ? 'Dry run only. No auto-increment values changed.' : 'Auto-increment reset complete.');
+
+    return 0;
+})->purpose('Reset auto-increment counters for tables emptied by prod:purge-user-data');
+
 Artisan::command('queue:work-safe {connection?}', function (?string $connection = null) {
     $connection ??= config('queue.default');
     $policy = (array) config('queue.worker', []);
