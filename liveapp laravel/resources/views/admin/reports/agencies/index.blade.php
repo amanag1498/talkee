@@ -128,11 +128,13 @@
             <th>Live Gift Coins</th>
             <th>PK Coins / Events</th>
             <th>Top Host</th>
-            <th></th>
+            <th>Payout Draft</th>
+            <th class="text-end">Actions</th>
           </tr>
         </thead>
         <tbody>
           @forelse($rows as $row)
+            @php($payoutReport = $row['payout_report'] ?? null)
             <tr>
               <td>
                 <div class="fw-semibold">{{ $row['agency']->name }}</div>
@@ -147,6 +149,14 @@
               <td>{{ number_format($row['live_gift_coins']) }}</td>
               <td>{{ number_format($row['pk_gift_coins']) }} / {{ number_format($row['pk_event_count']) }}</td>
               <td>{{ $row['top_host'] ?? '—' }}</td>
+              <td>
+                @if($payoutReport)
+                  <div class="fw-semibold">{{ ucwords(str_replace('_', ' ', $payoutReport->status)) }}</div>
+                  <div class="text-muted small">{{ $payoutReport->published_at ? 'Published' : 'Draft only' }}</div>
+                @else
+                  <span class="text-muted">Not generated</span>
+                @endif
+              </td>
               <td class="text-end">
                 <form method="post" action="{{ route('admin.agency-payout-reports.generate') }}" class="d-inline">
                   @csrf
@@ -155,12 +165,29 @@
                   <input type="hidden" name="agency_id" value="{{ $row['agency']->id }}">
                   <button class="btn btn-sm btn-outline-primary">Generate Draft</button>
                 </form>
-                <a href="{{ route('admin.agency-payout-reports.index', ['agency_id' => $row['agency']->id, 'date_from' => $from->format('Y-m-d'), 'date_to' => $to->format('Y-m-d')]) }}" class="btn btn-sm btn-light border">Open Drafts</a>
+                @if($payoutReport)
+                  <a href="{{ route('admin.agency-payout-reports.show', $payoutReport) }}" class="btn btn-sm btn-light border">View Draft</a>
+                  <a href="{{ route('admin.agency-payout-reports.export', $payoutReport) }}" class="btn btn-sm btn-outline-secondary">CSV</a>
+                  @if($payoutReport->status === 'approved' && !$payoutReport->published_at)
+                    <form method="post" action="{{ route('admin.agency-payout-reports.publish', $payoutReport) }}" class="d-inline">
+                      @csrf
+                      <button class="btn btn-sm btn-outline-primary">Publish</button>
+                    </form>
+                  @endif
+                  @if($payoutReport->status === 'approved' && $payoutReport->published_at)
+                    <form method="post" action="{{ route('admin.agency-payout-reports.mark-paid', $payoutReport) }}" class="d-inline">
+                      @csrf
+                      <button class="btn btn-sm btn-success">Mark Paid</button>
+                    </form>
+                  @endif
+                @else
+                  <a href="{{ route('admin.agency-payout-reports.index', ['agency_id' => $row['agency']->id, 'date_from' => $from->format('Y-m-d'), 'date_to' => $to->format('Y-m-d')]) }}" class="btn btn-sm btn-light border">Open Drafts</a>
+                @endif
                 <a href="{{ route('admin.reports.agencies.show', ['agency' => $row['agency']->id, 'from' => $from->format('Y-m-d'), 'to' => $to->format('Y-m-d')]) }}" class="btn btn-sm btn-light border">View Detail</a>
               </td>
             </tr>
           @empty
-            <tr><td colspan="11" class="text-center text-muted py-4">No agency data in this range.</td></tr>
+            <tr><td colspan="13" class="text-center text-muted py-4">No agency data in this range.</td></tr>
           @endforelse
         </tbody>
       </table>

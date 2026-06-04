@@ -9,6 +9,7 @@
   $recentCalls = $report['recent_calls'];
   $from = $report['from'];
   $to = $report['to'];
+  $payoutReport = $report['payout_report'] ?? null;
 @endphp
 
 @section('content')
@@ -34,12 +35,38 @@
             <input type="hidden" name="agency_id" value="{{ $agency->id }}">
             <button class="btn btn-outline-primary">Generate Draft</button>
           </form>
-          <a href="{{ route('admin.agency-payout-reports.index', ['agency_id' => $agency->id, 'date_from' => $from->format('Y-m-d'), 'date_to' => $to->format('Y-m-d')]) }}" class="btn btn-light border">Open Drafts</a>
+          @if($payoutReport)
+            <a href="{{ route('admin.agency-payout-reports.show', $payoutReport) }}" class="btn btn-light border">View Draft</a>
+            <a href="{{ route('admin.agency-payout-reports.export', $payoutReport) }}" class="btn btn-outline-secondary">CSV</a>
+            @if($payoutReport->status === 'approved' && !$payoutReport->published_at)
+              <form method="post" action="{{ route('admin.agency-payout-reports.publish', $payoutReport) }}" class="d-inline">
+                @csrf
+                <button class="btn btn-outline-primary">Publish</button>
+              </form>
+            @endif
+            @if($payoutReport->status === 'approved' && $payoutReport->published_at)
+              <form method="post" action="{{ route('admin.agency-payout-reports.mark-paid', $payoutReport) }}" class="d-inline">
+                @csrf
+                <button class="btn btn-success">Mark Paid</button>
+              </form>
+            @endif
+          @else
+            <a href="{{ route('admin.agency-payout-reports.index', ['agency_id' => $agency->id, 'date_from' => $from->format('Y-m-d'), 'date_to' => $to->format('Y-m-d')]) }}" class="btn btn-light border">Open Drafts</a>
+          @endif
           <a href="{{ route('admin.agencies.edit', $agency) }}" class="btn btn-primary">Edit Agency</a>
         </div>
       </div>
     </div>
   </section>
+
+  @if($payoutReport)
+    <section class="row g-3 mb-3">
+      <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Payout Draft Status</small><div class="fs-5 fw-semibold mt-1">{{ ucwords(str_replace('_', ' ', $payoutReport->status)) }}</div></div></div></div>
+      <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Agency Visibility</small><div class="fs-5 fw-semibold mt-1">{{ $payoutReport->published_at ? 'Published' : 'Draft only' }}</div></div></div></div>
+      <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Final Payable</small><div class="fs-5 fw-semibold mt-1">{{ number_format($payoutReport->final_payable) }}</div></div></div></div>
+      <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Published At</small><div class="fs-5 fw-semibold mt-1">{{ $payoutReport->published_at ? optional($payoutReport->published_at)->format('d M Y H:i') : 'Not yet' }}</div></div></div></div>
+    </section>
+  @endif
 
   <section class="row g-3">
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Calls</small><div class="fs-3 fw-semibold mt-1">{{ number_format($summary['calls']) }}</div></div></div></div>

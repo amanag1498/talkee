@@ -120,7 +120,7 @@
             <th>Final Payable</th>
             <th>Status</th>
             <th>Agency Visibility</th>
-            <th></th>
+            <th class="text-end">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -147,7 +147,22 @@
                 @endif
               </td>
               <td class="text-end">
-                <a href="{{ route('admin.agency-payout-reports.show', $report) }}" class="btn btn-sm btn-light border">View</a>
+                <div class="d-inline-flex flex-wrap justify-content-end gap-1">
+                  <a href="{{ route('admin.agency-payout-reports.show', $report) }}" class="btn btn-sm btn-light border">View</a>
+                  <a href="{{ route('admin.agency-payout-reports.export', $report) }}" class="btn btn-sm btn-outline-secondary">CSV</a>
+                  @if($report->status === 'approved' && !$report->published_at)
+                    <form method="post" action="{{ route('admin.agency-payout-reports.publish', $report) }}" class="d-inline">
+                      @csrf
+                      <button class="btn btn-sm btn-outline-primary">Publish</button>
+                    </form>
+                  @endif
+                  @if($report->status === 'approved' && $report->published_at && $report->status !== 'paid')
+                    <form method="post" action="{{ route('admin.agency-payout-reports.mark-paid', $report) }}" class="d-inline">
+                      @csrf
+                      <button class="btn btn-sm btn-success">Mark Paid</button>
+                    </form>
+                  @endif
+                </div>
               </td>
             </tr>
           @empty
