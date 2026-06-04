@@ -29,26 +29,32 @@
   }
 
   .payout-grid-input {
-    width: 88px;
-    min-width: 88px;
+    width: 110px;
+    min-width: 110px;
     text-align: right;
-    padding-inline: 0.4rem;
+    padding-inline: 0.55rem;
+    font-size: 0.82rem;
+    line-height: 1.35;
+    color: #111827;
   }
 
   .payout-grid-input.payout-grid-wide {
-    width: 108px;
-    min-width: 108px;
+    width: 132px;
+    min-width: 132px;
   }
 
   .payout-grid-input.payout-grid-percent {
-    width: 72px;
-    min-width: 72px;
+    width: 84px;
+    min-width: 84px;
   }
 
   .payout-grid-note {
-    width: 180px;
-    min-width: 180px;
+    width: 220px;
+    min-width: 220px;
     white-space: normal;
+    font-size: 0.82rem;
+    line-height: 1.35;
+    color: #111827;
   }
 </style>
 <div class="admin-page-shell">
