@@ -2,6 +2,55 @@
 @section('title', 'Agency Payout Report #' . $report->id)
 
 @section('content')
+<style>
+  .payout-grid-table {
+    white-space: nowrap;
+  }
+
+  .payout-grid-table th,
+  .payout-grid-table td {
+    vertical-align: middle;
+  }
+
+  .payout-grid-host {
+    min-width: 180px;
+    position: sticky;
+    left: 0;
+    background: #fff;
+    z-index: 1;
+  }
+
+  .payout-grid-save {
+    min-width: 88px;
+    position: sticky;
+    right: 0;
+    background: #fff;
+    z-index: 1;
+  }
+
+  .payout-grid-input {
+    width: 88px;
+    min-width: 88px;
+    text-align: right;
+    padding-inline: 0.4rem;
+  }
+
+  .payout-grid-input.payout-grid-wide {
+    width: 108px;
+    min-width: 108px;
+  }
+
+  .payout-grid-input.payout-grid-percent {
+    width: 72px;
+    min-width: 72px;
+  }
+
+  .payout-grid-note {
+    width: 180px;
+    min-width: 180px;
+    white-space: normal;
+  }
+</style>
 <div class="admin-page-shell">
   <section class="admin-page-hero">
     <div class="row g-4 align-items-center">
@@ -152,7 +201,7 @@
       <div class="text-muted small mt-1">Edit rows here before publishing. Changing an approved row moves the report back to pending review.</div>
     </div>
     <div class="card-body table-responsive">
-      <table class="table align-middle">
+      <table class="table align-middle payout-grid-table">
         <thead class="table-light">
           <tr>
             <th>Host</th>
@@ -194,84 +243,84 @@
           @forelse($report->items as $item)
             @php($formId = 'payout-row-' . $item->id)
             <tr>
-              <td>
+              <td class="payout-grid-host">
                 <form id="{{ $formId }}" method="post" action="{{ route('admin.agency-payout-reports.items.update', [$report, $item]) }}">
                   @csrf
                 </form>
                 <div class="fw-semibold">{{ $item->host?->user?->name ?? $item->host?->stage_name ?? '—' }}</div>
                 <div class="text-muted small">{{ $item->host?->stage_name ?? '—' }}</div>
               </td>
-              <td><input type="number" min="0" name="call_earnings" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('call_earnings', $item->call_earnings) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="call_count" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('call_count', (int) data_get($item->meta, 'call_count', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="completed_call_count" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('completed_call_count', (int) data_get($item->meta, 'completed_call_count', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="billable_minutes" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('billable_minutes', (int) data_get($item->meta, 'billable_minutes', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="video_call_minutes" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('video_call_minutes', (int) data_get($item->meta, 'video_call_minutes', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="video_call_gross" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('video_call_gross', (int) data_get($item->meta, 'video_call_gross', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="audio_call_minutes" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('audio_call_minutes', (int) data_get($item->meta, 'audio_call_minutes', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="audio_call_gross" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('audio_call_gross', (int) data_get($item->meta, 'audio_call_gross', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="gift_earnings" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('gift_earnings', $item->gift_earnings) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="gift_events" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('gift_events', (int) data_get($item->meta, 'gift_events', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="gift_quantity" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('gift_quantity', (int) data_get($item->meta, 'gift_quantity', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="unique_gifters" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('unique_gifters', (int) data_get($item->meta, 'unique_gifters', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="live_room_count" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('live_room_count', (int) data_get($item->meta, 'live_room_count', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="audio_room_count" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('audio_room_count', (int) data_get($item->meta, 'audio_room_count', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="video_room_count" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('video_room_count', (int) data_get($item->meta, 'video_room_count', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="audio_room_minutes" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('audio_room_minutes', (int) data_get($item->meta, 'audio_room_minutes', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="video_room_minutes" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('video_room_minutes', (int) data_get($item->meta, 'video_room_minutes', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="audio_gift_gross" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('audio_gift_gross', (int) data_get($item->meta, 'audio_gift_gross', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="video_gift_gross" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('video_gift_gross', (int) data_get($item->meta, 'video_gift_gross', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="pk_earnings" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('pk_earnings', $item->pk_earnings) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="pk_event_count" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('pk_event_count', (int) data_get($item->meta, 'pk_event_count', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="gross_earnings" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('gross_earnings', $item->gross_earnings) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="call_earnings" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('call_earnings', $item->call_earnings) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="call_count" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('call_count', (int) data_get($item->meta, 'call_count', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="completed_call_count" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('completed_call_count', (int) data_get($item->meta, 'completed_call_count', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="billable_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('billable_minutes', (int) data_get($item->meta, 'billable_minutes', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="video_call_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('video_call_minutes', (int) data_get($item->meta, 'video_call_minutes', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="video_call_gross" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('video_call_gross', (int) data_get($item->meta, 'video_call_gross', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="audio_call_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('audio_call_minutes', (int) data_get($item->meta, 'audio_call_minutes', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="audio_call_gross" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('audio_call_gross', (int) data_get($item->meta, 'audio_call_gross', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="gift_earnings" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('gift_earnings', $item->gift_earnings) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="gift_events" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('gift_events', (int) data_get($item->meta, 'gift_events', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="gift_quantity" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('gift_quantity', (int) data_get($item->meta, 'gift_quantity', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="unique_gifters" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('unique_gifters', (int) data_get($item->meta, 'unique_gifters', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="live_room_count" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('live_room_count', (int) data_get($item->meta, 'live_room_count', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="audio_room_count" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('audio_room_count', (int) data_get($item->meta, 'audio_room_count', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="video_room_count" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('video_room_count', (int) data_get($item->meta, 'video_room_count', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="audio_room_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('audio_room_minutes', (int) data_get($item->meta, 'audio_room_minutes', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="video_room_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('video_room_minutes', (int) data_get($item->meta, 'video_room_minutes', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="audio_gift_gross" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('audio_gift_gross', (int) data_get($item->meta, 'audio_gift_gross', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="video_gift_gross" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('video_gift_gross', (int) data_get($item->meta, 'video_gift_gross', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="pk_earnings" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('pk_earnings', $item->pk_earnings) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="pk_event_count" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('pk_event_count', (int) data_get($item->meta, 'pk_event_count', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="gross_earnings" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('gross_earnings', $item->gross_earnings) }}" @disabled($report->published_at || $report->status === 'paid')></td>
               <td style="min-width: 132px;">
                 <input
                   type="number"
                   min="0"
                   name="host_share"
                   form="{{ $formId }}"
-                  class="form-control form-control-sm"
+                  class="form-control form-control-sm payout-grid-input payout-grid-wide"
                   value="{{ old('host_share', $item->host_share) }}"
                   @disabled($report->published_at || $report->status === 'paid')
                 >
               </td>
-              <td><input type="number" step="0.01" min="0" max="100" name="host_payout_percentage" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('host_payout_percentage', number_format($item->host_payout_percentage, 2, '.', '')) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="host_payout" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('host_payout', $item->host_payout) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" step="0.01" min="0" max="100" name="host_payout_percentage" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-percent" value="{{ old('host_payout_percentage', number_format($item->host_payout_percentage, 2, '.', '')) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="host_payout" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('host_payout', $item->host_payout) }}" @disabled($report->published_at || $report->status === 'paid')></td>
               <td style="min-width: 132px;">
                 <input
                   type="number"
                   min="0"
                   name="agency_commission"
                   form="{{ $formId }}"
-                  class="form-control form-control-sm"
+                  class="form-control form-control-sm payout-grid-input payout-grid-wide"
                   value="{{ old('agency_commission', $item->agency_commission) }}"
                   @disabled($report->published_at || $report->status === 'paid')
                 >
               </td>
-              <td><input type="number" step="0.01" min="0" max="100" name="agency_payout_percentage" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('agency_payout_percentage', number_format($item->agency_payout_percentage, 2, '.', '')) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="agency_payout" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('agency_payout', $item->agency_payout) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="total_payout" form="{{ $formId }}" class="form-control form-control-sm" value="{{ old('total_payout', $item->total_payout) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" step="0.01" min="0" max="100" name="agency_payout_percentage" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-percent" value="{{ old('agency_payout_percentage', number_format($item->agency_payout_percentage, 2, '.', '')) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="agency_payout" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('agency_payout', $item->agency_payout) }}" @disabled($report->published_at || $report->status === 'paid')></td>
+              <td><input type="number" min="0" name="total_payout" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('total_payout', $item->total_payout) }}" @disabled($report->published_at || $report->status === 'paid')></td>
               <td style="min-width: 132px;">
                 <input
                   type="number"
                   min="0"
                   name="final_payable"
                   form="{{ $formId }}"
-                  class="form-control form-control-sm"
+                  class="form-control form-control-sm payout-grid-input payout-grid-wide"
                   value="{{ old('final_payable', $item->final_payable) }}"
                   @disabled($report->published_at || $report->status === 'paid')
                 >
               </td>
-              <td style="min-width: 240px;">
+              <td style="min-width: 180px;">
                 <textarea
                   name="admin_note"
                   form="{{ $formId }}"
                   rows="2"
-                  class="form-control form-control-sm"
+                  class="form-control form-control-sm payout-grid-note"
                   placeholder="Admin note"
                   @disabled($report->published_at || $report->status === 'paid')
                 >{{ old('admin_note', data_get($item->meta, 'admin_note', '')) }}</textarea>
               </td>
-              <td class="text-end" style="min-width: 110px;">
+              <td class="text-end payout-grid-save">
                 <button class="btn btn-sm btn-light border" type="submit" form="{{ $formId }}" @disabled($report->published_at || $report->status === 'paid')>Save</button>
               </td>
             </tr>
