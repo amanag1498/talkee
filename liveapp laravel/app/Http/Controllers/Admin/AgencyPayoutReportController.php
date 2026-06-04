@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Agency;
 use App\Models\AgencyPayoutReport;
+use App\Models\AgencyPayoutReportItem;
 use App\Models\CallEarningLedger;
 use App\Models\LiveRoomGiftEarningLedger;
 use App\Services\AgencyWeeklyPayoutReportService;
@@ -21,7 +22,7 @@ class AgencyPayoutReportController extends Controller
     public function index(Request $request)
     {
         $reports = AgencyPayoutReport::query()
-            ->with(['agency.owner', 'items'])
+            ->with(['agency.owner', 'items', 'publishedByAdmin'])
             ->when($request->filled('agency_id'), fn ($query) => $query->where('agency_id', (int) $request->integer('agency_id')))
             ->when($request->filled('status'), fn ($query) => $query->where('status', $request->string('status')->toString()))
             ->when($request->filled('week_start'), fn ($query) => $query->whereDate('period_start', $request->date('week_start')->toDateString()))
@@ -48,13 +49,14 @@ class AgencyPayoutReportController extends Controller
                 'agency_commission' => (int) (clone $summaryQuery)->sum('agency_commission'),
                 'final_payable' => (int) (clone $summaryQuery)->sum('final_payable'),
                 'paid' => (clone $summaryQuery)->where('status', 'paid')->count(),
+                'published' => (clone $summaryQuery)->whereNotNull('published_at')->count(),
             ],
         ]);
     }
 
     public function show(AgencyPayoutReport $agency_payout_report)
     {
-        $agency_payout_report->load(['agency.owner', 'items.host.user']);
+        $agency_payout_report->load(['agency.owner', 'items.host.user', 'publishedByAdmin']);
 
         return view('admin.agency-payout-reports.show', [
             'report' => $agency_payout_report,
@@ -137,6 +139,25 @@ class AgencyPayoutReportController extends Controller
         }
 
         return redirect()->route('admin.agency-payout-reports.show', $agency_payout_report)->with('status', 'Report approved.');
+    }
+
+    public function publish(Request $request, AgencyPayoutReport $agency_payout_report)
+    {
+        $data = $request->validate([
+            'admin_remarks' => 'nullable|string|max:5000',
+        ]);
+
+        try {
+            $this->service->publish(
+                report: $agency_payout_report,
+                remarks: $data['admin_remarks'] ?? null,
+                actor: $request->user(),
+            );
+        } catch (InvalidArgumentException $e) {
+            return back()->withInput()->withErrors(['publish' => $e->getMessage()]);
+        }
+
+        return redirect()->route('admin.agency-payout-reports.show', $agency_payout_report)->with('status', 'Report published to agency dashboard.');
     }
 
     public function reject(Request $request, AgencyPayoutReport $agency_payout_report)
@@ -227,6 +248,34 @@ class AgencyPayoutReportController extends Controller
             }
             fclose($out);
         }, 'agency-payout-report-' . $agency_payout_report->id . '.csv');
+    }
+
+    public function updateItem(Request $request, AgencyPayoutReport $agency_payout_report, AgencyPayoutReportItem $agency_payout_report_item)
+    {
+        $data = $request->validate([
+            'agency_commission' => 'required|integer|min:0',
+            'host_share' => 'required|integer|min:0',
+            'final_payable' => 'required|integer|min:0',
+            'admin_note' => 'nullable|string|max:1000',
+        ]);
+
+        try {
+            $this->service->updateItem(
+                report: $agency_payout_report,
+                item: $agency_payout_report_item,
+                agencyCommission: (int) $data['agency_commission'],
+                hostShare: (int) $data['host_share'],
+                finalPayable: (int) $data['final_payable'],
+                adminNote: $data['admin_note'] ?? null,
+                actor: $request->user(),
+            );
+        } catch (InvalidArgumentException $e) {
+            return back()->withInput()->withErrors(['update_item' => $e->getMessage()]);
+        }
+
+        return redirect()
+            ->route('admin.agency-payout-reports.show', $agency_payout_report)
+            ->with('status', 'Host payout row updated. Approved reports return to pending review after edits.');
     }
 
     private function buildReconciliation(AgencyPayoutReport $report): array

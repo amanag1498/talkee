@@ -10,7 +10,8 @@
         <h1 class="admin-page-title">{{ $report->agency?->name ?? 'Agency' }} · Report #{{ $report->id }}</h1>
         <p class="admin-page-subtitle">
           {{ optional($report->period_start)->format('d M Y H:i') }} to {{ optional($report->period_end)->format('d M Y H:i') }} ·
-          Status: {{ ucwords(str_replace('_', ' ', $report->status)) }}
+          Status: {{ ucwords(str_replace('_', ' ', $report->status)) }} ·
+          Agency visibility: {{ $report->published_at ? 'Published' : 'Draft only' }}
         </p>
       </div>
       <div class="col-lg-4">
@@ -56,6 +57,7 @@
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Live Rooms A/V</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_live_room_count) }} · {{ number_format($report->total_audio_room_count) }}/{{ number_format($report->total_video_room_count) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">PK Gross / Events</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_pk_earnings) }} / {{ number_format($report->total_pk_event_count) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Report Timezone</small><div class="fs-5 fw-semibold mt-1">{{ data_get($report->meta, 'timezone', config('app.timezone')) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Published</small><div class="fs-5 fw-semibold mt-1">{{ $report->published_at ? optional($report->published_at)->format('d M Y H:i') : 'Not yet' }}</div><div class="text-muted small mt-1">{{ $report->publishedByAdmin?->name ?? 'Agency cannot see this yet' }}</div></div></div></div>
   </section>
 
   <section class="row g-3 mb-3">
@@ -97,13 +99,23 @@
             </div>
           </form>
 
+          <form method="post" action="{{ route('admin.agency-payout-reports.publish', $report) }}" class="row g-2">
+            @csrf
+            <div class="col-12">
+              <input type="text" name="admin_remarks" class="form-control" value="{{ $report->admin_remarks }}" placeholder="Publish remarks">
+            </div>
+            <div class="col-12">
+              <button class="btn btn-outline-primary" @disabled($report->status !== 'approved' || $report->published_at)>Publish To Agency</button>
+            </div>
+          </form>
+
           <form method="post" action="{{ route('admin.agency-payout-reports.mark-paid', $report) }}" class="row g-2">
             @csrf
             <div class="col-12">
               <input type="text" name="admin_remarks" class="form-control" value="{{ $report->admin_remarks }}" placeholder="Payment remarks">
             </div>
             <div class="col-12">
-              <button class="btn btn-success" @disabled($report->status !== 'approved' || $report->status === 'paid')>Mark as Paid</button>
+              <button class="btn btn-success" @disabled($report->status !== 'approved' || $report->status === 'paid' || !$report->published_at)>Mark as Paid</button>
             </div>
           </form>
 
@@ -122,7 +134,10 @@
   </section>
 
   <section class="card">
-    <div class="card-header"><h5 class="mb-0">Per-Host Breakdown</h5></div>
+    <div class="card-header">
+      <h5 class="mb-0">Per-Host Breakdown</h5>
+      <div class="text-muted small mt-1">Edit rows here before publishing. Changing an approved row moves the report back to pending review.</div>
+    </div>
     <div class="card-body table-responsive">
       <table class="table align-middle">
         <thead class="table-light">
@@ -142,6 +157,7 @@
             <th>PK Gross</th>
             <th>PK Events</th>
             <th>Final Payable</th>
+            <th>Edit Draft</th>
           </tr>
         </thead>
         <tbody>
@@ -165,9 +181,19 @@
               <td>{{ number_format($item->pk_earnings) }}</td>
               <td>{{ number_format((int) data_get($item->meta, 'pk_event_count', 0)) }}</td>
               <td>{{ number_format($item->final_payable) }}</td>
+              <td style="min-width: 260px;">
+                <form method="post" action="{{ route('admin.agency-payout-reports.items.update', [$report, $item]) }}" class="d-grid gap-2">
+                  @csrf
+                  <input type="number" min="0" name="agency_commission" class="form-control form-control-sm" value="{{ old('agency_commission', $item->agency_commission) }}" placeholder="Agency payout" @disabled($report->published_at || $report->status === 'paid')>
+                  <input type="number" min="0" name="host_share" class="form-control form-control-sm" value="{{ old('host_share', $item->host_share) }}" placeholder="Host payout" @disabled($report->published_at || $report->status === 'paid')>
+                  <input type="number" min="0" name="final_payable" class="form-control form-control-sm" value="{{ old('final_payable', $item->final_payable) }}" placeholder="Final payable" @disabled($report->published_at || $report->status === 'paid')>
+                  <textarea name="admin_note" rows="2" class="form-control form-control-sm" placeholder="Admin note" @disabled($report->published_at || $report->status === 'paid')>{{ old('admin_note', data_get($item->meta, 'admin_note', '')) }}</textarea>
+                  <button class="btn btn-sm btn-light border" @disabled($report->published_at || $report->status === 'paid')>Save Row</button>
+                </form>
+              </td>
             </tr>
           @empty
-            <tr><td colspan="15" class="text-center text-muted py-4">No host rows in this report.</td></tr>
+            <tr><td colspan="16" class="text-center text-muted py-4">No host rows in this report.</td></tr>
           @endforelse
         </tbody>
       </table>

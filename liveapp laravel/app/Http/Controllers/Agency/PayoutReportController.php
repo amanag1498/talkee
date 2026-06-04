@@ -25,6 +25,7 @@ class PayoutReportController extends Controller
             ->with('items')
             ->where('agency_id', $agency->id)
             ->whereIn('status', self::VISIBLE_STATUSES)
+            ->whereNotNull('published_at')
             ->when($request->filled('status'), fn ($query) => $query->where('status', $request->string('status')->toString()))
             ->when($request->filled('week_start'), fn ($query) => $query->whereDate('period_start', $request->date('week_start')->toDateString()))
             ->latest('period_start')
@@ -43,6 +44,7 @@ class PayoutReportController extends Controller
         $agency = Agency::query()->where('owner_user_id', $request->user()->id)->firstOrFail();
         abort_unless((int) $agency_payout_report->agency_id === (int) $agency->id, 403);
         abort_unless(in_array($agency_payout_report->status, self::VISIBLE_STATUSES, true), 404);
+        abort_unless($agency_payout_report->published_at !== null, 404);
 
         $agency_payout_report->load(['agency.owner', 'items.host.user']);
 
@@ -57,6 +59,7 @@ class PayoutReportController extends Controller
         $agency = Agency::query()->where('owner_user_id', $request->user()->id)->firstOrFail();
         abort_unless((int) $agency_payout_report->agency_id === (int) $agency->id, 403);
         abort_unless(in_array($agency_payout_report->status, self::VISIBLE_STATUSES, true), 404);
+        abort_unless($agency_payout_report->published_at !== null, 404);
 
         $rows = $this->service->exportRows($agency_payout_report);
 

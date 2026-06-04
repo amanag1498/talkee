@@ -197,8 +197,10 @@ Route::middleware(['auth','not_blocked','role:admin'])->prefix('admin')->name('a
   Route::get('agency-payout-reports', [AdminAgencyPayoutReportController::class, 'index'])->name('agency-payout-reports.index');
   Route::post('agency-payout-reports/generate', [AdminAgencyPayoutReportController::class, 'generate'])->name('agency-payout-reports.generate');
   Route::get('agency-payout-reports/{agency_payout_report}', [AdminAgencyPayoutReportController::class, 'show'])->name('agency-payout-reports.show');
+  Route::post('agency-payout-reports/{agency_payout_report}/items/{agency_payout_report_item}', [AdminAgencyPayoutReportController::class, 'updateItem'])->name('agency-payout-reports.items.update');
   Route::post('agency-payout-reports/{agency_payout_report}/review', [AdminAgencyPayoutReportController::class, 'review'])->name('agency-payout-reports.review');
   Route::post('agency-payout-reports/{agency_payout_report}/approve', [AdminAgencyPayoutReportController::class, 'approve'])->name('agency-payout-reports.approve');
+  Route::post('agency-payout-reports/{agency_payout_report}/publish', [AdminAgencyPayoutReportController::class, 'publish'])->name('agency-payout-reports.publish');
   Route::post('agency-payout-reports/{agency_payout_report}/reject', [AdminAgencyPayoutReportController::class, 'reject'])->name('agency-payout-reports.reject');
   Route::post('agency-payout-reports/{agency_payout_report}/mark-paid', [AdminAgencyPayoutReportController::class, 'markPaid'])->name('agency-payout-reports.mark-paid');
   Route::get('agency-payout-reports/{agency_payout_report}/export', [AdminAgencyPayoutReportController::class, 'export'])->name('agency-payout-reports.export');

@@ -21,6 +21,8 @@ class AgencyPayoutReport extends Model
         'status',
         'generated_at',
         'approved_at',
+        'published_at',
+        'published_by_admin_user_id',
         'paid_at',
         'admin_remarks',
         'meta',
@@ -37,6 +39,7 @@ class AgencyPayoutReport extends Model
         'final_payable' => 'integer',
         'generated_at' => 'datetime',
         'approved_at' => 'datetime',
+        'published_at' => 'datetime',
         'paid_at' => 'datetime',
         'meta' => 'array',
     ];
@@ -49,6 +52,11 @@ class AgencyPayoutReport extends Model
     public function items(): HasMany
     {
         return $this->hasMany(AgencyPayoutReportItem::class)->orderBy('host_id');
+    }
+
+    public function publishedByAdmin(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'published_by_admin_user_id');
     }
 
     public function getTotalHostsAttribute(): int

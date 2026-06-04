@@ -19,17 +19,26 @@
         <p class="admin-page-subtitle">Agency-level call, minutes, coin, and earning visibility backed by stored call and ledger data.</p>
       </div>
       <div class="col-lg-4">
-        <form class="row g-2 justify-content-lg-end" method="get">
-          <div class="col-6">
-            <input type="date" name="from" class="form-control" value="{{ $from->format('Y-m-d') }}">
-          </div>
-          <div class="col-6">
-            <input type="date" name="to" class="form-control" value="{{ $to->format('Y-m-d') }}">
-          </div>
-          <div class="col-12 d-grid">
-            <button class="btn btn-primary">Apply Range</button>
-          </div>
-        </form>
+        <div class="d-grid gap-2">
+          <form class="row g-2 justify-content-lg-end" method="get">
+            <div class="col-6">
+              <input type="date" name="from" class="form-control" value="{{ $from->format('Y-m-d') }}">
+            </div>
+            <div class="col-6">
+              <input type="date" name="to" class="form-control" value="{{ $to->format('Y-m-d') }}">
+            </div>
+            <div class="col-12 d-grid">
+              <button class="btn btn-primary">Apply Range</button>
+            </div>
+          </form>
+          <form method="post" action="{{ route('admin.agency-payout-reports.generate') }}" class="d-grid">
+            @csrf
+            <input type="hidden" name="start" value="{{ $from->format('Y-m-d') }}">
+            <input type="hidden" name="end" value="{{ $to->format('Y-m-d') }}">
+            <button class="btn btn-outline-primary">Generate Payout Drafts For Range</button>
+          </form>
+          <a href="{{ route('admin.agency-payout-reports.index', ['date_from' => $from->format('Y-m-d'), 'date_to' => $to->format('Y-m-d')]) }}" class="btn btn-light border">Open Payout Drafts</a>
+        </div>
       </div>
     </div>
   </section>
@@ -139,6 +148,14 @@
               <td>{{ number_format($row['pk_gift_coins']) }} / {{ number_format($row['pk_event_count']) }}</td>
               <td>{{ $row['top_host'] ?? '—' }}</td>
               <td class="text-end">
+                <form method="post" action="{{ route('admin.agency-payout-reports.generate') }}" class="d-inline">
+                  @csrf
+                  <input type="hidden" name="start" value="{{ $from->format('Y-m-d') }}">
+                  <input type="hidden" name="end" value="{{ $to->format('Y-m-d') }}">
+                  <input type="hidden" name="agency_id" value="{{ $row['agency']->id }}">
+                  <button class="btn btn-sm btn-outline-primary">Generate Draft</button>
+                </form>
+                <a href="{{ route('admin.agency-payout-reports.index', ['agency_id' => $row['agency']->id, 'date_from' => $from->format('Y-m-d'), 'date_to' => $to->format('Y-m-d')]) }}" class="btn btn-sm btn-light border">Open Drafts</a>
                 <a href="{{ route('admin.reports.agencies.show', ['agency' => $row['agency']->id, 'from' => $from->format('Y-m-d'), 'to' => $to->format('Y-m-d')]) }}" class="btn btn-sm btn-light border">View Detail</a>
               </td>
             </tr>

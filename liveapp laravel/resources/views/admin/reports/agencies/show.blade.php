@@ -27,6 +27,14 @@
         <div class="admin-page-actions">
           <a href="{{ route('admin.reports.agencies', ['from' => $from->format('Y-m-d'), 'to' => $to->format('Y-m-d')]) }}" class="btn btn-light border">Back to Agency Reports</a>
           <a href="{{ route('admin.agencies.dashboard', $agency) }}" class="btn btn-outline-secondary">Open Agency Dashboard</a>
+          <form method="post" action="{{ route('admin.agency-payout-reports.generate') }}" class="d-inline">
+            @csrf
+            <input type="hidden" name="start" value="{{ $from->format('Y-m-d') }}">
+            <input type="hidden" name="end" value="{{ $to->format('Y-m-d') }}">
+            <input type="hidden" name="agency_id" value="{{ $agency->id }}">
+            <button class="btn btn-outline-primary">Generate Draft</button>
+          </form>
+          <a href="{{ route('admin.agency-payout-reports.index', ['agency_id' => $agency->id, 'date_from' => $from->format('Y-m-d'), 'date_to' => $to->format('Y-m-d')]) }}" class="btn btn-light border">Open Drafts</a>
           <a href="{{ route('admin.agencies.edit', $agency) }}" class="btn btn-primary">Edit Agency</a>
         </div>
       </div>

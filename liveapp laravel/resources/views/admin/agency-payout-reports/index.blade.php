@@ -64,6 +64,8 @@
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Gross Earnings</small><div class="fs-3 fw-semibold mt-1">{{ number_format($summary['gross_earnings']) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Agency Commission</small><div class="fs-3 fw-semibold mt-1">{{ number_format($summary['agency_commission']) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Final Payable</small><div class="fs-3 fw-semibold mt-1">{{ number_format($summary['final_payable']) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Published</small><div class="fs-3 fw-semibold mt-1">{{ number_format($summary['published']) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Paid</small><div class="fs-3 fw-semibold mt-1">{{ number_format($summary['paid']) }}</div></div></div></div>
   </section>
 
   <section class="card">
@@ -117,6 +119,7 @@
             <th>Deductions</th>
             <th>Final Payable</th>
             <th>Status</th>
+            <th>Agency Visibility</th>
             <th></th>
           </tr>
         </thead>
@@ -135,12 +138,20 @@
               <td>{{ number_format($report->deductions) }}</td>
               <td>{{ number_format($report->final_payable) }}</td>
               <td><span class="badge bg-light text-dark border">{{ ucwords(str_replace('_', ' ', $report->status)) }}</span></td>
+              <td>
+                @if($report->published_at)
+                  <div class="fw-semibold text-success">Published</div>
+                  <div class="text-muted small">{{ optional($report->published_at)->format('d M Y H:i') }}</div>
+                @else
+                  <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Draft Only</span>
+                @endif
+              </td>
               <td class="text-end">
                 <a href="{{ route('admin.agency-payout-reports.show', $report) }}" class="btn btn-sm btn-light border">View</a>
               </td>
             </tr>
           @empty
-            <tr><td colspan="10" class="text-center text-muted py-4">No payout reports found.</td></tr>
+            <tr><td colspan="11" class="text-center text-muted py-4">No payout reports found.</td></tr>
           @endforelse
         </tbody>
       </table>

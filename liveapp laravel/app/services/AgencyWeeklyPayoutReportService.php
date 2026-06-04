@@ -406,10 +406,9 @@ class AgencyWeeklyPayoutReportService
     {
         $this->assertTransitionAllowed($report, ['generated', 'pending_review'], 'Only generated or pending review reports can be edited before approval.');
 
-        return $this->transition($report, [
+        return $this->transitionWithRecalculatedTotals($report, [
             'status' => 'pending_review',
             'deductions' => max(0, $deductions),
-            'final_payable' => max(0, (int) $report->agency_commission - max(0, $deductions)),
             'admin_remarks' => $remarks,
         ], 'review', $actor);
     }
@@ -418,10 +417,9 @@ class AgencyWeeklyPayoutReportService
     {
         $this->assertTransitionAllowed($report, ['generated', 'pending_review'], 'Only generated or pending review reports can be approved.');
 
-        return $this->transition($report, [
+        return $this->transitionWithRecalculatedTotals($report, [
             'status' => 'approved',
             'deductions' => max(0, $deductions),
-            'final_payable' => max(0, (int) $report->agency_commission - max(0, $deductions)),
             'approved_at' => now(config('app.timezone')),
             'admin_remarks' => $remarks,
         ], 'approve', $actor);
@@ -435,6 +433,130 @@ class AgencyWeeklyPayoutReportService
             'status' => 'rejected',
             'admin_remarks' => $remarks,
         ], 'reject', $actor);
+    }
+
+    public function updateItem(
+        AgencyPayoutReport $report,
+        AgencyPayoutReportItem $item,
+        int $agencyCommission,
+        int $hostShare,
+        int $finalPayable,
+        ?string $adminNote = null,
+        ?User $actor = null,
+    ): AgencyPayoutReport {
+        return DB::transaction(function () use ($report, $item, $agencyCommission, $hostShare, $finalPayable, $adminNote, $actor) {
+            $locked = AgencyPayoutReport::query()
+                ->with(['agency.owner', 'items.host.user'])
+                ->lockForUpdate()
+                ->findOrFail($report->id);
+
+            if ($locked->paid_at || $locked->status === 'paid') {
+                throw new InvalidArgumentException('Paid payout reports are locked.');
+            }
+
+            if ($locked->published_at) {
+                throw new InvalidArgumentException('Published payout reports cannot be edited.');
+            }
+
+            $allowedStatuses = ['generated', 'pending_review', 'approved'];
+            if (!in_array($locked->status, $allowedStatuses, true)) {
+                throw new InvalidArgumentException('Only draft or approved reports can be edited.');
+            }
+
+            $lockedItem = AgencyPayoutReportItem::query()
+                ->whereKey($item->id)
+                ->where('agency_payout_report_id', $locked->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $before = $lockedItem->toArray();
+            $meta = $lockedItem->meta ?? [];
+            $meta['agency_payout'] = max(0, $agencyCommission);
+            $meta['host_payout'] = max(0, $hostShare);
+            $meta['total_payout'] = max(0, $agencyCommission) + max(0, $hostShare);
+            $meta['agency_payout_percentage'] = $this->percentOfGross((int) $lockedItem->gross_earnings, max(0, $agencyCommission));
+            $meta['host_payout_percentage'] = $this->percentOfGross((int) $lockedItem->gross_earnings, max(0, $hostShare));
+            if ($adminNote !== null) {
+                $meta['admin_note'] = $adminNote;
+            }
+
+            $lockedItem->forceFill([
+                'agency_commission' => max(0, $agencyCommission),
+                'host_share' => max(0, $hostShare),
+                'final_payable' => max(0, $finalPayable),
+                'meta' => $meta,
+            ])->save();
+
+            $reportStatus = $locked->status === 'approved'
+                ? ['status' => 'pending_review', 'approved_at' => null]
+                : [];
+
+            $this->syncReportTotals($locked, $reportStatus);
+
+            if ($actor) {
+                app(AdminAuditService::class)->log(
+                    area: 'agency_payout_reports',
+                    action: 'update_item',
+                    admin: $actor,
+                    targetUser: $locked->agency?->owner,
+                    entity: $locked,
+                    before: $before,
+                    after: $lockedItem->fresh()->toArray(),
+                    meta: [
+                        'report_id' => $locked->id,
+                        'agency_payout_report_item_id' => $lockedItem->id,
+                        'host_id' => $lockedItem->host_id,
+                    ],
+                    reason: $adminNote
+                );
+            }
+
+            return $locked->fresh(['agency.owner', 'items.host.user', 'publishedByAdmin']);
+        });
+    }
+
+    public function publish(AgencyPayoutReport $report, ?string $remarks = null, ?User $actor = null): AgencyPayoutReport
+    {
+        return DB::transaction(function () use ($report, $remarks, $actor) {
+            $locked = AgencyPayoutReport::query()
+                ->with('agency.owner')
+                ->lockForUpdate()
+                ->findOrFail($report->id);
+
+            if ($locked->paid_at || $locked->status === 'paid') {
+                throw new InvalidArgumentException('Paid payout reports are locked.');
+            }
+
+            if ($locked->published_at) {
+                throw new InvalidArgumentException('This payout report is already published.');
+            }
+
+            if ($locked->status !== 'approved') {
+                throw new InvalidArgumentException('Only approved payout reports can be published to agencies.');
+            }
+
+            $before = $locked->toArray();
+            $locked->forceFill([
+                'published_at' => now(config('app.timezone')),
+                'published_by_admin_user_id' => $actor?->id,
+                'admin_remarks' => $remarks ?: $locked->admin_remarks,
+            ])->save();
+
+            if ($actor) {
+                app(AdminAuditService::class)->log(
+                    area: 'agency_payout_reports',
+                    action: 'publish',
+                    admin: $actor,
+                    targetUser: $locked->agency?->owner,
+                    entity: $locked,
+                    before: $before,
+                    after: $locked->fresh()->toArray(),
+                    reason: $remarks
+                );
+            }
+
+            return $locked->fresh(['agency.owner', 'items.host.user', 'publishedByAdmin']);
+        });
     }
 
     public function markPaid(AgencyPayoutReport $report, ?string $remarks = null, ?User $actor = null): AgencyPayoutReport
@@ -451,6 +573,10 @@ class AgencyWeeklyPayoutReportService
 
             if ($report->status !== 'approved') {
                 throw new InvalidArgumentException('Only approved payout reports can be marked as paid.');
+            }
+
+            if (!$report->published_at) {
+                throw new InvalidArgumentException('Publish the payout report to the agency before marking it paid.');
             }
 
             $report->forceFill([
@@ -473,7 +599,7 @@ class AgencyWeeklyPayoutReportService
                 );
             }
 
-            return $report->fresh(['agency.owner', 'items.host.user']);
+            return $report->fresh(['agency.owner', 'items.host.user', 'publishedByAdmin']);
         });
     }
 
@@ -519,9 +645,47 @@ class AgencyWeeklyPayoutReportService
                 'host_payout' => (int) data_get($item->meta, 'host_payout', $item->host_share),
                 'total_payout' => (int) data_get($item->meta, 'total_payout', ((int) $item->agency_commission + (int) $item->host_share)),
                 'final_payable' => $item->final_payable,
+                'admin_note' => (string) data_get($item->meta, 'admin_note', ''),
                 'report_status' => $report->status,
+                'published_at' => optional($report->published_at)->toDateTimeString(),
             ];
         })->all();
+    }
+
+    private function transitionWithRecalculatedTotals(AgencyPayoutReport $report, array $changes, string $action, ?User $actor = null): AgencyPayoutReport
+    {
+        return DB::transaction(function () use ($report, $changes, $action, $actor) {
+            $locked = AgencyPayoutReport::query()
+                ->with(['agency.owner', 'items'])
+                ->lockForUpdate()
+                ->findOrFail($report->id);
+
+            if ($locked->paid_at || $locked->status === 'paid') {
+                throw new InvalidArgumentException('Paid payout reports are locked.');
+            }
+
+            if ($locked->published_at && in_array($action, ['review', 'approve'], true)) {
+                throw new InvalidArgumentException('Published payout reports are locked.');
+            }
+
+            $before = $locked->toArray();
+            $this->syncReportTotals($locked, $changes);
+
+            if ($actor) {
+                app(AdminAuditService::class)->log(
+                    area: 'agency_payout_reports',
+                    action: $action,
+                    admin: $actor,
+                    targetUser: $locked->agency?->owner,
+                    entity: $locked,
+                    before: $before,
+                    after: $locked->fresh()->toArray(),
+                    reason: $changes['admin_remarks'] ?? null
+                );
+            }
+
+            return $locked->fresh(['agency.owner', 'items.host.user', 'publishedByAdmin']);
+        });
     }
 
     private function transition(AgencyPayoutReport $report, array $changes, string $action, ?User $actor = null): AgencyPayoutReport
@@ -554,6 +718,42 @@ class AgencyWeeklyPayoutReportService
 
             return $locked->fresh(['agency.owner', 'items.host.user']);
         });
+    }
+
+    private function syncReportTotals(AgencyPayoutReport $report, array $changes = []): void
+    {
+        $report->unsetRelation('items');
+        $report->load('items');
+
+        $agencyCommission = (int) $report->items->sum('agency_commission');
+        $hostShare = (int) $report->items->sum('host_share');
+        $itemFinalPayable = (int) $report->items->sum('final_payable');
+        $deductions = array_key_exists('deductions', $changes)
+            ? max(0, (int) $changes['deductions'])
+            : max(0, (int) $report->deductions);
+        $meta = $report->meta ?? [];
+        $meta['totals']['total_payout'] = (int) $report->items->sum(function (AgencyPayoutReportItem $item) {
+            return (int) data_get($item->meta, 'total_payout', ((int) $item->agency_commission + (int) $item->host_share));
+        });
+
+        $payload = array_merge($changes, [
+            'agency_commission' => $agencyCommission,
+            'host_share' => $hostShare,
+            'deductions' => $deductions,
+            'final_payable' => max(0, $itemFinalPayable - $deductions),
+            'meta' => $meta,
+        ]);
+
+        $report->forceFill($payload)->save();
+    }
+
+    private function percentOfGross(int $gross, int $value): float
+    {
+        if ($gross <= 0) {
+            return 0.0;
+        }
+
+        return round(($value / $gross) * 100, 2);
     }
 
     private function carbonWeekDay(string $name): int
