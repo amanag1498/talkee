@@ -438,13 +438,10 @@ class AgencyWeeklyPayoutReportService
     public function updateItem(
         AgencyPayoutReport $report,
         AgencyPayoutReportItem $item,
-        int $agencyCommission,
-        int $hostShare,
-        int $finalPayable,
-        ?string $adminNote = null,
+        array $payload,
         ?User $actor = null,
     ): AgencyPayoutReport {
-        return DB::transaction(function () use ($report, $item, $agencyCommission, $hostShare, $finalPayable, $adminNote, $actor) {
+        return DB::transaction(function () use ($report, $item, $payload, $actor) {
             $locked = AgencyPayoutReport::query()
                 ->with(['agency.owner', 'items.host.user'])
                 ->lockForUpdate()
@@ -471,21 +468,73 @@ class AgencyWeeklyPayoutReportService
 
             $before = $lockedItem->toArray();
             $meta = $lockedItem->meta ?? [];
-            $meta['agency_payout'] = max(0, $agencyCommission);
-            $meta['host_payout'] = max(0, $hostShare);
-            $meta['total_payout'] = max(0, $agencyCommission) + max(0, $hostShare);
-            $meta['agency_payout_percentage'] = $this->percentOfGross((int) $lockedItem->gross_earnings, max(0, $agencyCommission));
-            $meta['host_payout_percentage'] = $this->percentOfGross((int) $lockedItem->gross_earnings, max(0, $hostShare));
-            if ($adminNote !== null) {
-                $meta['admin_note'] = $adminNote;
+            $columnKeys = [
+                'call_earnings',
+                'gift_earnings',
+                'pk_earnings',
+                'gross_earnings',
+                'agency_commission',
+                'host_share',
+                'final_payable',
+            ];
+            $metaIntegerKeys = [
+                'call_count',
+                'completed_call_count',
+                'billable_minutes',
+                'video_call_minutes',
+                'video_call_gross',
+                'audio_call_minutes',
+                'audio_call_gross',
+                'gift_events',
+                'gift_quantity',
+                'unique_gifters',
+                'live_room_count',
+                'audio_room_count',
+                'video_room_count',
+                'audio_room_minutes',
+                'video_room_minutes',
+                'video_gift_gross',
+                'audio_gift_gross',
+                'pk_event_count',
+                'agency_payout',
+                'host_payout',
+                'total_payout',
+            ];
+            $metaFloatKeys = [
+                'agency_payout_percentage',
+                'host_payout_percentage',
+            ];
+
+            $itemChanges = [];
+            foreach ($columnKeys as $key) {
+                if (array_key_exists($key, $payload)) {
+                    $itemChanges[$key] = max(0, (int) $payload[$key]);
+                }
             }
 
-            $lockedItem->forceFill([
-                'agency_commission' => max(0, $agencyCommission),
-                'host_share' => max(0, $hostShare),
-                'final_payable' => max(0, $finalPayable),
+            if (array_key_exists('gift_earnings', $itemChanges)) {
+                $itemChanges['live_room_earnings'] = $itemChanges['gift_earnings'];
+            }
+
+            foreach ($metaIntegerKeys as $key) {
+                if (array_key_exists($key, $payload)) {
+                    $meta[$key] = max(0, (int) $payload[$key]);
+                }
+            }
+
+            foreach ($metaFloatKeys as $key) {
+                if (array_key_exists($key, $payload)) {
+                    $meta[$key] = max(0, round((float) $payload[$key], 2));
+                }
+            }
+
+            if (array_key_exists('admin_note', $payload)) {
+                $meta['admin_note'] = (string) ($payload['admin_note'] ?? '');
+            }
+
+            $lockedItem->forceFill(array_merge($itemChanges, [
                 'meta' => $meta,
-            ])->save();
+            ]))->save();
 
             $reportStatus = $locked->status === 'approved'
                 ? ['status' => 'pending_review', 'approved_at' => null]
@@ -507,7 +556,7 @@ class AgencyWeeklyPayoutReportService
                         'agency_payout_report_item_id' => $lockedItem->id,
                         'host_id' => $lockedItem->host_id,
                     ],
-                    reason: $adminNote
+                    reason: (string) ($payload['admin_note'] ?? '')
                 );
             }
 
@@ -600,6 +649,40 @@ class AgencyWeeklyPayoutReportService
             }
 
             return $report->fresh(['agency.owner', 'items.host.user', 'publishedByAdmin']);
+        });
+    }
+
+    public function deleteReport(AgencyPayoutReport $report, ?string $remarks = null, ?User $actor = null): void
+    {
+        DB::transaction(function () use ($report, $remarks, $actor) {
+            $locked = AgencyPayoutReport::query()
+                ->with(['agency.owner', 'items.host.user', 'publishedByAdmin'])
+                ->lockForUpdate()
+                ->findOrFail($report->id);
+
+            if ($locked->paid_at || $locked->status === 'paid') {
+                throw new InvalidArgumentException('Paid payout reports cannot be deleted.');
+            }
+
+            $before = $locked->toArray();
+            $owner = $locked->agency?->owner;
+            $locked->delete();
+
+            if ($actor) {
+                app(AdminAuditService::class)->log(
+                    area: 'agency_payout_reports',
+                    action: 'delete',
+                    admin: $actor,
+                    targetUser: $owner,
+                    entity: $report,
+                    before: $before,
+                    after: null,
+                    reason: $remarks,
+                    meta: [
+                        'deleted_report_id' => $report->id,
+                    ]
+                );
+            }
         });
     }
 
@@ -725,6 +808,7 @@ class AgencyWeeklyPayoutReportService
         $report->unsetRelation('items');
         $report->load('items');
 
+        $grossEarnings = (int) $report->items->sum('gross_earnings');
         $agencyCommission = (int) $report->items->sum('agency_commission');
         $hostShare = (int) $report->items->sum('host_share');
         $itemFinalPayable = (int) $report->items->sum('final_payable');
@@ -732,11 +816,29 @@ class AgencyWeeklyPayoutReportService
             ? max(0, (int) $changes['deductions'])
             : max(0, (int) $report->deductions);
         $meta = $report->meta ?? [];
+        $meta['totals']['call_count'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'call_count', 0));
+        $meta['totals']['billable_minutes'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'billable_minutes', 0));
+        $meta['totals']['gift_events'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'gift_events', 0));
+        $meta['totals']['gift_quantity'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'gift_quantity', 0));
+        $meta['totals']['live_room_count'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'live_room_count', 0));
+        $meta['totals']['audio_room_count'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'audio_room_count', 0));
+        $meta['totals']['video_room_count'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'video_room_count', 0));
+        $meta['totals']['audio_room_minutes'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'audio_room_minutes', 0));
+        $meta['totals']['video_room_minutes'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'video_room_minutes', 0));
+        $meta['totals']['audio_gift_gross'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'audio_gift_gross', 0));
+        $meta['totals']['video_gift_gross'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'video_gift_gross', 0));
+        $meta['totals']['audio_call_minutes'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'audio_call_minutes', 0));
+        $meta['totals']['video_call_minutes'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'video_call_minutes', 0));
+        $meta['totals']['audio_call_gross'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'audio_call_gross', 0));
+        $meta['totals']['video_call_gross'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'video_call_gross', 0));
+        $meta['totals']['pk_event_count'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'pk_event_count', 0));
         $meta['totals']['total_payout'] = (int) $report->items->sum(function (AgencyPayoutReportItem $item) {
             return (int) data_get($item->meta, 'total_payout', ((int) $item->agency_commission + (int) $item->host_share));
         });
 
         $payload = array_merge($changes, [
+            'gross_earnings' => $grossEarnings,
+            'platform_commission' => max(0, $grossEarnings - (int) $meta['totals']['total_payout']),
             'agency_commission' => $agencyCommission,
             'host_share' => $hostShare,
             'deductions' => $deductions,

@@ -253,8 +253,35 @@ class AgencyPayoutReportController extends Controller
     public function updateItem(Request $request, AgencyPayoutReport $agency_payout_report, AgencyPayoutReportItem $agency_payout_report_item)
     {
         $data = $request->validate([
+            'call_earnings' => 'required|integer|min:0',
+            'call_count' => 'required|integer|min:0',
+            'completed_call_count' => 'required|integer|min:0',
+            'billable_minutes' => 'required|integer|min:0',
+            'video_call_minutes' => 'required|integer|min:0',
+            'video_call_gross' => 'required|integer|min:0',
+            'audio_call_minutes' => 'required|integer|min:0',
+            'audio_call_gross' => 'required|integer|min:0',
+            'gift_earnings' => 'required|integer|min:0',
+            'gift_events' => 'required|integer|min:0',
+            'gift_quantity' => 'required|integer|min:0',
+            'unique_gifters' => 'required|integer|min:0',
+            'live_room_count' => 'required|integer|min:0',
+            'audio_room_count' => 'required|integer|min:0',
+            'video_room_count' => 'required|integer|min:0',
+            'audio_room_minutes' => 'required|integer|min:0',
+            'video_room_minutes' => 'required|integer|min:0',
+            'video_gift_gross' => 'required|integer|min:0',
+            'audio_gift_gross' => 'required|integer|min:0',
+            'pk_earnings' => 'required|integer|min:0',
+            'pk_event_count' => 'required|integer|min:0',
+            'gross_earnings' => 'required|integer|min:0',
             'agency_commission' => 'required|integer|min:0',
+            'agency_payout_percentage' => 'required|numeric|min:0|max:100',
+            'agency_payout' => 'required|integer|min:0',
             'host_share' => 'required|integer|min:0',
+            'host_payout_percentage' => 'required|numeric|min:0|max:100',
+            'host_payout' => 'required|integer|min:0',
+            'total_payout' => 'required|integer|min:0',
             'final_payable' => 'required|integer|min:0',
             'admin_note' => 'nullable|string|max:1000',
         ]);
@@ -263,10 +290,7 @@ class AgencyPayoutReportController extends Controller
             $this->service->updateItem(
                 report: $agency_payout_report,
                 item: $agency_payout_report_item,
-                agencyCommission: (int) $data['agency_commission'],
-                hostShare: (int) $data['host_share'],
-                finalPayable: (int) $data['final_payable'],
-                adminNote: $data['admin_note'] ?? null,
+                payload: $data,
                 actor: $request->user(),
             );
         } catch (InvalidArgumentException $e) {
@@ -276,6 +300,27 @@ class AgencyPayoutReportController extends Controller
         return redirect()
             ->route('admin.agency-payout-reports.show', $agency_payout_report)
             ->with('status', 'Host payout row updated. Approved reports return to pending review after edits.');
+    }
+
+    public function destroy(Request $request, AgencyPayoutReport $agency_payout_report)
+    {
+        $data = $request->validate([
+            'admin_remarks' => 'nullable|string|max:5000',
+        ]);
+
+        try {
+            $this->service->deleteReport(
+                report: $agency_payout_report,
+                remarks: $data['admin_remarks'] ?? null,
+                actor: $request->user(),
+            );
+        } catch (InvalidArgumentException $e) {
+            return back()->withInput()->withErrors(['delete_report' => $e->getMessage()]);
+        }
+
+        return redirect()
+            ->route('admin.agency-payout-reports.index')
+            ->with('status', 'Payout report deleted.');
     }
 
     private function buildReconciliation(AgencyPayoutReport $report): array
