@@ -61,9 +61,9 @@
 
   <section class="row g-3 mb-3">
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Reports</small><div class="fs-3 fw-semibold mt-1">{{ number_format($summary['reports']) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Gross Earnings</small><div class="fs-3 fw-semibold mt-1">{{ number_format($summary['gross_earnings']) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Agency Commission</small><div class="fs-3 fw-semibold mt-1">{{ number_format($summary['agency_commission']) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Final Payable</small><div class="fs-3 fw-semibold mt-1">{{ number_format($summary['final_payable']) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Total Coins</small><div class="fs-3 fw-semibold mt-1">{{ number_format($summary['gross_earnings']) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Agency Commission Coins</small><div class="fs-3 fw-semibold mt-1">{{ number_format($summary['agency_commission']) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Total Coins To Be Paid</small><div class="fs-3 fw-semibold mt-1">{{ number_format($summary['final_payable']) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Published</small><div class="fs-3 fw-semibold mt-1">{{ number_format($summary['published']) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Paid</small><div class="fs-3 fw-semibold mt-1">{{ number_format($summary['paid']) }}</div></div></div></div>
   </section>
@@ -114,10 +114,10 @@
             <th>Week</th>
             <th>Hosts</th>
             <th>Active Hosts</th>
-            <th>Gross</th>
-            <th>Agency Comm.</th>
+            <th>Total Coins</th>
+            <th>Agency Comm. Coins</th>
             <th>Deductions</th>
-            <th>Final Payable</th>
+            <th>Total Coins To Be Paid</th>
             <th>Status</th>
             <th>Agency Visibility</th>
             <th class="text-end">Actions</th>
@@ -149,7 +149,7 @@
               <td class="text-end">
                 <div class="d-inline-flex flex-wrap justify-content-end gap-1">
                   <a href="{{ route('admin.agency-payout-reports.show', $report) }}" class="btn btn-sm btn-light border">View</a>
-                  <a href="{{ route('admin.agency-payout-reports.export', $report) }}" class="btn btn-sm btn-outline-secondary">CSV</a>
+                  <a href="{{ route('admin.agency-payout-reports.export', $report) }}" class="btn btn-sm btn-outline-secondary">PDF</a>
                   @if($report->status === 'approved' && !$report->published_at)
                     <form method="post" action="{{ route('admin.agency-payout-reports.publish', $report) }}" class="d-inline">
                       @csrf

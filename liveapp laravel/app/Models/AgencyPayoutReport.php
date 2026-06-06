@@ -178,4 +178,54 @@ class AgencyPayoutReport extends Model
     {
         return (int) data_get($this->meta, 'totals.total_payout', ((int) $this->agency_commission + (int) $this->host_share));
     }
+
+    public function getTotalCoinsAttribute(): int
+    {
+        return (int) data_get($this->meta, 'totals.total_coins', $this->gross_earnings);
+    }
+
+    public function getTotalAgencyCommissionCoinsAttribute(): int
+    {
+        return (int) data_get($this->meta, 'totals.agency_commission_coins', $this->agency_commission);
+    }
+
+    public function getTotalCoinsToBePaidAttribute(): int
+    {
+        return (int) data_get($this->meta, 'totals.total_coins_to_be_paid', $this->final_payable);
+    }
+
+    public function getTotalBonusCoinsAttribute(): int
+    {
+        return (int) data_get($this->meta, 'totals.bonus_coins', 0);
+    }
+
+    public function getTotalInrAttribute(): float
+    {
+        return (float) data_get($this->meta, 'totals.total_inr', 0);
+    }
+
+    public function getTotalVideoGiftCoinsAttribute(): int
+    {
+        return (int) data_get($this->meta, 'totals.video_gift_coins', $this->total_video_gift_gross);
+    }
+
+    public function getTotalAudioGiftCoinsAttribute(): int
+    {
+        return (int) data_get($this->meta, 'totals.audio_gift_coins', $this->total_audio_gift_gross);
+    }
+
+    public function getTotalPkGiftCoinsAttribute(): int
+    {
+        return (int) data_get($this->meta, 'totals.pk_gift_coins', $this->total_pk_earnings);
+    }
+
+    public function getTotalVideoCallCoinsAttribute(): int
+    {
+        return (int) data_get($this->meta, 'totals.video_call_coins', $this->total_video_call_gross);
+    }
+
+    public function getTotalAudioCallCoinsAttribute(): int
+    {
+        return (int) data_get($this->meta, 'totals.audio_call_coins', $this->total_audio_call_gross);
+    }
 }

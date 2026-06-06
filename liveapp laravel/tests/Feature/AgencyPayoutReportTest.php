@@ -57,24 +57,34 @@ class AgencyPayoutReportTest extends TestCase
             ->with('items')
             ->firstOrFail();
 
-        $this->assertSame(150, $report->gross_earnings);
-        $this->assertSame(45, $report->platform_commission);
-        $this->assertSame(15, $report->agency_commission);
-        $this->assertSame(90, $report->host_share);
-        $this->assertSame(15, $report->final_payable);
+        $this->assertSame(200, $report->gross_earnings);
+        $this->assertSame(0, $report->platform_commission);
+        $this->assertSame(0, $report->agency_commission);
+        $this->assertSame(200, $report->host_share);
+        $this->assertSame(200, $report->final_payable);
         $this->assertSame(1, $report->total_hosts);
         $this->assertSame(1, $report->active_hosts_count);
         $this->assertSame(100, $report->total_call_earnings);
         $this->assertSame(50, $report->total_gift_earnings);
-        $this->assertSame(5, $report->total_live_room_earnings);
+        $this->assertSame(50, $report->total_live_room_earnings);
         $this->assertSame(50, $report->total_pk_earnings);
+        $this->assertSame(50, $report->total_video_gift_coins);
+        $this->assertSame(0, $report->total_audio_gift_coins);
+        $this->assertSame(50, $report->total_pk_gift_coins);
+        $this->assertSame(100, $report->total_video_call_coins);
+        $this->assertSame(0, $report->total_audio_call_coins);
+        $this->assertSame(200, $report->total_coins);
+        $this->assertSame(0, $report->total_agency_commission_coins);
+        $this->assertSame(200, $report->total_coins_to_be_paid);
 
         $item = $report->items->firstOrFail();
         $this->assertSame($host->id, $item->host_id);
         $this->assertSame(100, $item->call_earnings);
         $this->assertSame(50, $item->gift_earnings);
-        $this->assertSame(5, $item->live_room_earnings);
+        $this->assertSame(50, $item->live_room_earnings);
         $this->assertSame(50, $item->pk_earnings);
+        $this->assertSame(200, $item->total_coins);
+        $this->assertSame(200, $item->total_coins_to_be_paid);
 
         Artisan::call('agency:payout-reports:generate', [
             '--start' => '2026-04-21',
@@ -92,7 +102,7 @@ class AgencyPayoutReportTest extends TestCase
         [$start, $end] = $service->resolvePeriod('2026-04-21', '2026-04-27');
 
         $first = $service->generate($start, $end, $agency->id, false)['reports'][0];
-        $this->assertSame(15, $first->final_payable);
+        $this->assertSame(200, $first->final_payable);
 
         CallEarningLedger::query()->create([
             'call_session_id' => CallSession::query()->create([
@@ -123,8 +133,8 @@ class AgencyPayoutReportTest extends TestCase
         ]);
 
         $forced = $service->generate($start, $end, $agency->id, true)['reports'][0];
-        $this->assertSame(170, $forced->gross_earnings);
-        $this->assertSame(17, $forced->final_payable);
+        $this->assertSame(220, $forced->gross_earnings);
+        $this->assertSame(220, $forced->final_payable);
         $this->assertDatabaseCount('agency_payout_reports', 1);
 
         $service->approve($forced, 2, 'Approved');
@@ -208,6 +218,9 @@ class AgencyPayoutReportTest extends TestCase
         [$start, $end] = $service->resolvePeriod('2026-04-21', '2026-04-27');
         $report = $service->generate($start, $end, $agency->id, false)['reports'][0];
 
+        $service->approve($report, 0, 'Approved');
+        $service->publish($report, 'Published', $admin);
+
         $this->actingAs($owner)
             ->get(route('agency.payout-reports.export', $report))
             ->assertOk()
@@ -249,12 +262,15 @@ class AgencyPayoutReportTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.agency-payout-reports.show', $report))
             ->assertOk()
-            ->assertSee('Per-Host Breakdown');
+            ->assertSee('Host Settlement Grid');
 
         $this->actingAs($owner)
             ->get(route('agency.payout-reports.index'))
             ->assertOk()
             ->assertSee('Weekly Payout Reports');
+
+        $service->approve($report, 0, 'Approved');
+        $service->publish($report, 'Published', $admin);
 
         $this->actingAs($owner)
             ->get(route('agency.payout-reports.show', $report))

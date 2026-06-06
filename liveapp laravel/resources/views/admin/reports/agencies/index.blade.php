@@ -167,7 +167,7 @@
                 </form>
                 @if($payoutReport)
                   <a href="{{ route('admin.agency-payout-reports.show', $payoutReport) }}" class="btn btn-sm btn-light border">View Draft</a>
-                  <a href="{{ route('admin.agency-payout-reports.export', $payoutReport) }}" class="btn btn-sm btn-outline-secondary">CSV</a>
+                  <a href="{{ route('admin.agency-payout-reports.export', $payoutReport) }}" class="btn btn-sm btn-outline-secondary">PDF</a>
                   @if($payoutReport->status === 'approved' && !$payoutReport->published_at)
                     <form method="post" action="{{ route('admin.agency-payout-reports.publish', $payoutReport) }}" class="d-inline">
                       @csrf

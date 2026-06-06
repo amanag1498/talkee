@@ -87,4 +87,79 @@ class AgencyPayoutReportItem extends Model
     {
         return (int) data_get($this->meta, 'total_payout', ((int) $this->host_share + (int) $this->agency_commission));
     }
+
+    public function getVideoRoomMinutesAttribute(): int
+    {
+        return (int) data_get($this->meta, 'video_room_minutes', 0);
+    }
+
+    public function getAudioRoomMinutesAttribute(): int
+    {
+        return (int) data_get($this->meta, 'audio_room_minutes', 0);
+    }
+
+    public function getVideoGiftCoinsAttribute(): int
+    {
+        return (int) data_get($this->meta, 'video_gift_coins', data_get($this->meta, 'video_gift_gross', 0));
+    }
+
+    public function getAudioGiftCoinsAttribute(): int
+    {
+        return (int) data_get($this->meta, 'audio_gift_coins', data_get($this->meta, 'audio_gift_gross', 0));
+    }
+
+    public function getPkGiftCoinsAttribute(): int
+    {
+        return (int) data_get($this->meta, 'pk_gift_coins', $this->pk_earnings);
+    }
+
+    public function getVideoCallCoinsAttribute(): int
+    {
+        return (int) data_get($this->meta, 'video_call_coins', data_get($this->meta, 'video_call_gross', 0));
+    }
+
+    public function getVideoCallMinutesAttribute(): int
+    {
+        return (int) data_get($this->meta, 'video_call_minutes', 0);
+    }
+
+    public function getAudioCallCoinsAttribute(): int
+    {
+        return (int) data_get($this->meta, 'audio_call_coins', data_get($this->meta, 'audio_call_gross', 0));
+    }
+
+    public function getAudioCallMinutesAttribute(): int
+    {
+        return (int) data_get($this->meta, 'audio_call_minutes', 0);
+    }
+
+    public function getBonusCoinsAttribute(): int
+    {
+        return (int) data_get($this->meta, 'bonus_coins', 0);
+    }
+
+    public function getTotalCoinsAttribute(): int
+    {
+        return (int) data_get($this->meta, 'total_coins', $this->gross_earnings);
+    }
+
+    public function getAgencyCommissionCoinsAttribute(): int
+    {
+        return (int) data_get($this->meta, 'agency_commission_coins', $this->agency_commission);
+    }
+
+    public function getTotalCoinsToBePaidAttribute(): int
+    {
+        return (int) data_get($this->meta, 'total_coins_to_be_paid', $this->final_payable);
+    }
+
+    public function getTotalInrAttribute(): float
+    {
+        return (float) data_get($this->meta, 'total_inr', 0);
+    }
+
+    public function getAdminNoteAttribute(): string
+    {
+        return trim((string) data_get($this->meta, 'admin_note', ''));
+    }
 }

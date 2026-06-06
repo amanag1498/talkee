@@ -235,6 +235,16 @@ class AgencyWeeklyPayoutReportService
                 'video_call_gross' => 0,
                 'pk_event_count' => 0,
                 'total_payout' => 0,
+                'video_gift_coins' => 0,
+                'audio_gift_coins' => 0,
+                'pk_gift_coins' => 0,
+                'video_call_coins' => 0,
+                'audio_call_coins' => 0,
+                'bonus_coins' => 0,
+                'total_coins' => 0,
+                'agency_commission_coins' => 0,
+                'total_coins_to_be_paid' => 0,
+                'total_inr' => 0.0,
             ];
 
             $items = [];
@@ -266,57 +276,68 @@ class AgencyWeeklyPayoutReportService
                 $videoGiftGross = (int) ($gift->video_gift_gross ?? 0);
                 $audioGiftGross = (int) ($gift->audio_gift_gross ?? 0);
                 $pkEventCount = (int) ($pk->pk_event_count ?? 0);
-                $hostPct = (float) ($host->payout_percentage ?? 0);
-                $agencyPct = (float) ($agency->payout_percentage ?? 0);
-                $platformShare = (int) ($call->platform_share ?? 0) + (int) ($gift->platform_share ?? 0);
-                $gross = $callGross + $giftGross;
-                $hostShare = (int) floor(($gross * $hostPct) / 100);
-                $agencyShare = (int) floor(($gross * $agencyPct) / 100);
-                $totalPayout = $hostShare + $agencyShare;
+                $videoCallCoins = $videoCallGross;
+                $audioCallCoins = $audioCallGross;
+                $pkGiftCoins = $pkGross;
+                $bonusCoins = 0;
+                $agencyCommissionCoins = 0;
+                $totalCoins = $this->calculateTotalCoins([
+                    'video_gift_coins' => $videoGiftGross,
+                    'audio_gift_coins' => $audioGiftGross,
+                    'pk_gift_coins' => $pkGiftCoins,
+                    'video_call_coins' => $videoCallCoins,
+                    'audio_call_coins' => $audioCallCoins,
+                    'bonus_coins' => $bonusCoins,
+                ]);
+                $totalCoinsToBePaid = $this->calculateTotalCoinsToBePaid($totalCoins, $agencyCommissionCoins);
 
                 $items[] = [
                     'host_id' => $host->id,
                     'call_earnings' => $callGross,
                     'gift_earnings' => $giftGross,
                     'live_room_earnings' => $giftGross,
-                    'pk_earnings' => $pkGross,
-                    'gross_earnings' => $gross,
-                    'agency_commission' => $agencyShare,
-                    'host_share' => $hostShare,
-                    'final_payable' => $agencyShare,
+                    'pk_earnings' => $pkGiftCoins,
+                    'gross_earnings' => $totalCoins,
+                    'agency_commission' => $agencyCommissionCoins,
+                    'host_share' => $totalCoins,
+                    'final_payable' => $totalCoinsToBePaid,
                     'meta' => [
                         'call_count' => $callCount,
                         'completed_call_count' => $completedCallCount,
                         'billable_minutes' => $billableMinutes,
-                        'video_call_minutes' => $videoCallMinutes,
-                        'video_call_gross' => $videoCallGross,
-                        'audio_call_minutes' => $audioCallMinutes,
-                        'audio_call_gross' => $audioCallGross,
                         'gift_events' => $giftEvents,
                         'gift_quantity' => $giftQuantity,
                         'unique_gifters' => $uniqueGifters,
                         'live_room_count' => $roomCount,
                         'audio_room_count' => $audioRoomCount,
                         'video_room_count' => $videoRoomCount,
-                        'audio_room_minutes' => $audioRoomMinutes,
                         'video_room_minutes' => $videoRoomMinutes,
+                        'audio_room_minutes' => $audioRoomMinutes,
+                        'video_gift_coins' => $videoGiftGross,
                         'video_gift_gross' => $videoGiftGross,
+                        'audio_gift_coins' => $audioGiftGross,
                         'audio_gift_gross' => $audioGiftGross,
+                        'pk_gift_coins' => $pkGiftCoins,
+                        'video_call_coins' => $videoCallCoins,
+                        'video_call_gross' => $videoCallCoins,
+                        'video_call_minutes' => $videoCallMinutes,
+                        'audio_call_coins' => $audioCallCoins,
+                        'audio_call_gross' => $audioCallCoins,
+                        'audio_call_minutes' => $audioCallMinutes,
+                        'bonus_coins' => $bonusCoins,
+                        'total_coins' => $totalCoins,
+                        'agency_commission_coins' => $agencyCommissionCoins,
+                        'total_coins_to_be_paid' => $totalCoinsToBePaid,
+                        'total_inr' => 0,
+                        'admin_note' => '',
                         'pk_event_count' => $pkEventCount,
-                        'host_payout_percentage' => $hostPct,
-                        'agency_payout_percentage' => $agencyPct,
-                        'host_payout' => $hostShare,
-                        'agency_payout' => $agencyShare,
-                        'total_payout' => $totalPayout,
-                        'effective_agency_rate' => $agencyPct,
-                        'effective_host_rate' => $hostPct,
+                        'total_payout' => $totalCoinsToBePaid,
                     ],
                 ];
 
-                $totals['gross_earnings'] += $gross;
-                $totals['platform_commission'] += $platformShare;
-                $totals['agency_commission'] += $agencyShare;
-                $totals['host_share'] += $hostShare;
+                $totals['gross_earnings'] += $totalCoins;
+                $totals['agency_commission'] += $agencyCommissionCoins;
+                $totals['host_share'] += $totalCoins;
                 $totals['call_count'] += $callCount;
                 $totals['billable_minutes'] += $billableMinutes;
                 $totals['gift_events'] += $giftEvents;
@@ -333,7 +354,15 @@ class AgencyWeeklyPayoutReportService
                 $totals['audio_call_gross'] += $audioCallGross;
                 $totals['video_call_gross'] += $videoCallGross;
                 $totals['pk_event_count'] += $pkEventCount;
-                $totals['total_payout'] += $totalPayout;
+                $totals['total_payout'] += $totalCoinsToBePaid;
+                $totals['video_gift_coins'] += $videoGiftGross;
+                $totals['audio_gift_coins'] += $audioGiftGross;
+                $totals['pk_gift_coins'] += $pkGiftCoins;
+                $totals['video_call_coins'] += $videoCallCoins;
+                $totals['audio_call_coins'] += $audioCallCoins;
+                $totals['total_coins'] += $totalCoins;
+                $totals['agency_commission_coins'] += $agencyCommissionCoins;
+                $totals['total_coins_to_be_paid'] += $totalCoinsToBePaid;
             }
 
             if (!$generateZeroReports && $totals['gross_earnings'] === 0 && $hosts->isEmpty()) {
@@ -344,12 +373,12 @@ class AgencyWeeklyPayoutReportService
                 'agency_id' => $agency->id,
                 'period_start' => $periodStart,
                 'period_end' => $periodEnd,
-                'gross_earnings' => $totals['gross_earnings'],
-                'platform_commission' => $totals['platform_commission'],
-                'agency_commission' => $totals['agency_commission'],
-                'host_share' => $totals['host_share'],
+                'gross_earnings' => $totals['total_coins'],
+                'platform_commission' => 0,
+                'agency_commission' => $totals['agency_commission_coins'],
+                'host_share' => $totals['total_coins'],
                 'deductions' => 0,
-                'final_payable' => $totals['agency_commission'],
+                'final_payable' => $totals['total_coins_to_be_paid'],
                 'status' => 'generated',
                 'generated_at' => now(config('app.timezone')),
                 'admin_remarks' => $force ? 'Regenerated from console/admin flow.' : null,
@@ -366,14 +395,24 @@ class AgencyWeeklyPayoutReportService
                         'video_room_count' => $totals['video_room_count'],
                         'audio_room_minutes' => $totals['audio_room_minutes'],
                         'video_room_minutes' => $totals['video_room_minutes'],
+                        'audio_gift_coins' => $totals['audio_gift_coins'],
+                        'video_gift_coins' => $totals['video_gift_coins'],
                         'audio_gift_gross' => $totals['audio_gift_gross'],
                         'video_gift_gross' => $totals['video_gift_gross'],
                         'audio_call_minutes' => $totals['audio_call_minutes'],
                         'video_call_minutes' => $totals['video_call_minutes'],
+                        'audio_call_coins' => $totals['audio_call_coins'],
+                        'video_call_coins' => $totals['video_call_coins'],
                         'audio_call_gross' => $totals['audio_call_gross'],
                         'video_call_gross' => $totals['video_call_gross'],
+                        'pk_gift_coins' => $totals['pk_gift_coins'],
                         'pk_event_count' => $totals['pk_event_count'],
-                        'total_payout' => $totals['total_payout'],
+                        'bonus_coins' => $totals['bonus_coins'],
+                        'total_coins' => $totals['total_coins'],
+                        'agency_commission_coins' => $totals['agency_commission_coins'],
+                        'total_coins_to_be_paid' => $totals['total_coins_to_be_paid'],
+                        'total_inr' => $totals['total_inr'],
+                        'total_payout' => $totals['total_coins_to_be_paid'],
                     ],
                 ],
             ]);
@@ -467,74 +506,19 @@ class AgencyWeeklyPayoutReportService
                 ->firstOrFail();
 
             $before = $lockedItem->toArray();
-            $meta = $lockedItem->meta ?? [];
-            $columnKeys = [
-                'call_earnings',
-                'gift_earnings',
-                'pk_earnings',
-                'gross_earnings',
-                'agency_commission',
-                'host_share',
-                'final_payable',
-            ];
-            $metaIntegerKeys = [
-                'call_count',
-                'completed_call_count',
-                'billable_minutes',
-                'video_call_minutes',
-                'video_call_gross',
-                'audio_call_minutes',
-                'audio_call_gross',
-                'gift_events',
-                'gift_quantity',
-                'unique_gifters',
-                'live_room_count',
-                'audio_room_count',
-                'video_room_count',
-                'audio_room_minutes',
-                'video_room_minutes',
-                'video_gift_gross',
-                'audio_gift_gross',
-                'pk_event_count',
-                'agency_payout',
-                'host_payout',
-                'total_payout',
-            ];
-            $metaFloatKeys = [
-                'agency_payout_percentage',
-                'host_payout_percentage',
-            ];
+            $normalized = $this->normalizeSettlementItemPayload($payload, $lockedItem->meta ?? []);
 
-            $itemChanges = [];
-            foreach ($columnKeys as $key) {
-                if (array_key_exists($key, $payload)) {
-                    $itemChanges[$key] = max(0, (int) $payload[$key]);
-                }
-            }
-
-            if (array_key_exists('gift_earnings', $itemChanges)) {
-                $itemChanges['live_room_earnings'] = $itemChanges['gift_earnings'];
-            }
-
-            foreach ($metaIntegerKeys as $key) {
-                if (array_key_exists($key, $payload)) {
-                    $meta[$key] = max(0, (int) $payload[$key]);
-                }
-            }
-
-            foreach ($metaFloatKeys as $key) {
-                if (array_key_exists($key, $payload)) {
-                    $meta[$key] = max(0, round((float) $payload[$key], 2));
-                }
-            }
-
-            if (array_key_exists('admin_note', $payload)) {
-                $meta['admin_note'] = (string) ($payload['admin_note'] ?? '');
-            }
-
-            $lockedItem->forceFill(array_merge($itemChanges, [
-                'meta' => $meta,
-            ]))->save();
+            $lockedItem->forceFill([
+                'call_earnings' => $normalized['call_earnings'],
+                'gift_earnings' => $normalized['gift_earnings'],
+                'live_room_earnings' => $normalized['gift_earnings'],
+                'pk_earnings' => $normalized['pk_earnings'],
+                'gross_earnings' => $normalized['gross_earnings'],
+                'agency_commission' => $normalized['agency_commission'],
+                'host_share' => $normalized['host_share'],
+                'final_payable' => $normalized['final_payable'],
+                'meta' => $normalized['meta'],
+            ])->save();
 
             $reportStatus = $locked->status === 'approved'
                 ? ['status' => 'pending_review', 'approved_at' => null]
@@ -698,37 +682,21 @@ class AgencyWeeklyPayoutReportService
                 'period_end' => optional($report->period_end)->toDateTimeString(),
                 'host_id' => $item->host_id,
                 'host_name' => $item->host?->user?->name ?? $item->host?->stage_name,
-                'call_earnings' => $item->call_earnings,
-                'call_count' => (int) data_get($item->meta, 'call_count', 0),
-                'completed_call_count' => (int) data_get($item->meta, 'completed_call_count', 0),
-                'billable_minutes' => (int) data_get($item->meta, 'billable_minutes', 0),
-                'video_call_minutes' => (int) data_get($item->meta, 'video_call_minutes', 0),
-                'video_call_gross' => (int) data_get($item->meta, 'video_call_gross', 0),
-                'audio_call_minutes' => (int) data_get($item->meta, 'audio_call_minutes', 0),
-                'audio_call_gross' => (int) data_get($item->meta, 'audio_call_gross', 0),
-                'gift_earnings' => $item->gift_earnings,
-                'gift_events' => (int) data_get($item->meta, 'gift_events', 0),
-                'gift_quantity' => (int) data_get($item->meta, 'gift_quantity', 0),
-                'unique_gifters' => (int) data_get($item->meta, 'unique_gifters', 0),
-                'live_room_count' => (int) data_get($item->meta, 'live_room_count', 0),
-                'audio_room_count' => (int) data_get($item->meta, 'audio_room_count', 0),
-                'video_room_count' => (int) data_get($item->meta, 'video_room_count', 0),
-                'audio_room_minutes' => (int) data_get($item->meta, 'audio_room_minutes', 0),
-                'video_room_minutes' => (int) data_get($item->meta, 'video_room_minutes', 0),
-                'video_gift_gross' => (int) data_get($item->meta, 'video_gift_gross', 0),
-                'audio_gift_gross' => (int) data_get($item->meta, 'audio_gift_gross', 0),
-                'pk_earnings' => $item->pk_earnings,
-                'pk_event_count' => (int) data_get($item->meta, 'pk_event_count', 0),
-                'gross_earnings' => $item->gross_earnings,
-                'agency_commission' => $item->agency_commission,
-                'agency_payout_percentage' => (float) data_get($item->meta, 'agency_payout_percentage', $item->effective_agency_rate),
-                'agency_payout' => (int) data_get($item->meta, 'agency_payout', $item->agency_commission),
-                'host_share' => $item->host_share,
-                'host_payout_percentage' => (float) data_get($item->meta, 'host_payout_percentage', $item->effective_host_rate),
-                'host_payout' => (int) data_get($item->meta, 'host_payout', $item->host_share),
-                'total_payout' => (int) data_get($item->meta, 'total_payout', ((int) $item->agency_commission + (int) $item->host_share)),
-                'final_payable' => $item->final_payable,
-                'admin_note' => (string) data_get($item->meta, 'admin_note', ''),
+                'video_room_minutes' => $item->video_room_minutes,
+                'audio_room_minutes' => $item->audio_room_minutes,
+                'video_gift_coins' => $item->video_gift_coins,
+                'audio_gift_coins' => $item->audio_gift_coins,
+                'pk_gift_coins' => $item->pk_gift_coins,
+                'video_call_coins' => $item->video_call_coins,
+                'video_call_minutes' => $item->video_call_minutes,
+                'audio_call_coins' => $item->audio_call_coins,
+                'audio_call_minutes' => $item->audio_call_minutes,
+                'bonus_coins' => $item->bonus_coins,
+                'total_coins' => $item->total_coins,
+                'agency_commission_coins' => $item->agency_commission_coins,
+                'total_coins_to_be_paid' => $item->total_coins_to_be_paid,
+                'total_inr' => $item->total_inr,
+                'admin_note' => $item->admin_note,
                 'report_status' => $report->status,
                 'published_at' => optional($report->published_at)->toDateTimeString(),
             ];
@@ -808,10 +776,6 @@ class AgencyWeeklyPayoutReportService
         $report->unsetRelation('items');
         $report->load('items');
 
-        $grossEarnings = (int) $report->items->sum('gross_earnings');
-        $agencyCommission = (int) $report->items->sum('agency_commission');
-        $hostShare = (int) $report->items->sum('host_share');
-        $itemFinalPayable = (int) $report->items->sum('final_payable');
         $deductions = array_key_exists('deductions', $changes)
             ? max(0, (int) $changes['deductions'])
             : max(0, (int) $report->deductions);
@@ -825,37 +789,110 @@ class AgencyWeeklyPayoutReportService
         $meta['totals']['video_room_count'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'video_room_count', 0));
         $meta['totals']['audio_room_minutes'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'audio_room_minutes', 0));
         $meta['totals']['video_room_minutes'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'video_room_minutes', 0));
-        $meta['totals']['audio_gift_gross'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'audio_gift_gross', 0));
-        $meta['totals']['video_gift_gross'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'video_gift_gross', 0));
+        $meta['totals']['audio_gift_gross'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => $item->audio_gift_coins);
+        $meta['totals']['video_gift_gross'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => $item->video_gift_coins);
+        $meta['totals']['audio_gift_coins'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => $item->audio_gift_coins);
+        $meta['totals']['video_gift_coins'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => $item->video_gift_coins);
         $meta['totals']['audio_call_minutes'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'audio_call_minutes', 0));
         $meta['totals']['video_call_minutes'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'video_call_minutes', 0));
-        $meta['totals']['audio_call_gross'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'audio_call_gross', 0));
-        $meta['totals']['video_call_gross'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'video_call_gross', 0));
+        $meta['totals']['audio_call_gross'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => $item->audio_call_coins);
+        $meta['totals']['video_call_gross'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => $item->video_call_coins);
+        $meta['totals']['audio_call_coins'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => $item->audio_call_coins);
+        $meta['totals']['video_call_coins'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => $item->video_call_coins);
         $meta['totals']['pk_event_count'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => (int) data_get($item->meta, 'pk_event_count', 0));
-        $meta['totals']['total_payout'] = (int) $report->items->sum(function (AgencyPayoutReportItem $item) {
-            return (int) data_get($item->meta, 'total_payout', ((int) $item->agency_commission + (int) $item->host_share));
-        });
+        $meta['totals']['pk_gift_coins'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => $item->pk_gift_coins);
+        $meta['totals']['bonus_coins'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => $item->bonus_coins);
+        $meta['totals']['total_coins'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => $item->total_coins);
+        $meta['totals']['agency_commission_coins'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => $item->agency_commission_coins);
+        $meta['totals']['total_coins_to_be_paid'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => $item->total_coins_to_be_paid);
+        $meta['totals']['total_inr'] = round((float) $report->items->sum(fn (AgencyPayoutReportItem $item) => $item->total_inr), 2);
+        $meta['totals']['total_payout'] = (int) $meta['totals']['total_coins_to_be_paid'];
 
         $payload = array_merge($changes, [
-            'gross_earnings' => $grossEarnings,
-            'platform_commission' => max(0, $grossEarnings - (int) $meta['totals']['total_payout']),
-            'agency_commission' => $agencyCommission,
-            'host_share' => $hostShare,
+            'gross_earnings' => (int) $meta['totals']['total_coins'],
+            'platform_commission' => 0,
+            'agency_commission' => (int) $meta['totals']['agency_commission_coins'],
+            'host_share' => (int) $meta['totals']['total_coins'],
             'deductions' => $deductions,
-            'final_payable' => max(0, $itemFinalPayable - $deductions),
+            'final_payable' => max(0, (int) $meta['totals']['total_coins_to_be_paid'] - $deductions),
             'meta' => $meta,
         ]);
 
         $report->forceFill($payload)->save();
     }
 
-    private function percentOfGross(int $gross, int $value): float
+    private function normalizeSettlementItemPayload(array $payload, array $existingMeta = []): array
     {
-        if ($gross <= 0) {
-            return 0.0;
-        }
+        $videoRoomMinutes = max(0, (int) ($payload['video_room_minutes'] ?? data_get($existingMeta, 'video_room_minutes', 0)));
+        $audioRoomMinutes = max(0, (int) ($payload['audio_room_minutes'] ?? data_get($existingMeta, 'audio_room_minutes', 0)));
+        $videoGiftCoins = max(0, (int) ($payload['video_gift_coins'] ?? data_get($existingMeta, 'video_gift_coins', data_get($existingMeta, 'video_gift_gross', 0))));
+        $audioGiftCoins = max(0, (int) ($payload['audio_gift_coins'] ?? data_get($existingMeta, 'audio_gift_coins', data_get($existingMeta, 'audio_gift_gross', 0))));
+        $pkGiftCoins = max(0, (int) ($payload['pk_gift_coins'] ?? data_get($existingMeta, 'pk_gift_coins', 0)));
+        $videoCallCoins = max(0, (int) ($payload['video_call_coins'] ?? data_get($existingMeta, 'video_call_coins', data_get($existingMeta, 'video_call_gross', 0))));
+        $videoCallMinutes = max(0, (int) ($payload['video_call_minutes'] ?? data_get($existingMeta, 'video_call_minutes', 0)));
+        $audioCallCoins = max(0, (int) ($payload['audio_call_coins'] ?? data_get($existingMeta, 'audio_call_coins', data_get($existingMeta, 'audio_call_gross', 0))));
+        $audioCallMinutes = max(0, (int) ($payload['audio_call_minutes'] ?? data_get($existingMeta, 'audio_call_minutes', 0)));
+        $bonusCoins = max(0, (int) ($payload['bonus_coins'] ?? data_get($existingMeta, 'bonus_coins', 0)));
+        $agencyCommissionCoins = max(0, (int) ($payload['agency_commission_coins'] ?? data_get($existingMeta, 'agency_commission_coins', 0)));
+        $totalCoins = $this->calculateTotalCoins([
+            'video_gift_coins' => $videoGiftCoins,
+            'audio_gift_coins' => $audioGiftCoins,
+            'pk_gift_coins' => $pkGiftCoins,
+            'video_call_coins' => $videoCallCoins,
+            'audio_call_coins' => $audioCallCoins,
+            'bonus_coins' => $bonusCoins,
+        ]);
+        $totalCoinsToBePaid = $this->calculateTotalCoinsToBePaid($totalCoins, $agencyCommissionCoins);
+        $totalInr = round(max(0, (float) ($payload['total_inr'] ?? data_get($existingMeta, 'total_inr', 0))), 2);
 
-        return round(($value / $gross) * 100, 2);
+        return [
+            'call_earnings' => $videoCallCoins + $audioCallCoins,
+            'gift_earnings' => $videoGiftCoins + $audioGiftCoins,
+            'pk_earnings' => $pkGiftCoins,
+            'gross_earnings' => $totalCoins,
+            'agency_commission' => $agencyCommissionCoins,
+            'host_share' => $totalCoins,
+            'final_payable' => $totalCoinsToBePaid,
+            'meta' => array_merge($existingMeta, [
+                'video_room_minutes' => $videoRoomMinutes,
+                'audio_room_minutes' => $audioRoomMinutes,
+                'video_gift_coins' => $videoGiftCoins,
+                'video_gift_gross' => $videoGiftCoins,
+                'audio_gift_coins' => $audioGiftCoins,
+                'audio_gift_gross' => $audioGiftCoins,
+                'pk_gift_coins' => $pkGiftCoins,
+                'video_call_coins' => $videoCallCoins,
+                'video_call_gross' => $videoCallCoins,
+                'video_call_minutes' => $videoCallMinutes,
+                'audio_call_coins' => $audioCallCoins,
+                'audio_call_gross' => $audioCallCoins,
+                'audio_call_minutes' => $audioCallMinutes,
+                'bonus_coins' => $bonusCoins,
+                'total_coins' => $totalCoins,
+                'agency_commission_coins' => $agencyCommissionCoins,
+                'total_coins_to_be_paid' => $totalCoinsToBePaid,
+                'total_inr' => $totalInr,
+                'admin_note' => trim((string) ($payload['admin_note'] ?? data_get($existingMeta, 'admin_note', ''))),
+            ]),
+        ];
+    }
+
+    private function calculateTotalCoins(array $values): int
+    {
+        return max(
+            0,
+            (int) ($values['video_gift_coins'] ?? 0)
+            + (int) ($values['audio_gift_coins'] ?? 0)
+            + (int) ($values['pk_gift_coins'] ?? 0)
+            + (int) ($values['video_call_coins'] ?? 0)
+            + (int) ($values['audio_call_coins'] ?? 0)
+            + (int) ($values['bonus_coins'] ?? 0)
+        );
+    }
+
+    private function calculateTotalCoinsToBePaid(int $totalCoins, int $agencyCommissionCoins): int
+    {
+        return max(0, $totalCoins + $agencyCommissionCoins);
     }
 
     private function carbonWeekDay(string $name): int

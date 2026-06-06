@@ -1,62 +1,57 @@
 @extends('layouts.admin-berry')
 @section('title', 'Agency Payout Report #' . $report->id)
 
+@php
+  $locked = $report->published_at || $report->status === 'paid';
+@endphp
+
 @section('content')
 <style>
-  .payout-grid-table {
-    white-space: nowrap;
-  }
-
-  .payout-grid-table th,
-  .payout-grid-table td {
-    vertical-align: middle;
-  }
-
-  .payout-grid-host {
-    min-width: 180px;
+  .payout-grid-table { white-space: nowrap; }
+  .payout-grid-table th, .payout-grid-table td { vertical-align: middle; }
+  .payout-grid-sticky-left {
     position: sticky;
     left: 0;
     background: #fff;
-    z-index: 1;
+    z-index: 2;
+    min-width: 220px;
   }
-
-  .payout-grid-save {
-    min-width: 88px;
+  .payout-grid-sticky-right {
     position: sticky;
     right: 0;
     background: #fff;
-    z-index: 1;
+    z-index: 2;
+    min-width: 96px;
   }
-
+  .payout-grid-table tfoot td {
+    position: sticky;
+    bottom: 0;
+    background: #f8fafc;
+    z-index: 1;
+    font-weight: 700;
+  }
   .payout-grid-input {
-    width: 110px;
-    min-width: 110px;
+    width: 118px;
+    min-width: 118px;
     text-align: right;
-    padding-inline: 0.55rem;
-    font-size: 0.82rem;
+    font-size: .82rem;
     line-height: 1.35;
     color: #111827;
   }
-
-  .payout-grid-input.payout-grid-wide {
+  .payout-grid-input-wide {
     width: 132px;
     min-width: 132px;
   }
-
-  .payout-grid-input.payout-grid-percent {
-    width: 84px;
-    min-width: 84px;
-  }
-
-  .payout-grid-note {
+  .payout-grid-input-note {
     width: 220px;
     min-width: 220px;
     white-space: normal;
-    font-size: 0.82rem;
+    font-size: .82rem;
     line-height: 1.35;
     color: #111827;
   }
 </style>
+
 <div class="admin-page-shell">
   <section class="admin-page-hero">
     <div class="row g-4 align-items-center">
@@ -73,7 +68,7 @@
         <div class="admin-page-actions">
           <a href="{{ route('admin.agency-payout-reports.index') }}" class="btn btn-light border">Back</a>
           <a href="{{ route('admin.agencies.dashboard', $report->agency_id) }}" class="btn btn-outline-secondary">Open Agency Dashboard</a>
-          <a href="{{ route('admin.agency-payout-reports.export', $report) }}" class="btn btn-outline-primary">Export CSV</a>
+          <a href="{{ route('admin.agency-payout-reports.export', $report) }}" class="btn btn-outline-primary">Download PDF</a>
         </div>
       </div>
     </div>
@@ -94,24 +89,19 @@
 
   <section class="row g-3 mb-3">
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Total Hosts</small><div class="fs-3 fw-semibold mt-1">{{ number_format($report->total_hosts) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Active/Live Hosts</small><div class="fs-3 fw-semibold mt-1">{{ number_format($report->active_hosts_count) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Gross Earnings</small><div class="fs-3 fw-semibold mt-1">{{ number_format($report->gross_earnings) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Final Payable</small><div class="fs-3 fw-semibold mt-1">{{ number_format($report->final_payable) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Video Rooms</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_video_room_minutes) }} min</div><div class="text-muted small mt-1">Gifts {{ number_format($report->total_video_gift_gross) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Audio Rooms</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_audio_room_minutes) }} min</div><div class="text-muted small mt-1">Gifts {{ number_format($report->total_audio_gift_gross) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Video Calls</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_video_call_minutes) }} min</div><div class="text-muted small mt-1">Gross {{ number_format($report->total_video_call_gross) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Audio Calls</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_audio_call_minutes) }} min</div><div class="text-muted small mt-1">Gross {{ number_format($report->total_audio_call_gross) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Platform Comm.</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->platform_commission) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Agency Payout</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->agency_commission) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Host Payout</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->host_share) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Combined Payout</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_payout) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Deductions</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->deductions) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Call Count</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_call_count) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Billable Minutes</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_billable_minutes) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Gift Events / Qty</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_gift_events) }} / {{ number_format($report->total_gift_quantity) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Live Rooms A/V</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_live_room_count) }} · {{ number_format($report->total_audio_room_count) }}/{{ number_format($report->total_video_room_count) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">PK Gross / Events</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_pk_earnings) }} / {{ number_format($report->total_pk_event_count) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Report Timezone</small><div class="fs-5 fw-semibold mt-1">{{ data_get($report->meta, 'timezone', config('app.timezone')) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Active Hosts</small><div class="fs-3 fw-semibold mt-1">{{ number_format($report->active_hosts_count) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Total Coins</small><div class="fs-3 fw-semibold mt-1">{{ number_format($report->total_coins) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Total Coins To Be Paid</small><div class="fs-3 fw-semibold mt-1">{{ number_format($report->total_coins_to_be_paid) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Video Room Timing</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_video_room_minutes) }} min</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Audio Room Timing</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_audio_room_minutes) }} min</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Video Gifts</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_video_gift_coins) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Audio Gifts</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_audio_gift_coins) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">PK Gifts</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_pk_gift_coins) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Video Calls</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_video_call_coins) }} / {{ number_format($report->total_video_call_minutes) }} min</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Audio Calls</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_audio_call_coins) }} / {{ number_format($report->total_audio_call_minutes) }} min</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Bonus Coins</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_bonus_coins) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Agency Commission Coins</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_agency_commission_coins) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Total INR</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_inr, 2) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Published</small><div class="fs-5 fw-semibold mt-1">{{ $report->published_at ? optional($report->published_at)->format('d M Y H:i') : 'Not yet' }}</div><div class="text-muted small mt-1">{{ $report->publishedByAdmin?->name ?? 'Agency cannot see this yet' }}</div></div></div></div>
   </section>
 
@@ -122,10 +112,7 @@
         <div class="card-body">
           <form method="post" action="{{ route('admin.agency-payout-reports.review', $report) }}" class="row g-3">
             @csrf
-            <div class="col-md-4">
-              <label class="form-label">Deductions</label>
-              <input type="number" min="0" name="deductions" class="form-control" value="{{ old('deductions', $report->deductions) }}">
-            </div>
+            <input type="hidden" name="deductions" value="0">
             <div class="col-12">
               <label class="form-label">Admin Remarks</label>
               <textarea name="admin_remarks" class="form-control" rows="3">{{ old('admin_remarks', $report->admin_remarks) }}</textarea>
@@ -143,10 +130,8 @@
         <div class="card-body d-grid gap-3">
           <form method="post" action="{{ route('admin.agency-payout-reports.approve', $report) }}" class="row g-2">
             @csrf
-            <div class="col-md-4">
-              <input type="number" min="0" name="deductions" class="form-control" value="{{ $report->deductions }}" placeholder="Deductions">
-            </div>
-            <div class="col-md-8">
+            <input type="hidden" name="deductions" value="0">
+            <div class="col-md-12">
               <input type="text" name="admin_remarks" class="form-control" value="{{ $report->admin_remarks }}" placeholder="Approval remarks">
             </div>
             <div class="col-12">
@@ -156,7 +141,7 @@
 
           <form method="post" action="{{ route('admin.agency-payout-reports.publish', $report) }}" class="row g-2">
             @csrf
-            <div class="col-12">
+            <div class="col-md-12">
               <input type="text" name="admin_remarks" class="form-control" value="{{ $report->admin_remarks }}" placeholder="Publish remarks">
             </div>
             <div class="col-12">
@@ -166,21 +151,11 @@
 
           <form method="post" action="{{ route('admin.agency-payout-reports.mark-paid', $report) }}" class="row g-2">
             @csrf
-            <div class="col-12">
-              <input type="text" name="admin_remarks" class="form-control" value="{{ $report->admin_remarks }}" placeholder="Payment remarks">
+            <div class="col-md-12">
+              <input type="text" name="admin_remarks" class="form-control" value="{{ $report->admin_remarks }}" placeholder="Paid remarks">
             </div>
             <div class="col-12">
-              <button class="btn btn-success" @disabled($report->status !== 'approved' || $report->status === 'paid' || !$report->published_at)>Mark as Paid</button>
-            </div>
-          </form>
-
-          <form method="post" action="{{ route('admin.agency-payout-reports.reject', $report) }}" class="row g-2">
-            @csrf
-            <div class="col-12">
-              <textarea name="admin_remarks" class="form-control" rows="3" placeholder="Rejection reason" @disabled($report->status === 'paid')></textarea>
-            </div>
-            <div class="col-12">
-              <button class="btn btn-outline-danger" @disabled(!in_array($report->status, ['generated', 'pending_review']))>Reject Report</button>
+              <button class="btn btn-success" @disabled($report->status !== 'approved' || !$report->published_at || $report->status === 'paid')>Mark Paid</button>
             </div>
           </form>
 
@@ -188,11 +163,11 @@
             <form method="post" action="{{ route('admin.agency-payout-reports.destroy', $report) }}" class="row g-2" onsubmit="return confirm('Delete this payout report draft? This cannot be undone.');">
               @csrf
               @method('DELETE')
-              <div class="col-12">
-                <textarea name="admin_remarks" class="form-control" rows="2" placeholder="Delete reason (optional)"></textarea>
+              <div class="col-md-12">
+                <input type="text" name="admin_remarks" class="form-control" placeholder="Delete reason (optional)">
               </div>
               <div class="col-12">
-                <button class="btn btn-danger">Delete Report</button>
+                <button class="btn btn-outline-danger">Delete Report</button>
               </div>
             </form>
           @endif
@@ -202,320 +177,181 @@
   </section>
 
   <section class="card">
-    <div class="card-header">
-      <h5 class="mb-0">Per-Host Breakdown</h5>
-      <div class="text-muted small mt-1">Edit rows here before publishing. Changing an approved row moves the report back to pending review.</div>
-    </div>
+    <div class="card-header"><h5 class="mb-0">Host Settlement Grid</h5></div>
     <div class="card-body table-responsive">
-      <table class="table align-middle payout-grid-table">
+      <table class="table align-middle payout-grid-table" id="payout-grid">
         <thead class="table-light">
           <tr>
-            <th>Host</th>
-            <th>Call Earn</th>
-            <th>Call Count</th>
-            <th>Completed</th>
-            <th>Billable Min</th>
-            <th>Video Call Min</th>
-            <th>Video Call Gross</th>
-            <th>Audio Call Min</th>
-            <th>Audio Call Gross</th>
-            <th>Gift Earn</th>
-            <th>Gift Events</th>
-            <th>Gift Qty</th>
-            <th>Unique Gifters</th>
-            <th>Live Rooms</th>
-            <th>Audio Rooms</th>
-            <th>Video Rooms</th>
-            <th>Audio Room Min</th>
-            <th>Video Room Min</th>
-            <th>Audio Gifts</th>
-            <th>Video Gifts</th>
-            <th>PK Gross</th>
-            <th>PK Events</th>
-            <th>Gross</th>
-            <th>Host Payout</th>
-            <th>Host %</th>
-            <th>Host Payout CSV</th>
-            <th>Agency Payout</th>
-            <th>Agency %</th>
-            <th>Agency Payout CSV</th>
-            <th>Total Payout</th>
-            <th>Final Payable</th>
-            <th>Admin Note</th>
-            <th class="text-end">Save</th>
+            <th class="payout-grid-sticky-left">Host</th>
+            <th>Total Video Room Timing</th>
+            <th>Total Audio Room Timing</th>
+            <th>Total Video Room Gifts</th>
+            <th>Total Audio Room Gifts</th>
+            <th>Total PK Gifts</th>
+            <th>Video Calls Coins</th>
+            <th>Video Calls Min</th>
+            <th>Audio Calls Coins</th>
+            <th>Audio Calls Min</th>
+            <th>Bonus Coins</th>
+            <th>Total Coins</th>
+            <th>Agency Commission Coins</th>
+            <th>Total Coins To Be Paid</th>
+            <th>Total INR</th>
+            <th>Admin Notes</th>
+            <th class="payout-grid-sticky-right text-end">Save</th>
           </tr>
         </thead>
         <tbody>
           @forelse($report->items as $item)
-            @php($formId = 'payout-row-' . $item->id)
-            <tr>
-              <td class="payout-grid-host">
-                <form id="{{ $formId }}" method="post" action="{{ route('admin.agency-payout-reports.items.update', [$report, $item]) }}">
-                  @csrf
-                </form>
+            @php($formId = 'item-form-' . $item->id)
+            <tr data-payout-row>
+              <td class="payout-grid-sticky-left">
                 <div class="fw-semibold">{{ $item->host?->user?->name ?? $item->host?->stage_name ?? '—' }}</div>
                 <div class="text-muted small">{{ $item->host?->stage_name ?? '—' }}</div>
               </td>
-              <td><input type="number" min="0" name="call_earnings" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('call_earnings', $item->call_earnings) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="call_count" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('call_count', (int) data_get($item->meta, 'call_count', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="completed_call_count" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('completed_call_count', (int) data_get($item->meta, 'completed_call_count', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="billable_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('billable_minutes', (int) data_get($item->meta, 'billable_minutes', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="video_call_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('video_call_minutes', (int) data_get($item->meta, 'video_call_minutes', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="video_call_gross" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('video_call_gross', (int) data_get($item->meta, 'video_call_gross', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="audio_call_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('audio_call_minutes', (int) data_get($item->meta, 'audio_call_minutes', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="audio_call_gross" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('audio_call_gross', (int) data_get($item->meta, 'audio_call_gross', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="gift_earnings" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('gift_earnings', $item->gift_earnings) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="gift_events" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('gift_events', (int) data_get($item->meta, 'gift_events', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="gift_quantity" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('gift_quantity', (int) data_get($item->meta, 'gift_quantity', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="unique_gifters" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('unique_gifters', (int) data_get($item->meta, 'unique_gifters', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="live_room_count" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('live_room_count', (int) data_get($item->meta, 'live_room_count', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="audio_room_count" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('audio_room_count', (int) data_get($item->meta, 'audio_room_count', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="video_room_count" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('video_room_count', (int) data_get($item->meta, 'video_room_count', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="audio_room_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('audio_room_minutes', (int) data_get($item->meta, 'audio_room_minutes', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="video_room_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('video_room_minutes', (int) data_get($item->meta, 'video_room_minutes', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="audio_gift_gross" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('audio_gift_gross', (int) data_get($item->meta, 'audio_gift_gross', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="video_gift_gross" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('video_gift_gross', (int) data_get($item->meta, 'video_gift_gross', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="pk_earnings" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('pk_earnings', $item->pk_earnings) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="pk_event_count" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input" value="{{ old('pk_event_count', (int) data_get($item->meta, 'pk_event_count', 0)) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="gross_earnings" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('gross_earnings', $item->gross_earnings) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td style="min-width: 132px;">
-                <input
-                  type="number"
-                  min="0"
-                  name="host_share"
-                  form="{{ $formId }}"
-                  class="form-control form-control-sm payout-grid-input payout-grid-wide"
-                  value="{{ old('host_share', $item->host_share) }}"
-                  @disabled($report->published_at || $report->status === 'paid')
-                >
-              </td>
-              <td><input type="number" step="0.01" min="0" max="100" name="host_payout_percentage" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-percent" value="{{ old('host_payout_percentage', number_format($item->host_payout_percentage, 2, '.', '')) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="host_payout" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('host_payout', $item->host_payout) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td style="min-width: 132px;">
-                <input
-                  type="number"
-                  min="0"
-                  name="agency_commission"
-                  form="{{ $formId }}"
-                  class="form-control form-control-sm payout-grid-input payout-grid-wide"
-                  value="{{ old('agency_commission', $item->agency_commission) }}"
-                  @disabled($report->published_at || $report->status === 'paid')
-                >
-              </td>
-              <td><input type="number" step="0.01" min="0" max="100" name="agency_payout_percentage" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-percent" value="{{ old('agency_payout_percentage', number_format($item->agency_payout_percentage, 2, '.', '')) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="agency_payout" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('agency_payout', $item->agency_payout) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td><input type="number" min="0" name="total_payout" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-wide" value="{{ old('total_payout', $item->total_payout) }}" @disabled($report->published_at || $report->status === 'paid')></td>
-              <td style="min-width: 132px;">
-                <input
-                  type="number"
-                  min="0"
-                  name="final_payable"
-                  form="{{ $formId }}"
-                  class="form-control form-control-sm payout-grid-input payout-grid-wide"
-                  value="{{ old('final_payable', $item->final_payable) }}"
-                  @disabled($report->published_at || $report->status === 'paid')
-                >
-              </td>
-              <td style="min-width: 180px;">
+              <td><input type="number" min="0" name="video_room_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input calc-field" value="{{ $item->video_room_minutes }}" @disabled($locked)></td>
+              <td><input type="number" min="0" name="audio_room_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input calc-field" value="{{ $item->audio_room_minutes }}" @disabled($locked)></td>
+              <td><input type="number" min="0" name="video_gift_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->video_gift_coins }}" @disabled($locked)></td>
+              <td><input type="number" min="0" name="audio_gift_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->audio_gift_coins }}" @disabled($locked)></td>
+              <td><input type="number" min="0" name="pk_gift_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->pk_gift_coins }}" @disabled($locked)></td>
+              <td><input type="number" min="0" name="video_call_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->video_call_coins }}" @disabled($locked)></td>
+              <td><input type="number" min="0" name="video_call_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input calc-field" value="{{ $item->video_call_minutes }}" @disabled($locked)></td>
+              <td><input type="number" min="0" name="audio_call_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->audio_call_coins }}" @disabled($locked)></td>
+              <td><input type="number" min="0" name="audio_call_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input calc-field" value="{{ $item->audio_call_minutes }}" @disabled($locked)></td>
+              <td><input type="number" min="0" name="bonus_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->bonus_coins }}" @disabled($locked)></td>
+              <td><input type="number" min="0" class="form-control form-control-sm payout-grid-input payout-grid-input-wide row-total-coins" value="{{ $item->total_coins }}" readonly></td>
+              <td><input type="number" min="0" name="agency_commission_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->agency_commission_coins }}" @disabled($locked)></td>
+              <td><input type="number" min="0" class="form-control form-control-sm payout-grid-input payout-grid-input-wide row-total-payable" value="{{ $item->total_coins_to_be_paid }}" readonly></td>
+              <td><input type="number" step="0.01" min="0" name="total_inr" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field inr-field" value="{{ number_format($item->total_inr, 2, '.', '') }}" @disabled($locked)></td>
+              <td>
                 <textarea
                   name="admin_note"
                   form="{{ $formId }}"
                   rows="2"
-                  class="form-control form-control-sm payout-grid-note"
-                  placeholder="Admin note"
-                  @disabled($report->published_at || $report->status === 'paid')
-                >{{ old('admin_note', data_get($item->meta, 'admin_note', '')) }}</textarea>
+                  class="form-control form-control-sm payout-grid-input-note"
+                  placeholder="Admin notes"
+                  @disabled($locked)
+                >{{ $item->admin_note }}</textarea>
               </td>
-              <td class="text-end payout-grid-save">
-                <button class="btn btn-sm btn-light border" type="submit" form="{{ $formId }}" @disabled($report->published_at || $report->status === 'paid')>Save</button>
+              <td class="payout-grid-sticky-right text-end">
+                <form id="{{ $formId }}" method="post" action="{{ route('admin.agency-payout-reports.items.update', [$report, $item]) }}">
+                  @csrf
+                </form>
+                <button class="btn btn-sm btn-light border" type="submit" form="{{ $formId }}" @disabled($locked)>Save</button>
               </td>
             </tr>
           @empty
-            <tr><td colspan="32" class="text-center text-muted py-4">No host rows in this report.</td></tr>
+            <tr><td colspan="17" class="text-center text-muted py-4">No host rows in this report.</td></tr>
           @endforelse
         </tbody>
+        <tfoot>
+          <tr>
+            <td class="payout-grid-sticky-left">Grand Total</td>
+            <td data-total="video_room_minutes">{{ number_format($report->total_video_room_minutes) }}</td>
+            <td data-total="audio_room_minutes">{{ number_format($report->total_audio_room_minutes) }}</td>
+            <td data-total="video_gift_coins">{{ number_format($report->total_video_gift_coins) }}</td>
+            <td data-total="audio_gift_coins">{{ number_format($report->total_audio_gift_coins) }}</td>
+            <td data-total="pk_gift_coins">{{ number_format($report->total_pk_gift_coins) }}</td>
+            <td data-total="video_call_coins">{{ number_format($report->total_video_call_coins) }}</td>
+            <td data-total="video_call_minutes">{{ number_format($report->total_video_call_minutes) }}</td>
+            <td data-total="audio_call_coins">{{ number_format($report->total_audio_call_coins) }}</td>
+            <td data-total="audio_call_minutes">{{ number_format($report->total_audio_call_minutes) }}</td>
+            <td data-total="bonus_coins">{{ number_format($report->total_bonus_coins) }}</td>
+            <td data-total="total_coins">{{ number_format($report->total_coins) }}</td>
+            <td data-total="agency_commission_coins">{{ number_format($report->total_agency_commission_coins) }}</td>
+            <td data-total="total_coins_to_be_paid">{{ number_format($report->total_coins_to_be_paid) }}</td>
+            <td data-total="total_inr">{{ number_format($report->total_inr, 2) }}</td>
+            <td>—</td>
+            <td class="payout-grid-sticky-right">—</td>
+          </tr>
+        </tfoot>
       </table>
     </div>
   </section>
-
-  @php($recon = $reconciliation)
-  <section class="mt-3">
-    <div class="card mb-3">
-      <div class="card-header"><h5 class="mb-0">Reconciliation Summary</h5></div>
-      <div class="card-body">
-        <div class="row g-3">
-          <div class="col-md-6 col-xl-3"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Raw Call Ledger</small><div class="fs-5 fw-semibold mt-1">{{ number_format($recon['summary']['call_rows']) }} rows</div><div class="text-muted small mt-1">Gross {{ number_format($recon['summary']['call_gross']) }}</div></div></div>
-          <div class="col-md-6 col-xl-3"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Raw Live Gift Ledger</small><div class="fs-5 fw-semibold mt-1">{{ number_format($recon['summary']['gift_rows']) }} rows</div><div class="text-muted small mt-1">Gross {{ number_format($recon['summary']['gift_gross']) }}</div></div></div>
-          <div class="col-md-6 col-xl-3"><div class="border rounded p-3 h-100"><small class="text-muted d-block">PK-Linked Gift Rows</small><div class="fs-5 fw-semibold mt-1">{{ number_format($recon['summary']['pk_rows']) }} rows</div><div class="text-muted small mt-1">Gross {{ number_format($recon['summary']['pk_gross']) }}</div></div></div>
-          <div class="col-md-6 col-xl-3"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Final Split Trace</small><div class="fs-5 fw-semibold mt-1">Host {{ number_format($recon['summary']['host_payout']) }}</div><div class="text-muted small mt-1">Agency {{ number_format($recon['summary']['agency_payout']) }}</div></div></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card mb-3">
-      <div class="card-header"><h5 class="mb-0">Final Host / Agency Split Trace</h5></div>
-      <div class="card-body table-responsive">
-        <table class="table align-middle">
-          <thead class="table-light">
-            <tr>
-              <th>Host</th>
-              <th>Call Gross</th>
-              <th>Live Gift Gross</th>
-              <th>PK Gross</th>
-              <th>Gross Used</th>
-              <th>Host % / Payout</th>
-              <th>Agency % / Payout</th>
-              <th>Total Payout</th>
-              <th>Final Payable</th>
-            </tr>
-          </thead>
-          <tbody>
-            @forelse($recon['split_rows'] as $item)
-              <tr>
-                <td>
-                  <div class="fw-semibold">{{ $item->host?->user?->name ?? $item->host?->stage_name ?? '—' }}</div>
-                  <div class="text-muted small">{{ $item->host?->stage_name ?? '—' }}</div>
-                </td>
-                <td>{{ number_format($item->call_earnings) }}</td>
-                <td>{{ number_format($item->gift_earnings) }}</td>
-                <td>{{ number_format($item->pk_earnings) }}</td>
-                <td>{{ number_format($item->gross_earnings) }}</td>
-                <td>{{ number_format($item->host_payout_percentage, 2) }}% / {{ number_format($item->host_payout) }}</td>
-                <td>{{ number_format($item->agency_payout_percentage, 2) }}% / {{ number_format($item->agency_payout) }}</td>
-                <td>{{ number_format($item->total_payout) }}</td>
-                <td>{{ number_format($item->final_payable) }}</td>
-              </tr>
-            @empty
-              <tr><td colspan="9" class="text-center text-muted py-4">No split rows found.</td></tr>
-            @endforelse
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card mb-3">
-      <div class="card-header"><h5 class="mb-0">Raw Call Ledger Rows</h5></div>
-      <div class="card-body table-responsive">
-        <table class="table align-middle">
-          <thead class="table-light">
-            <tr>
-              <th>Ledger</th>
-              <th>Host</th>
-              <th>Caller</th>
-              <th>Session</th>
-              <th>Type / Status</th>
-              <th>Billable Min</th>
-              <th>Total Coins</th>
-              <th>Host / Agency / Platform</th>
-              <th>Created</th>
-            </tr>
-          </thead>
-          <tbody>
-            @forelse($recon['call_rows'] as $row)
-              <tr>
-                <td>#{{ $row->id }}</td>
-                <td>{{ $row->host?->user?->name ?? $row->host?->stage_name ?? '—' }}</td>
-                <td>{{ $row->caller?->name ?? '—' }}</td>
-                <td>#{{ $row->call_session_id }}</td>
-                <td>{{ strtoupper((string) ($row->callSession?->type ?? '—')) }} / {{ $row->callSession?->status ?? '—' }}</td>
-                <td>{{ number_format($row->billable_minutes) }}</td>
-                <td>{{ number_format($row->total_coins) }}</td>
-                <td>{{ number_format($row->host_earning) }} / {{ number_format($row->agency_earning) }} / {{ number_format($row->platform_earning) }}</td>
-                <td>{{ optional($row->created_at)->format('d M Y H:i') }}</td>
-              </tr>
-            @empty
-              <tr><td colspan="9" class="text-center text-muted py-4">No call ledger rows found in this report period.</td></tr>
-            @endforelse
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card mb-3">
-      <div class="card-header"><h5 class="mb-0">Raw Live Gift Ledger Rows</h5></div>
-      <div class="card-body table-responsive">
-        <table class="table align-middle">
-          <thead class="table-light">
-            <tr>
-              <th>Ledger</th>
-              <th>Host</th>
-              <th>Sender</th>
-              <th>Room</th>
-              <th>Gift</th>
-              <th>Qty</th>
-              <th>Total Coins</th>
-              <th>Host / Agency / Platform</th>
-              <th>Txn</th>
-              <th>Created</th>
-            </tr>
-          </thead>
-          <tbody>
-            @forelse($recon['gift_rows'] as $row)
-              <tr>
-                <td>#{{ $row->id }}</td>
-                <td>{{ $row->host?->user?->name ?? $row->host?->stage_name ?? '—' }}</td>
-                <td>{{ $row->sender?->name ?? '—' }}</td>
-                <td>
-                  <div class="fw-semibold">{{ $row->room?->title ?? ($row->room?->room_id ? 'Room '.$row->room->room_id : '—') }}</div>
-                  <div class="text-muted small">{{ strtoupper((string) ($row->room?->room_type ?? '—')) }}</div>
-                </td>
-                <td>{{ $row->roomGift?->gift?->name ?? '—' }}</td>
-                <td>{{ number_format((int) ($row->roomGift?->quantity ?? 0)) }}</td>
-                <td>{{ number_format($row->total_coins) }}</td>
-                <td>{{ number_format($row->host_payout_coins) }} / {{ number_format($row->agency_payout_coins) }} / {{ number_format($row->platform_revenue_coins) }}</td>
-                <td>{{ $row->roomGift?->transaction_id ?? '—' }}</td>
-                <td>{{ optional($row->created_at)->format('d M Y H:i') }}</td>
-              </tr>
-            @empty
-              <tr><td colspan="10" class="text-center text-muted py-4">No live gift ledger rows found in this report period.</td></tr>
-            @endforelse
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header"><h5 class="mb-0">PK-Linked Gift Rows</h5></div>
-      <div class="card-body table-responsive">
-        <table class="table align-middle">
-          <thead class="table-light">
-            <tr>
-              <th>PK Event</th>
-              <th>Battle</th>
-              <th>Host</th>
-              <th>Sender</th>
-              <th>Room</th>
-              <th>Gift</th>
-              <th>Event / Ledger Coins</th>
-              <th>Split H / A / P</th>
-              <th>Wallet Txn</th>
-              <th>Created</th>
-            </tr>
-          </thead>
-          <tbody>
-            @forelse($recon['pk_gift_rows'] as $row)
-              <tr>
-                <td>#{{ $row->pk_event_id }}</td>
-                <td>#{{ $row->pk_battle_id ?? '—' }}</td>
-                <td>{{ $row->host?->user?->name ?? $row->host?->stage_name ?? '—' }}</td>
-                <td>{{ $row->sender?->name ?? '—' }}</td>
-                <td>
-                  <div class="fw-semibold">{{ $row->room?->title ?? ($row->room?->room_id ? 'Room '.$row->room->room_id : '—') }}</div>
-                  <div class="text-muted small">{{ strtoupper((string) ($row->room?->room_type ?? '—')) }}</div>
-                </td>
-                <td>{{ $row->roomGift?->gift?->name ?? '—' }}</td>
-                <td>{{ number_format((int) ($row->pk_event_coins ?? 0)) }} / {{ number_format($row->total_coins) }}</td>
-                <td>{{ number_format($row->host_payout_coins) }} / {{ number_format($row->agency_payout_coins) }} / {{ number_format($row->platform_revenue_coins) }}</td>
-                <td>{{ $row->pk_wallet_transaction_id ?? ($row->roomGift?->transaction_id ?? '—') }}</td>
-                <td>{{ $row->pk_created_at ? \Carbon\Carbon::parse($row->pk_created_at)->format('d M Y H:i') : optional($row->created_at)->format('d M Y H:i') }}</td>
-              </tr>
-            @empty
-              <tr><td colspan="10" class="text-center text-muted py-4">No PK-linked gift rows found in this report period.</td></tr>
-            @endforelse
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </section>
 </div>
+
+<script>
+  (() => {
+    const table = document.getElementById('payout-grid');
+    if (!table) return;
+
+    const parseNumber = (value) => {
+      const num = Number.parseFloat(String(value ?? '').replace(/,/g, ''));
+      return Number.isFinite(num) ? num : 0;
+    };
+
+    const formatInt = (value) => Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+    const formatDecimal = (value) => Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const rowValue = (row, name) => parseNumber(row.querySelector(`[name="${name}"]`)?.value);
+
+    const recalcRow = (row) => {
+      const totalCoins =
+        rowValue(row, 'video_gift_coins') +
+        rowValue(row, 'audio_gift_coins') +
+        rowValue(row, 'pk_gift_coins') +
+        rowValue(row, 'video_call_coins') +
+        rowValue(row, 'audio_call_coins') +
+        rowValue(row, 'bonus_coins');
+
+      const totalPayable = totalCoins + rowValue(row, 'agency_commission_coins');
+
+      const totalCoinsInput = row.querySelector('.row-total-coins');
+      const totalPayableInput = row.querySelector('.row-total-payable');
+      if (totalCoinsInput) totalCoinsInput.value = String(Math.max(0, Math.round(totalCoins)));
+      if (totalPayableInput) totalPayableInput.value = String(Math.max(0, Math.round(totalPayable)));
+    };
+
+    const recalcTotals = () => {
+      const totals = {
+        video_room_minutes: 0,
+        audio_room_minutes: 0,
+        video_gift_coins: 0,
+        audio_gift_coins: 0,
+        pk_gift_coins: 0,
+        video_call_coins: 0,
+        video_call_minutes: 0,
+        audio_call_coins: 0,
+        audio_call_minutes: 0,
+        bonus_coins: 0,
+        total_coins: 0,
+        agency_commission_coins: 0,
+        total_coins_to_be_paid: 0,
+        total_inr: 0,
+      };
+
+      table.querySelectorAll('tbody tr[data-payout-row]').forEach((row) => {
+        recalcRow(row);
+        totals.video_room_minutes += rowValue(row, 'video_room_minutes');
+        totals.audio_room_minutes += rowValue(row, 'audio_room_minutes');
+        totals.video_gift_coins += rowValue(row, 'video_gift_coins');
+        totals.audio_gift_coins += rowValue(row, 'audio_gift_coins');
+        totals.pk_gift_coins += rowValue(row, 'pk_gift_coins');
+        totals.video_call_coins += rowValue(row, 'video_call_coins');
+        totals.video_call_minutes += rowValue(row, 'video_call_minutes');
+        totals.audio_call_coins += rowValue(row, 'audio_call_coins');
+        totals.audio_call_minutes += rowValue(row, 'audio_call_minutes');
+        totals.bonus_coins += rowValue(row, 'bonus_coins');
+        totals.total_coins += parseNumber(row.querySelector('.row-total-coins')?.value);
+        totals.agency_commission_coins += rowValue(row, 'agency_commission_coins');
+        totals.total_coins_to_be_paid += parseNumber(row.querySelector('.row-total-payable')?.value);
+        totals.total_inr += rowValue(row, 'total_inr');
+      });
+
+      Object.entries(totals).forEach(([key, value]) => {
+        const cell = table.querySelector(`[data-total="${key}"]`);
+        if (!cell) return;
+        cell.textContent = key === 'total_inr' ? formatDecimal(value) : formatInt(value);
+      });
+    };
+
+    table.addEventListener('input', (event) => {
+      if (!(event.target instanceof HTMLElement)) return;
+      if (!event.target.closest('tr[data-payout-row]')) return;
+      recalcTotals();
+    });
+
+    recalcTotals();
+  })();
+</script>
 @endsection

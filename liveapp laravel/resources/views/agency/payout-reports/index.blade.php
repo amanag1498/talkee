@@ -35,8 +35,8 @@
             <th>Week</th>
             <th>Hosts</th>
             <th>Active Hosts</th>
-            <th>Gross</th>
-            <th>Final Payable</th>
+            <th>Total Coins</th>
+            <th>Total Coins To Be Paid</th>
             <th>Status</th>
             <th></th>
           </tr>
@@ -47,8 +47,8 @@
               <td>{{ optional($report->period_start)->format('d M Y') }} - {{ optional($report->period_end)->format('d M Y') }}</td>
               <td>{{ number_format($report->total_hosts) }}</td>
               <td>{{ number_format($report->active_hosts_count) }}</td>
-              <td>{{ number_format($report->gross_earnings) }}</td>
-              <td>{{ number_format($report->final_payable) }}</td>
+              <td>{{ number_format($report->total_coins) }}</td>
+              <td>{{ number_format($report->total_coins_to_be_paid) }}</td>
               <td>{{ ucwords(str_replace('_', ' ', $report->status)) }}</td>
               <td class="text-end"><a href="{{ route('agency.payout-reports.show', $report) }}" class="btn btn-sm btn-outline-secondary">View</a></td>
             </tr>

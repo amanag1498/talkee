@@ -37,7 +37,7 @@
           </form>
           @if($payoutReport)
             <a href="{{ route('admin.agency-payout-reports.show', $payoutReport) }}" class="btn btn-light border">View Draft</a>
-            <a href="{{ route('admin.agency-payout-reports.export', $payoutReport) }}" class="btn btn-outline-secondary">CSV</a>
+            <a href="{{ route('admin.agency-payout-reports.export', $payoutReport) }}" class="btn btn-outline-secondary">PDF</a>
             @if($payoutReport->status === 'approved' && !$payoutReport->published_at)
               <form method="post" action="{{ route('admin.agency-payout-reports.publish', $payoutReport) }}" class="d-inline">
                 @csrf
@@ -70,7 +70,7 @@
     <section class="row g-3 mb-3">
       <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Payout Draft Status</small><div class="fs-5 fw-semibold mt-1">{{ ucwords(str_replace('_', ' ', $payoutReport->status)) }}</div></div></div></div>
       <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Agency Visibility</small><div class="fs-5 fw-semibold mt-1">{{ $payoutReport->published_at ? 'Published' : 'Draft only' }}</div></div></div></div>
-      <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Final Payable</small><div class="fs-5 fw-semibold mt-1">{{ number_format($payoutReport->final_payable) }}</div></div></div></div>
+      <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Total Coins To Be Paid</small><div class="fs-5 fw-semibold mt-1">{{ number_format($payoutReport->total_coins_to_be_paid) }}</div></div></div></div>
       <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Published At</small><div class="fs-5 fw-semibold mt-1">{{ $payoutReport->published_at ? optional($payoutReport->published_at)->format('d M Y H:i') : 'Not yet' }}</div></div></div></div>
     </section>
   @endif
