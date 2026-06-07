@@ -148,6 +148,16 @@ class AgencyPayoutReportItem extends Model
         return (int) data_get($this->meta, 'agency_commission_coins', $this->agency_commission);
     }
 
+    public function getHostPayoutInrAttribute(): float
+    {
+        return (float) data_get($this->meta, 'host_payout_inr', 0);
+    }
+
+    public function getAgencyCommissionInrAttribute(): float
+    {
+        return (float) data_get($this->meta, 'agency_commission_inr', 0);
+    }
+
     public function getTotalCoinsToBePaidAttribute(): int
     {
         return (int) data_get($this->meta, 'total_coins_to_be_paid', $this->final_payable);
@@ -155,7 +165,7 @@ class AgencyPayoutReportItem extends Model
 
     public function getTotalInrAttribute(): float
     {
-        return (float) data_get($this->meta, 'total_inr', 0);
+        return round($this->host_payout_inr + $this->agency_commission_inr, 2);
     }
 
     public function getAdminNoteAttribute(): string

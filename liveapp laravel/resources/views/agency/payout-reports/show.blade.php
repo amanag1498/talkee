@@ -14,8 +14,8 @@
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Active Hosts</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->active_hosts_count) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Published</small><div class="fs-5 fw-semibold mt-1">{{ optional($report->published_at)->format('d M Y H:i') }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Total Coins</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_coins) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Agency Commission Coins</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_agency_commission_coins) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Total Coins To Be Paid</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_coins_to_be_paid) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Host Payout INR</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_host_payout_inr, 2) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Agency Commission INR</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_agency_commission_inr, 2) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Total INR</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_inr, 2) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Video Room Timing</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_video_room_minutes) }} min</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Audio Room Timing</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_audio_room_minutes) }} min</div></div></div></div>
@@ -49,8 +49,8 @@
             <th>Audio Calls Min</th>
             <th>Bonus Coins</th>
             <th>Total Coins</th>
-            <th>Agency Commission Coins</th>
-            <th>Total Coins To Be Paid</th>
+            <th>Host Payout INR</th>
+            <th>Agency Commission INR</th>
             <th>Total INR</th>
             <th>Admin Notes</th>
           </tr>
@@ -70,13 +70,13 @@
               <td>{{ number_format($item->audio_call_minutes) }}</td>
               <td>{{ number_format($item->bonus_coins) }}</td>
               <td>{{ number_format($item->total_coins) }}</td>
-              <td>{{ number_format($item->agency_commission_coins) }}</td>
-              <td>{{ number_format($item->total_coins_to_be_paid) }}</td>
+              <td>{{ number_format($item->host_payout_inr, 2) }}</td>
+              <td>{{ number_format($item->agency_commission_inr, 2) }}</td>
               <td>{{ number_format($item->total_inr, 2) }}</td>
               <td>{{ $item->admin_note ?: '—' }}</td>
             </tr>
           @empty
-            <tr><td colspan="16" class="text-center text-muted py-4">No host rows in this report.</td></tr>
+            <tr><td colspan="17" class="text-center text-muted py-4">No host rows in this report.</td></tr>
           @endforelse
         </tbody>
         <tfoot>
@@ -93,8 +93,8 @@
             <td>{{ number_format($report->total_audio_call_minutes) }}</td>
             <td>{{ number_format($report->total_bonus_coins) }}</td>
             <td>{{ number_format($report->total_coins) }}</td>
-            <td>{{ number_format($report->total_agency_commission_coins) }}</td>
-            <td>{{ number_format($report->total_coins_to_be_paid) }}</td>
+            <td>{{ number_format($report->total_host_payout_inr, 2) }}</td>
+            <td>{{ number_format($report->total_agency_commission_inr, 2) }}</td>
             <td>{{ number_format($report->total_inr, 2) }}</td>
             <td>—</td>
           </tr>

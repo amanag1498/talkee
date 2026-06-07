@@ -244,6 +244,8 @@ class AgencyWeeklyPayoutReportService
                 'total_coins' => 0,
                 'agency_commission_coins' => 0,
                 'total_coins_to_be_paid' => 0,
+                'host_payout_inr' => 0.0,
+                'agency_commission_inr' => 0.0,
                 'total_inr' => 0.0,
             ];
 
@@ -328,6 +330,8 @@ class AgencyWeeklyPayoutReportService
                         'total_coins' => $totalCoins,
                         'agency_commission_coins' => $agencyCommissionCoins,
                         'total_coins_to_be_paid' => $totalCoinsToBePaid,
+                        'host_payout_inr' => 0,
+                        'agency_commission_inr' => 0,
                         'total_inr' => 0,
                         'admin_note' => '',
                         'pk_event_count' => $pkEventCount,
@@ -411,6 +415,8 @@ class AgencyWeeklyPayoutReportService
                         'total_coins' => $totals['total_coins'],
                         'agency_commission_coins' => $totals['agency_commission_coins'],
                         'total_coins_to_be_paid' => $totals['total_coins_to_be_paid'],
+                        'host_payout_inr' => $totals['host_payout_inr'],
+                        'agency_commission_inr' => $totals['agency_commission_inr'],
                         'total_inr' => $totals['total_inr'],
                         'total_payout' => $totals['total_coins_to_be_paid'],
                     ],
@@ -695,6 +701,8 @@ class AgencyWeeklyPayoutReportService
                 'total_coins' => $item->total_coins,
                 'agency_commission_coins' => $item->agency_commission_coins,
                 'total_coins_to_be_paid' => $item->total_coins_to_be_paid,
+                'host_payout_inr' => $item->host_payout_inr,
+                'agency_commission_inr' => $item->agency_commission_inr,
                 'total_inr' => $item->total_inr,
                 'admin_note' => $item->admin_note,
                 'report_status' => $report->status,
@@ -805,7 +813,9 @@ class AgencyWeeklyPayoutReportService
         $meta['totals']['total_coins'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => $item->total_coins);
         $meta['totals']['agency_commission_coins'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => $item->agency_commission_coins);
         $meta['totals']['total_coins_to_be_paid'] = (int) $report->items->sum(fn (AgencyPayoutReportItem $item) => $item->total_coins_to_be_paid);
-        $meta['totals']['total_inr'] = round((float) $report->items->sum(fn (AgencyPayoutReportItem $item) => $item->total_inr), 2);
+        $meta['totals']['host_payout_inr'] = round((float) $report->items->sum(fn (AgencyPayoutReportItem $item) => $item->host_payout_inr), 2);
+        $meta['totals']['agency_commission_inr'] = round((float) $report->items->sum(fn (AgencyPayoutReportItem $item) => $item->agency_commission_inr), 2);
+        $meta['totals']['total_inr'] = round((float) ($meta['totals']['host_payout_inr'] + $meta['totals']['agency_commission_inr']), 2);
         $meta['totals']['total_payout'] = (int) $meta['totals']['total_coins_to_be_paid'];
 
         $payload = array_merge($changes, [
@@ -834,6 +844,8 @@ class AgencyWeeklyPayoutReportService
         $audioCallMinutes = max(0, (int) ($payload['audio_call_minutes'] ?? data_get($existingMeta, 'audio_call_minutes', 0)));
         $bonusCoins = max(0, (int) ($payload['bonus_coins'] ?? data_get($existingMeta, 'bonus_coins', 0)));
         $agencyCommissionCoins = max(0, (int) ($payload['agency_commission_coins'] ?? data_get($existingMeta, 'agency_commission_coins', 0)));
+        $hostPayoutInr = round(max(0, (float) ($payload['host_payout_inr'] ?? data_get($existingMeta, 'host_payout_inr', 0))), 2);
+        $agencyCommissionInr = round(max(0, (float) ($payload['agency_commission_inr'] ?? data_get($existingMeta, 'agency_commission_inr', 0))), 2);
         $totalCoins = $this->calculateTotalCoins([
             'video_gift_coins' => $videoGiftCoins,
             'audio_gift_coins' => $audioGiftCoins,
@@ -843,7 +855,7 @@ class AgencyWeeklyPayoutReportService
             'bonus_coins' => $bonusCoins,
         ]);
         $totalCoinsToBePaid = $this->calculateTotalCoinsToBePaid($totalCoins, $agencyCommissionCoins);
-        $totalInr = round(max(0, (float) ($payload['total_inr'] ?? data_get($existingMeta, 'total_inr', 0))), 2);
+        $totalInr = round($hostPayoutInr + $agencyCommissionInr, 2);
 
         return [
             'call_earnings' => $videoCallCoins + $audioCallCoins,
@@ -871,6 +883,8 @@ class AgencyWeeklyPayoutReportService
                 'total_coins' => $totalCoins,
                 'agency_commission_coins' => $agencyCommissionCoins,
                 'total_coins_to_be_paid' => $totalCoinsToBePaid,
+                'host_payout_inr' => $hostPayoutInr,
+                'agency_commission_inr' => $agencyCommissionInr,
                 'total_inr' => $totalInr,
                 'admin_note' => trim((string) ($payload['admin_note'] ?? data_get($existingMeta, 'admin_note', ''))),
             ]),

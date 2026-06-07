@@ -69,7 +69,15 @@ class PayoutReportController extends Controller
             $pdf->loadView('pdf.agency-payout-report', $data)
                 ->setPaper('a4', 'landscape');
 
-            return $pdf->download('my-agency-payout-report-' . $agency_payout_report->id . '.pdf');
+            $filename = 'my-agency-payout-report-' . $agency_payout_report->id . '.pdf';
+
+            return response($pdf->output(), 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                'X-Download-Options' => 'noopen',
+                'Cache-Control' => 'private, no-store, no-cache, must-revalidate',
+                'Pragma' => 'public',
+            ]);
         }
 
         return response()

@@ -208,7 +208,15 @@ class AgencyPayoutReportController extends Controller
             $pdf->loadView('pdf.agency-payout-report', $data)
                 ->setPaper('a4', 'landscape');
 
-            return $pdf->download('agency-payout-report-' . $agency_payout_report->id . '.pdf');
+            $filename = 'agency-payout-report-' . $agency_payout_report->id . '.pdf';
+
+            return response($pdf->output(), 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                'X-Download-Options' => 'noopen',
+                'Cache-Control' => 'private, no-store, no-cache, must-revalidate',
+                'Pragma' => 'public',
+            ]);
         }
 
         return response()
@@ -229,8 +237,8 @@ class AgencyPayoutReportController extends Controller
             'audio_call_coins' => 'required|integer|min:0',
             'audio_call_minutes' => 'required|integer|min:0',
             'bonus_coins' => 'required|integer|min:0',
-            'agency_commission_coins' => 'required|integer|min:0',
-            'total_inr' => 'nullable|numeric|min:0',
+            'host_payout_inr' => 'nullable|numeric|min:0',
+            'agency_commission_inr' => 'nullable|numeric|min:0',
             'admin_note' => 'nullable|string|max:1000',
         ]);
 

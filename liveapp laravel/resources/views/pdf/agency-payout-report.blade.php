@@ -35,7 +35,7 @@
       <td><div class="label">Total Hosts</div><div class="value">{{ number_format($report->total_hosts) }}</div></td>
       <td><div class="label">Active Hosts</div><div class="value">{{ number_format($report->active_hosts_count) }}</div></td>
       <td><div class="label">Total Coins</div><div class="value">{{ number_format($report->total_coins) }}</div></td>
-      <td><div class="label">Total Coins To Be Paid</div><div class="value">{{ number_format($report->total_coins_to_be_paid) }}</div></td>
+      <td><div class="label">Total INR</div><div class="value">{{ number_format($report->total_inr, 2) }}</div></td>
     </tr>
     <tr>
       <td><div class="label">Video Room Timing</div><div class="value">{{ number_format($report->total_video_room_minutes) }} min</div></td>
@@ -47,10 +47,10 @@
       <td><div class="label">Video Calls</div><div class="value">{{ number_format($report->total_video_call_coins) }} / {{ number_format($report->total_video_call_minutes) }} min</div></td>
       <td><div class="label">Audio Calls</div><div class="value">{{ number_format($report->total_audio_call_coins) }} / {{ number_format($report->total_audio_call_minutes) }} min</div></td>
       <td><div class="label">Bonus Coins</div><div class="value">{{ number_format($report->total_bonus_coins) }}</div></td>
-      <td><div class="label">Agency Commission Coins</div><div class="value">{{ number_format($report->total_agency_commission_coins) }}</div></td>
+      <td><div class="label">Host Payout INR</div><div class="value">{{ number_format($report->total_host_payout_inr, 2) }}</div></td>
     </tr>
     <tr>
-      <td><div class="label">Total INR</div><div class="value">{{ number_format($report->total_inr, 2) }}</div></td>
+      <td><div class="label">Agency Commission INR</div><div class="value">{{ number_format($report->total_agency_commission_inr, 2) }}</div></td>
       <td colspan="3"><div class="label">Published By</div><div class="value">{{ $report->publishedByAdmin?->name ?? '—' }}</div></td>
     </tr>
   </table>
@@ -70,8 +70,8 @@
         <th>Audio Calls Min</th>
         <th>Bonus Coins</th>
         <th>Total Coins</th>
-        <th>Agency Commission Coins</th>
-        <th>Total Coins To Be Paid</th>
+        <th>Host Payout INR</th>
+        <th>Agency Commission INR</th>
         <th>Total INR</th>
         <th>Admin Notes</th>
       </tr>
@@ -91,8 +91,8 @@
           <td>{{ number_format($item->audio_call_minutes) }}</td>
           <td>{{ number_format($item->bonus_coins) }}</td>
           <td>{{ number_format($item->total_coins) }}</td>
-          <td>{{ number_format($item->agency_commission_coins) }}</td>
-          <td>{{ number_format($item->total_coins_to_be_paid) }}</td>
+          <td>{{ number_format($item->host_payout_inr, 2) }}</td>
+          <td>{{ number_format($item->agency_commission_inr, 2) }}</td>
           <td>{{ number_format($item->total_inr, 2) }}</td>
           <td>{{ $item->admin_note ?: '—' }}</td>
         </tr>
@@ -112,8 +112,8 @@
         <td>{{ number_format($report->total_audio_call_minutes) }}</td>
         <td>{{ number_format($report->total_bonus_coins) }}</td>
         <td>{{ number_format($report->total_coins) }}</td>
-        <td>{{ number_format($report->total_agency_commission_coins) }}</td>
-        <td>{{ number_format($report->total_coins_to_be_paid) }}</td>
+        <td>{{ number_format($report->total_host_payout_inr, 2) }}</td>
+        <td>{{ number_format($report->total_agency_commission_inr, 2) }}</td>
         <td>{{ number_format($report->total_inr, 2) }}</td>
         <td>—</td>
       </tr>

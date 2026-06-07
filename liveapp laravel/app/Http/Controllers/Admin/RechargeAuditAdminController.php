@@ -99,7 +99,15 @@ class RechargeAuditAdminController extends Controller
             $pdf->loadView('admin.recharge-audit.pdf', $data)
                 ->setPaper('a4', 'landscape');
 
-            return $pdf->download("recharge-audit-{$selectedMonth->format('Y-m')}.pdf");
+            $filename = "recharge-audit-{$selectedMonth->format('Y-m')}.pdf";
+
+            return response($pdf->output(), 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                'X-Download-Options' => 'noopen',
+                'Cache-Control' => 'private, no-store, no-cache, must-revalidate',
+                'Pragma' => 'public',
+            ]);
         }
 
         return response()

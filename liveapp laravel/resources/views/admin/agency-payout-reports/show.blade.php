@@ -91,7 +91,6 @@
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Total Hosts</small><div class="fs-3 fw-semibold mt-1">{{ number_format($report->total_hosts) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Active Hosts</small><div class="fs-3 fw-semibold mt-1">{{ number_format($report->active_hosts_count) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Total Coins</small><div class="fs-3 fw-semibold mt-1">{{ number_format($report->total_coins) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Total Coins To Be Paid</small><div class="fs-3 fw-semibold mt-1">{{ number_format($report->total_coins_to_be_paid) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Video Room Timing</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_video_room_minutes) }} min</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Audio Room Timing</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_audio_room_minutes) }} min</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Video Gifts</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_video_gift_coins) }}</div></div></div></div>
@@ -100,7 +99,8 @@
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Video Calls</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_video_call_coins) }} / {{ number_format($report->total_video_call_minutes) }} min</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Audio Calls</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_audio_call_coins) }} / {{ number_format($report->total_audio_call_minutes) }} min</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Bonus Coins</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_bonus_coins) }}</div></div></div></div>
-    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Agency Commission Coins</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_agency_commission_coins) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Host Payout INR</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_host_payout_inr, 2) }}</div></div></div></div>
+    <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Agency Commission INR</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_agency_commission_inr, 2) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Total INR</small><div class="fs-5 fw-semibold mt-1">{{ number_format($report->total_inr, 2) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card"><div class="card-body"><small class="text-muted">Published</small><div class="fs-5 fw-semibold mt-1">{{ $report->published_at ? optional($report->published_at)->format('d M Y H:i') : 'Not yet' }}</div><div class="text-muted small mt-1">{{ $report->publishedByAdmin?->name ?? 'Agency cannot see this yet' }}</div></div></div></div>
   </section>
@@ -194,8 +194,8 @@
             <th>Audio Calls Min</th>
             <th>Bonus Coins</th>
             <th>Total Coins</th>
-            <th>Agency Commission Coins</th>
-            <th>Total Coins To Be Paid</th>
+            <th>Host Payout INR</th>
+            <th>Agency Commission INR</th>
             <th>Total INR</th>
             <th>Admin Notes</th>
             <th class="payout-grid-sticky-right text-end">Save</th>
@@ -220,9 +220,12 @@
               <td><input type="number" min="0" name="audio_call_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input calc-field" value="{{ $item->audio_call_minutes }}" @disabled($locked)></td>
               <td><input type="number" min="0" name="bonus_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->bonus_coins }}" @disabled($locked)></td>
               <td><input type="number" min="0" class="form-control form-control-sm payout-grid-input payout-grid-input-wide row-total-coins" value="{{ $item->total_coins }}" readonly></td>
-              <td><input type="number" min="0" name="agency_commission_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->agency_commission_coins }}" @disabled($locked)></td>
-              <td><input type="number" min="0" class="form-control form-control-sm payout-grid-input payout-grid-input-wide row-total-payable" value="{{ $item->total_coins_to_be_paid }}" readonly></td>
-              <td><input type="number" step="0.01" min="0" name="total_inr" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field inr-field" value="{{ number_format($item->total_inr, 2, '.', '') }}" @disabled($locked)></td>
+              <td><input type="number" step="0.01" min="0" name="host_payout_inr" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field inr-field" value="{{ number_format($item->host_payout_inr, 2, '.', '') }}" @disabled($locked)></td>
+              <td>
+                <input type="hidden" name="agency_commission_coins" form="{{ $formId }}" value="{{ $item->agency_commission_coins }}">
+                <input type="number" step="0.01" min="0" name="agency_commission_inr" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field inr-field" value="{{ number_format($item->agency_commission_inr, 2, '.', '') }}" @disabled($locked)>
+              </td>
+              <td><input type="number" step="0.01" min="0" name="total_inr" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide row-total-inr" value="{{ number_format($item->total_inr, 2, '.', '') }}" readonly></td>
               <td>
                 <textarea
                   name="admin_note"
@@ -258,8 +261,8 @@
             <td data-total="audio_call_minutes">{{ number_format($report->total_audio_call_minutes) }}</td>
             <td data-total="bonus_coins">{{ number_format($report->total_bonus_coins) }}</td>
             <td data-total="total_coins">{{ number_format($report->total_coins) }}</td>
-            <td data-total="agency_commission_coins">{{ number_format($report->total_agency_commission_coins) }}</td>
-            <td data-total="total_coins_to_be_paid">{{ number_format($report->total_coins_to_be_paid) }}</td>
+            <td data-total="host_payout_inr">{{ number_format($report->total_host_payout_inr, 2) }}</td>
+            <td data-total="agency_commission_inr">{{ number_format($report->total_agency_commission_inr, 2) }}</td>
             <td data-total="total_inr">{{ number_format($report->total_inr, 2) }}</td>
             <td>—</td>
             <td class="payout-grid-sticky-right">—</td>
@@ -294,12 +297,12 @@
         rowValue(row, 'audio_call_coins') +
         rowValue(row, 'bonus_coins');
 
-      const totalPayable = totalCoins + rowValue(row, 'agency_commission_coins');
+      const totalInr = rowValue(row, 'host_payout_inr') + rowValue(row, 'agency_commission_inr');
 
       const totalCoinsInput = row.querySelector('.row-total-coins');
-      const totalPayableInput = row.querySelector('.row-total-payable');
+      const totalInrInput = row.querySelector('.row-total-inr');
       if (totalCoinsInput) totalCoinsInput.value = String(Math.max(0, Math.round(totalCoins)));
-      if (totalPayableInput) totalPayableInput.value = String(Math.max(0, Math.round(totalPayable)));
+      if (totalInrInput) totalInrInput.value = totalInr.toFixed(2);
     };
 
     const recalcTotals = () => {
@@ -315,8 +318,8 @@
         audio_call_minutes: 0,
         bonus_coins: 0,
         total_coins: 0,
-        agency_commission_coins: 0,
-        total_coins_to_be_paid: 0,
+        host_payout_inr: 0,
+        agency_commission_inr: 0,
         total_inr: 0,
       };
 
@@ -333,15 +336,17 @@
         totals.audio_call_minutes += rowValue(row, 'audio_call_minutes');
         totals.bonus_coins += rowValue(row, 'bonus_coins');
         totals.total_coins += parseNumber(row.querySelector('.row-total-coins')?.value);
-        totals.agency_commission_coins += rowValue(row, 'agency_commission_coins');
-        totals.total_coins_to_be_paid += parseNumber(row.querySelector('.row-total-payable')?.value);
-        totals.total_inr += rowValue(row, 'total_inr');
+        totals.host_payout_inr += rowValue(row, 'host_payout_inr');
+        totals.agency_commission_inr += rowValue(row, 'agency_commission_inr');
+        totals.total_inr += parseNumber(row.querySelector('.row-total-inr')?.value);
       });
 
       Object.entries(totals).forEach(([key, value]) => {
         const cell = table.querySelector(`[data-total="${key}"]`);
         if (!cell) return;
-        cell.textContent = key === 'total_inr' ? formatDecimal(value) : formatInt(value);
+        cell.textContent = ['host_payout_inr', 'agency_commission_inr', 'total_inr'].includes(key)
+          ? formatDecimal(value)
+          : formatInt(value);
       });
     };
 
