@@ -466,6 +466,7 @@ class AgencyReportService
     private function successfulCallLedgerBase(Carbon $from, Carbon $to, ?int $agencyId = null, ?int $hostId = null)
     {
         return CallEarningLedger::query()
+            ->join('hosts', 'hosts.id', '=', 'call_earning_ledgers.host_id')
             ->join('call_sessions', 'call_sessions.id', '=', 'call_earning_ledgers.call_session_id')
             ->where('call_sessions.status', 'ended')
             ->where('call_earning_ledgers.total_coins', '>', 0)
@@ -476,6 +477,11 @@ class AgencyReportService
                         ->orWhere(function ($fallback) use ($agencyId) {
                             $fallback->whereNull('call_earning_ledgers.agency_id')
                                 ->where('call_sessions.agency_id', $agencyId);
+                        })
+                        ->orWhere(function ($hostFallback) use ($agencyId) {
+                            $hostFallback->whereNull('call_earning_ledgers.agency_id')
+                                ->whereNull('call_sessions.agency_id')
+                                ->where('hosts.agency_id', $agencyId);
                         });
                 });
             })
@@ -503,6 +509,12 @@ class AgencyReportService
                     ->select('live_room_gift_earning_ledgers.host_id')
                     ->distinct()
                     ->pluck('live_room_gift_earning_ledgers.host_id')
+            )
+            ->merge(
+                $this->roomOverlapBase($from, $to, $agency->id)
+                    ->select('live_rooms.host_id')
+                    ->distinct()
+                    ->pluck('live_rooms.host_id')
             )
             ->filter()
             ->map(fn ($id) => (int) $id)

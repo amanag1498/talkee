@@ -107,6 +107,7 @@ class AgencyWeeklyPayoutReportService
             }
 
             $callRows = CallEarningLedger::query()
+                ->join('hosts', 'hosts.id', '=', 'call_earning_ledgers.host_id')
                 ->join('call_sessions', 'call_sessions.id', '=', 'call_earning_ledgers.call_session_id')
                 ->selectRaw("
                     call_earning_ledgers.host_id as host_id,
@@ -127,6 +128,11 @@ class AgencyWeeklyPayoutReportService
                         ->orWhere(function ($fallback) use ($agency) {
                             $fallback->whereNull('call_earning_ledgers.agency_id')
                                 ->where('call_sessions.agency_id', $agency->id);
+                        })
+                        ->orWhere(function ($hostFallback) use ($agency) {
+                            $hostFallback->whereNull('call_earning_ledgers.agency_id')
+                                ->whereNull('call_sessions.agency_id')
+                                ->where('hosts.agency_id', $agency->id);
                         });
                 })
                 ->where('call_sessions.status', 'ended')
@@ -194,6 +200,16 @@ class AgencyWeeklyPayoutReportService
                 ->merge($callRows->keys())
                 ->merge($giftRows->keys())
                 ->merge($pkRows->keys())
+                ->merge(
+                    DB::table('live_rooms')
+                        ->join('hosts', 'hosts.id', '=', 'live_rooms.host_id')
+                        ->where('hosts.agency_id', $agency->id)
+                        ->whereNotNull('live_rooms.started_at')
+                        ->where('live_rooms.started_at', '<=', $periodEnd)
+                        ->whereRaw('COALESCE(live_rooms.ended_at, live_rooms.last_activity_at, live_rooms.started_at) >= ?', [$periodStart->toDateTimeString()])
+                        ->distinct()
+                        ->pluck('live_rooms.host_id')
+                )
                 ->filter()
                 ->map(fn ($id) => (int) $id)
                 ->unique()
