@@ -106,12 +106,6 @@ class AgencyWeeklyPayoutReportService
                 $existing->delete();
             }
 
-            $hosts = Host::query()
-                ->with('user')
-                ->where('agency_id', $agency->id)
-                ->orderBy('id')
-                ->get();
-
             $callRows = CallEarningLedger::query()
                 ->join('call_sessions', 'call_sessions.id', '=', 'call_earning_ledgers.call_session_id')
                 ->selectRaw("
@@ -128,7 +122,13 @@ class AgencyWeeklyPayoutReportService
                     SUM(call_earning_ledgers.agency_earning) as ledger_agency_share,
                     SUM(call_earning_ledgers.platform_earning) as platform_share
                 ")
-                ->where('call_earning_ledgers.agency_id', $agency->id)
+                ->where(function ($query) use ($agency) {
+                    $query->where('call_earning_ledgers.agency_id', $agency->id)
+                        ->orWhere(function ($fallback) use ($agency) {
+                            $fallback->whereNull('call_earning_ledgers.agency_id')
+                                ->where('call_sessions.agency_id', $agency->id);
+                        });
+                })
                 ->where('call_sessions.status', 'ended')
                 ->where('call_earning_ledgers.total_coins', '>', 0)
                 ->whereBetween('call_earning_ledgers.created_at', [$periodStart, $periodEnd])
@@ -137,6 +137,7 @@ class AgencyWeeklyPayoutReportService
                 ->keyBy('host_id');
 
             $giftRows = LiveRoomGiftEarningLedger::query()
+                ->join('hosts', 'hosts.id', '=', 'live_room_gift_earning_ledgers.host_id')
                 ->join('live_room_gifts', 'live_room_gifts.id', '=', 'live_room_gift_earning_ledgers.live_room_gift_id')
                 ->join('live_rooms', 'live_rooms.id', '=', 'live_room_gift_earning_ledgers.live_room_id')
                 ->leftJoin('live_room_pk_events', function ($join) {
@@ -156,24 +157,53 @@ class AgencyWeeklyPayoutReportService
                     SUM(CASE WHEN live_room_pk_events.id IS NULL THEN live_room_gift_earning_ledgers.agency_payout_coins ELSE 0 END) as ledger_agency_share,
                     SUM(CASE WHEN live_room_pk_events.id IS NULL THEN live_room_gift_earning_ledgers.platform_revenue_coins ELSE 0 END) as platform_share
                 ")
-                ->where('live_room_gift_earning_ledgers.agency_id', $agency->id)
+                ->where(function ($query) use ($agency) {
+                    $query->where('live_room_gift_earning_ledgers.agency_id', $agency->id)
+                        ->orWhere(function ($fallback) use ($agency) {
+                            $fallback->whereNull('live_room_gift_earning_ledgers.agency_id')
+                                ->where('hosts.agency_id', $agency->id);
+                        });
+                })
                 ->whereBetween('live_room_gift_earning_ledgers.created_at', [$periodStart, $periodEnd])
                 ->groupBy('live_room_gift_earning_ledgers.host_id')
                 ->get()
                 ->keyBy('host_id');
 
             $pkRows = LiveRoomGiftEarningLedger::query()
+                ->join('hosts', 'hosts.id', '=', 'live_room_gift_earning_ledgers.host_id')
                 ->join('live_room_gifts', 'live_room_gifts.id', '=', 'live_room_gift_earning_ledgers.live_room_gift_id')
                 ->join('live_room_pk_events', function ($join) {
                     $join->on('live_room_pk_events.wallet_transaction_id', '=', 'live_room_gifts.transaction_id')
                         ->where('live_room_pk_events.event_type', '=', 'gift');
                 })
                 ->selectRaw('live_room_gift_earning_ledgers.host_id as host_id, COUNT(live_room_pk_events.id) as pk_event_count, SUM(live_room_gift_earning_ledgers.total_coins) as pk_gross')
-                ->where('live_room_gift_earning_ledgers.agency_id', $agency->id)
+                ->where(function ($query) use ($agency) {
+                    $query->where('live_room_gift_earning_ledgers.agency_id', $agency->id)
+                        ->orWhere(function ($fallback) use ($agency) {
+                            $fallback->whereNull('live_room_gift_earning_ledgers.agency_id')
+                                ->where('hosts.agency_id', $agency->id);
+                        });
+                })
                 ->whereBetween('live_room_gift_earning_ledgers.created_at', [$periodStart, $periodEnd])
                 ->groupBy('live_room_gift_earning_ledgers.host_id')
                 ->get()
                 ->keyBy('host_id');
+
+            $historicalHostIds = collect()
+                ->merge(Host::query()->where('agency_id', $agency->id)->pluck('id'))
+                ->merge($callRows->keys())
+                ->merge($giftRows->keys())
+                ->merge($pkRows->keys())
+                ->filter()
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values();
+
+            $hosts = Host::query()
+                ->with('user')
+                ->whereIn('id', $historicalHostIds)
+                ->orderBy('id')
+                ->get();
 
             $roomRows = DB::table('live_rooms')
                 ->selectRaw("

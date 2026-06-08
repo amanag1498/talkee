@@ -87,19 +87,18 @@ class AgencyReportService
         $liveBase = $this->roomOverlapBase($from, $to, $agency->id);
         $giftBase = $this->regularGiftBase($from, $to, $agency->id);
         $pkBase = $this->pkGiftBase($from, $to, $agency->id);
+        $historicalHostIds = $this->historicalAgencyHostIds($agency, $from, $to);
 
         $hosts = Host::query()
             ->with('user')
-            ->where('agency_id', $agency->id)
+            ->whereIn('id', $historicalHostIds)
             ->withCount('followers')
             ->get()
-            ->map(function (Host $host) use ($from, $to) {
-                $calls = $this->successfulCallLedgerBase($from, $to, $host->agency_id, $host->id);
-                $liveRooms = LiveRoom::query()
-                    ->where('host_id', $host->id);
-                $liveGifts = $this->regularGiftBase($from, $to, $host->agency_id, $host->id);
-                $pkGifts = $this->pkGiftBase($from, $to, $host->agency_id, $host->id);
-                $roomMetrics = $this->roomMetrics($from, $to, $host->agency_id, $host->id);
+            ->map(function (Host $host) use ($from, $to, $agency) {
+                $calls = $this->successfulCallLedgerBase($from, $to, $agency->id, $host->id);
+                $liveGifts = $this->regularGiftBase($from, $to, $agency->id, $host->id);
+                $pkGifts = $this->pkGiftBase($from, $to, $agency->id, $host->id);
+                $roomMetrics = $this->roomMetrics($from, $to, $agency->id, $host->id);
 
                 return [
                     'host' => $host,
@@ -119,7 +118,7 @@ class AgencyReportService
             ->sortByDesc('coins')
             ->values();
 
-        $liveMetrics = $this->roomMetrics($from, $to, $agency->id);
+        $liveMetrics = $this->roomMetrics($from, $to, $agency->id, null, $historicalHostIds);
 
         return [
             'agency' => $agency->load(['owner', 'hosts.user']),
@@ -302,7 +301,13 @@ class AgencyReportService
                 $callLedger = $this->successfulCallLedgerBase($from, $to, $agency->id);
                 $liveGifts = $this->regularGiftBase($from, $to, $agency->id);
                 $pkGifts = $this->pkGiftBase($from, $to, $agency->id);
-                $roomMetrics = $this->roomMetrics($from, $to, $agency->id);
+                $roomMetrics = $this->roomMetrics(
+                    $from,
+                    $to,
+                    $agency->id,
+                    null,
+                    $this->historicalAgencyHostIds($agency, $from, $to)
+                );
 
                 $topHostHostId = (clone $callLedger)
                     ->selectRaw('call_earning_ledgers.host_id as host_id, SUM(call_earning_ledgers.total_coins) as coins')
@@ -349,7 +354,13 @@ class AgencyReportService
             $callLedger = $this->successfulCallLedgerBase($weekStart, $weekEnd, $agency->id);
             $liveGifts = $this->regularGiftBase($weekStart, $weekEnd, $agency->id);
             $pkGifts = $this->pkGiftBase($weekStart, $weekEnd, $agency->id);
-            $roomMetrics = $this->roomMetrics($weekStart, $weekEnd, $agency->id);
+            $roomMetrics = $this->roomMetrics(
+                $weekStart,
+                $weekEnd,
+                $agency->id,
+                null,
+                $this->historicalAgencyHostIds($agency, $weekStart, $weekEnd)
+            );
 
             return [
                 'week_start' => $weekStart->format('Y-m-d'),
@@ -372,19 +383,29 @@ class AgencyReportService
     private function pkGiftBase(Carbon $from, Carbon $to, ?int $agencyId = null, ?int $hostId = null)
     {
         return LiveRoomGiftEarningLedger::query()
+            ->join('hosts', 'hosts.id', '=', 'live_room_gift_earning_ledgers.host_id')
             ->join('live_room_gifts', 'live_room_gifts.id', '=', 'live_room_gift_earning_ledgers.live_room_gift_id')
             ->join('live_room_pk_events', function ($join) {
                 $join->on('live_room_pk_events.wallet_transaction_id', '=', 'live_room_gifts.transaction_id')
                     ->where('live_room_pk_events.event_type', '=', 'gift');
             })
             ->whereBetween('live_room_gift_earning_ledgers.created_at', [$from, $to])
-            ->when($agencyId !== null, fn ($query) => $query->where('live_room_gift_earning_ledgers.agency_id', $agencyId))
+            ->when($agencyId !== null, function ($query) use ($agencyId) {
+                $query->where(function ($agencyQuery) use ($agencyId) {
+                    $agencyQuery->where('live_room_gift_earning_ledgers.agency_id', $agencyId)
+                        ->orWhere(function ($fallback) use ($agencyId) {
+                            $fallback->whereNull('live_room_gift_earning_ledgers.agency_id')
+                                ->where('hosts.agency_id', $agencyId);
+                        });
+                });
+            })
             ->when($hostId !== null, fn ($query) => $query->where('live_room_gift_earning_ledgers.host_id', $hostId));
     }
 
     private function regularGiftBase(Carbon $from, Carbon $to, ?int $agencyId = null, ?int $hostId = null)
     {
         return LiveRoomGiftEarningLedger::query()
+            ->join('hosts', 'hosts.id', '=', 'live_room_gift_earning_ledgers.host_id')
             ->join('live_room_gifts', 'live_room_gifts.id', '=', 'live_room_gift_earning_ledgers.live_room_gift_id')
             ->leftJoin('live_room_pk_events', function ($join) {
                 $join->on('live_room_pk_events.wallet_transaction_id', '=', 'live_room_gifts.transaction_id')
@@ -392,23 +413,32 @@ class AgencyReportService
             })
             ->whereNull('live_room_pk_events.id')
             ->whereBetween('live_room_gift_earning_ledgers.created_at', [$from, $to])
-            ->when($agencyId !== null, fn ($query) => $query->where('live_room_gift_earning_ledgers.agency_id', $agencyId))
+            ->when($agencyId !== null, function ($query) use ($agencyId) {
+                $query->where(function ($agencyQuery) use ($agencyId) {
+                    $agencyQuery->where('live_room_gift_earning_ledgers.agency_id', $agencyId)
+                        ->orWhere(function ($fallback) use ($agencyId) {
+                            $fallback->whereNull('live_room_gift_earning_ledgers.agency_id')
+                                ->where('hosts.agency_id', $agencyId);
+                        });
+                });
+            })
             ->when($hostId !== null, fn ($query) => $query->where('live_room_gift_earning_ledgers.host_id', $hostId));
     }
 
-    private function roomOverlapBase(Carbon $from, Carbon $to, ?int $agencyId = null, ?int $hostId = null)
+    private function roomOverlapBase(Carbon $from, Carbon $to, ?int $agencyId = null, ?int $hostId = null, $hostIds = null)
     {
         return LiveRoom::query()
             ->whereNotNull('started_at')
             ->where('started_at', '<=', $to)
             ->whereRaw('COALESCE(ended_at, last_activity_at, started_at) >= ?', [$from->toDateTimeString()])
-            ->when($agencyId !== null, fn ($query) => $query->whereHas('host', fn ($hostQuery) => $hostQuery->where('agency_id', $agencyId)))
+            ->when($hostIds !== null && collect($hostIds)->isNotEmpty(), fn ($query) => $query->whereIn('host_id', collect($hostIds)->map(fn ($id) => (int) $id)->all()))
+            ->when($hostIds === null && $agencyId !== null, fn ($query) => $query->whereHas('host', fn ($hostQuery) => $hostQuery->where('agency_id', $agencyId)))
             ->when($hostId !== null, fn ($query) => $query->where('host_id', $hostId));
     }
 
-    private function roomMetrics(Carbon $from, Carbon $to, ?int $agencyId = null, ?int $hostId = null): array
+    private function roomMetrics(Carbon $from, Carbon $to, ?int $agencyId = null, ?int $hostId = null, $hostIds = null): array
     {
-        $row = $this->roomOverlapBase($from, $to, $agencyId, $hostId)
+        $row = $this->roomOverlapBase($from, $to, $agencyId, $hostId, $hostIds)
             ->selectRaw("
                 COUNT(*) as room_count,
                 SUM(
@@ -440,8 +470,44 @@ class AgencyReportService
             ->where('call_sessions.status', 'ended')
             ->where('call_earning_ledgers.total_coins', '>', 0)
             ->whereBetween('call_earning_ledgers.created_at', [$from, $to])
-            ->when($agencyId !== null, fn ($query) => $query->where('call_earning_ledgers.agency_id', $agencyId))
+            ->when($agencyId !== null, function ($query) use ($agencyId) {
+                $query->where(function ($agencyQuery) use ($agencyId) {
+                    $agencyQuery->where('call_earning_ledgers.agency_id', $agencyId)
+                        ->orWhere(function ($fallback) use ($agencyId) {
+                            $fallback->whereNull('call_earning_ledgers.agency_id')
+                                ->where('call_sessions.agency_id', $agencyId);
+                        });
+                });
+            })
             ->when($hostId !== null, fn ($query) => $query->where('call_earning_ledgers.host_id', $hostId));
+    }
+
+    private function historicalAgencyHostIds(Agency $agency, Carbon $from, Carbon $to)
+    {
+        return collect()
+            ->merge(Host::query()->where('agency_id', $agency->id)->pluck('id'))
+            ->merge(
+                $this->successfulCallLedgerBase($from, $to, $agency->id)
+                    ->select('call_earning_ledgers.host_id')
+                    ->distinct()
+                    ->pluck('call_earning_ledgers.host_id')
+            )
+            ->merge(
+                $this->regularGiftBase($from, $to, $agency->id)
+                    ->select('live_room_gift_earning_ledgers.host_id')
+                    ->distinct()
+                    ->pluck('live_room_gift_earning_ledgers.host_id')
+            )
+            ->merge(
+                $this->pkGiftBase($from, $to, $agency->id)
+                    ->select('live_room_gift_earning_ledgers.host_id')
+                    ->distinct()
+                    ->pluck('live_room_gift_earning_ledgers.host_id')
+            )
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
     }
 
     private function seriesFromDays(Carbon $from, Carbon $to, callable $resolver): array
