@@ -446,3 +446,40 @@ Artisan::command('timezone:shift-legacy-to-ist {before} {--minutes=330} {--table
 
     return self::SUCCESS;
 })->purpose('Shift legacy DATETIME and TIMESTAMP values before a cutoff from UTC clock values to IST clock values');
+
+Artisan::command('timezone:reverse-legacy-ist-shift {before} {--minutes=330} {--window-minutes=330} {--table=*} {--dry-run}', function (DatabaseDatetimeShiftService $service, string $before) {
+    $minutes = (int) $this->option('minutes');
+    $windowMinutes = (int) $this->option('window-minutes');
+    $tables = (array) $this->option('table');
+    $dryRun = (bool) $this->option('dry-run');
+
+    try {
+        $beforeCutoff = Carbon::parse($before, config('app.timezone'));
+        $report = $dryRun
+            ? $service->planReverseShift($beforeCutoff, $minutes, $tables, $windowMinutes)
+            : $service->reverseShift($beforeCutoff, $minutes, $tables, $windowMinutes);
+    } catch (\InvalidArgumentException $e) {
+        $this->error($e->getMessage());
+        return self::FAILURE;
+    }
+
+    $this->table(
+        ['Table', 'Column', 'Type', 'Window Start', 'Window End', 'Adjust Minutes', 'Matching Rows', 'Affected Rows', 'Mode'],
+        collect($report)->map(fn (array $row) => [
+            $row['table'],
+            $row['column'],
+            $row['data_type'],
+            $row['before'],
+            $row['reverse_upper'] ?? '—',
+            $row['minutes'],
+            $row['matching_rows'],
+            $row['affected_rows'],
+            $row['mode'],
+        ])->all()
+    );
+
+    $this->warn('This command subtracts the adjustment minutes from DATETIME and TIMESTAMP values inside the reversal window [before, before + window-minutes).');
+    $this->info($dryRun ? 'Dry run only. No rows changed.' : 'Legacy time shift reversal complete.');
+
+    return self::SUCCESS;
+})->purpose('Reverse a mistaken legacy IST shift by subtracting minutes from DATETIME and TIMESTAMP values inside the derived reversal window');
