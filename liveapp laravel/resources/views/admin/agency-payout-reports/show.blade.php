@@ -7,48 +7,160 @@
 
 @section('content')
 <style>
-  .payout-grid-table { white-space: nowrap; }
-  .payout-grid-table th, .payout-grid-table td { vertical-align: middle; }
+  .payout-grid-shell {
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    background: #ffffff;
+    overflow: hidden;
+  }
+  .payout-grid-toolbar {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    padding: 14px 16px;
+    border-bottom: 1px solid #e5e7eb;
+    background: linear-gradient(180deg, #fcfcfd 0%, #f8fafc 100%);
+  }
+  .payout-grid-caption {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .payout-grid-caption strong {
+    font-size: .95rem;
+    color: #111827;
+  }
+  .payout-grid-caption span {
+    font-size: .78rem;
+    color: #6b7280;
+  }
+  .payout-grid-hint {
+    font-size: .76rem;
+    color: #6b7280;
+    text-align: right;
+  }
+  .payout-grid-scroll {
+    max-height: 72vh;
+    overflow: auto;
+    background: #fff;
+  }
+  .payout-grid-table {
+    white-space: nowrap;
+    margin-bottom: 0;
+    min-width: 1780px;
+  }
+  .payout-grid-table th,
+  .payout-grid-table td {
+    vertical-align: middle;
+    border-color: #e5e7eb;
+  }
+  .payout-grid-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    background: #f8fafc;
+    color: #111827;
+    font-size: .76rem;
+    font-weight: 700;
+    line-height: 1.25;
+    padding: 10px 12px;
+    box-shadow: inset 0 -1px 0 #dbe3ee;
+  }
+  .payout-grid-table tbody td {
+    padding: 10px 12px;
+    background: #fff;
+  }
+  .payout-grid-table tbody tr:nth-child(even) td {
+    background: #fcfcfd;
+  }
+  .payout-grid-table tbody tr:hover td {
+    background: #f9fbff;
+  }
   .payout-grid-sticky-left {
     position: sticky;
     left: 0;
     background: #fff;
-    z-index: 2;
-    min-width: 220px;
+    z-index: 3;
+    min-width: 240px;
+    box-shadow: 1px 0 0 #e5e7eb;
   }
   .payout-grid-sticky-right {
     position: sticky;
     right: 0;
     background: #fff;
-    z-index: 2;
-    min-width: 96px;
+    z-index: 3;
+    min-width: 110px;
+    box-shadow: -1px 0 0 #e5e7eb;
+  }
+  .payout-grid-table thead .payout-grid-sticky-left,
+  .payout-grid-table thead .payout-grid-sticky-right {
+    z-index: 6;
+    background: #eef3f9;
   }
   .payout-grid-table tfoot td {
     position: sticky;
     bottom: 0;
-    background: #f8fafc;
-    z-index: 1;
+    background: #eef3f9;
+    z-index: 2;
     font-weight: 700;
+    box-shadow: inset 0 1px 0 #dbe3ee;
+    padding: 10px 12px;
   }
   .payout-grid-input {
-    width: 118px;
-    min-width: 118px;
+    width: 122px;
+    min-width: 122px;
     text-align: right;
     font-size: .82rem;
     line-height: 1.35;
     color: #111827;
+    border-radius: 10px;
+    border-color: #d1d5db;
+    background: #fff;
   }
   .payout-grid-input-wide {
-    width: 132px;
-    min-width: 132px;
+    width: 138px;
+    min-width: 138px;
   }
   .payout-grid-input-note {
-    width: 220px;
-    min-width: 220px;
+    width: 260px;
+    min-width: 260px;
     white-space: normal;
     font-size: .82rem;
     line-height: 1.35;
     color: #111827;
+    border-radius: 10px;
+    border-color: #d1d5db;
+    background: #fff;
+  }
+  .payout-grid-row-host {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .payout-grid-row-host strong {
+    font-size: .88rem;
+    color: #111827;
+  }
+  .payout-grid-row-host span {
+    font-size: .74rem;
+    color: #6b7280;
+  }
+  .payout-grid-save-btn {
+    min-width: 88px;
+    border-radius: 10px;
+  }
+  @media (max-width: 991px) {
+    .payout-grid-scroll {
+      max-height: 68vh;
+    }
+    .payout-grid-toolbar {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+    .payout-grid-hint {
+      text-align: left;
+    }
   }
 </style>
 
@@ -175,8 +287,19 @@
   </section>
 
   <section class="card">
-    <div class="card-header"><h5 class="mb-0">Host Settlement Grid</h5></div>
-    <div class="card-body table-responsive">
+    <div class="card-body">
+      <div class="payout-grid-shell">
+        <div class="payout-grid-toolbar">
+          <div class="payout-grid-caption">
+            <strong>Host Settlement Grid</strong>
+            <span>Edit row values directly. Header, host, totals, and save action stay visible while scrolling.</span>
+          </div>
+          <div class="payout-grid-hint">
+            <div>Scroll vertically to move across hosts.</div>
+            <div>Scroll horizontally to review all settlement fields.</div>
+          </div>
+        </div>
+        <div class="payout-grid-scroll">
       <table class="table align-middle payout-grid-table" id="payout-grid">
         <thead class="table-light">
           <tr>
@@ -204,8 +327,10 @@
             @php($formId = 'item-form-' . $item->id)
             <tr data-payout-row>
               <td class="payout-grid-sticky-left">
-                <div class="fw-semibold">{{ $item->host?->user?->name ?? $item->host?->stage_name ?? '—' }}</div>
-                <div class="text-muted small">{{ $item->host?->stage_name ?? '—' }}</div>
+                <div class="payout-grid-row-host">
+                  <strong>{{ $item->host?->user?->name ?? $item->host?->stage_name ?? '—' }}</strong>
+                  <span>{{ $item->host?->stage_name ?? '—' }}</span>
+                </div>
               </td>
               <td><input type="number" min="0" name="video_room_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input calc-field" value="{{ $item->video_room_minutes }}" @disabled($locked)></td>
               <td><input type="number" min="0" name="audio_room_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input calc-field" value="{{ $item->audio_room_minutes }}" @disabled($locked)></td>
@@ -238,7 +363,7 @@
                 <form id="{{ $formId }}" method="post" action="{{ route('admin.agency-payout-reports.items.update', [$report, $item]) }}">
                   @csrf
                 </form>
-                <button class="btn btn-sm btn-light border" type="submit" form="{{ $formId }}" @disabled($locked)>Save</button>
+                <button class="btn btn-sm btn-light border payout-grid-save-btn" type="submit" form="{{ $formId }}" @disabled($locked)>Save</button>
               </td>
             </tr>
           @empty
@@ -267,6 +392,8 @@
           </tr>
         </tfoot>
       </table>
+        </div>
+      </div>
     </div>
   </section>
 </div>
