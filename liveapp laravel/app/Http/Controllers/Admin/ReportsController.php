@@ -109,15 +109,19 @@ class ReportsController extends Controller
                     $hostBucket = $durAgg->get($key, collect());
                     $existing = $hostBucket->firstWhere('host_id', $room->host_id);
 
-                    $segmentSeconds = $segmentStart->diffInSeconds($segmentEnd);
+                    $segmentMinutes = $segmentStart->diffInMinutes($segmentEnd);
+                    if ($segmentMinutes <= 0) {
+                        $dayCursor->addDay();
+                        continue;
+                    }
 
                     if ($existing) {
-                        $existing->duration_sec += $segmentSeconds;
+                        $existing->duration_min += $segmentMinutes;
                         $existing->rooms += 1;
                     } else {
                         $hostBucket->push((object) [
                             'host_id' => $room->host_id,
-                            'duration_sec' => $segmentSeconds,
+                            'duration_min' => $segmentMinutes,
                             'rooms' => 1,
                         ]);
                     }
@@ -157,7 +161,7 @@ class ReportsController extends Controller
                     'date' => $key,
                     'host_id' => $hid,
                     'rooms' => (int) ($duration->rooms ?? 0),
-                    'duration_min' => (int) round(((int) ($duration->duration_sec ?? 0)) / 60),
+                    'duration_min' => (int) ($duration->duration_min ?? 0),
                     'participants_total' => (int) ($participants->participants_total ?? 0),
                     'participants_unique' => (int) ($participants->participants_unique ?? 0),
                     'call_coins' => $callCoins,

@@ -160,7 +160,7 @@ class HostEarningsReportService
             return 0;
         }
 
-        return (int) ceil($effectiveStart->diffInSeconds($effectiveEnd) / 60);
+        return (int) $effectiveStart->diffInMinutes($effectiveEnd);
     }
 
     private function regularGiftBase(Carbon $from, Carbon $to, int $hostId)

@@ -47,10 +47,10 @@ class AgencyReportService
                 'video_calls' => (clone $callLedgerBase)->where('call_sessions.type', 'video')->count(),
                 'completed_calls' => (clone $base)->where('status', 'ended')->count(),
                 'failed_calls' => (clone $base)->whereIn('status', ['failed', 'missed', 'rejected'])->count(),
-                'total_minutes' => (int) (clone $callLedgerBase)->sum('billable_minutes'),
-                'total_coins' => (int) (clone $callLedgerBase)->sum('total_coins'),
-                'host_earnings' => (int) (clone $callLedgerBase)->sum('host_earning'),
-                'agency_earnings' => (int) (clone $callLedgerBase)->sum('agency_earning'),
+                'total_minutes' => (int) (clone $callLedgerBase)->sum('call_earning_ledgers.billable_minutes'),
+                'total_coins' => (int) (clone $callLedgerBase)->sum('call_earning_ledgers.total_coins'),
+                'host_earnings' => (int) (clone $callLedgerBase)->sum('call_earning_ledgers.host_earning'),
+                'agency_earnings' => (int) (clone $callLedgerBase)->sum('call_earning_ledgers.agency_earning'),
                 'live_rooms' => $liveMetrics['count'],
                 'live_minutes' => $liveMetrics['minutes'],
                 'live_gift_coins' => (int) (clone $giftBase)->sum('live_room_gift_earning_ledgers.total_coins'),
@@ -104,10 +104,10 @@ class AgencyReportService
                 return [
                     'host' => $host,
                     'calls' => (clone $calls)->count(),
-                    'minutes' => (int) (clone $calls)->sum('billable_minutes'),
-                    'coins' => (int) (clone $calls)->sum('total_coins'),
-                    'host_earnings' => (int) (clone $calls)->sum('host_earning'),
-                    'agency_earnings' => (int) (clone $calls)->sum('agency_earning'),
+                    'minutes' => (int) (clone $calls)->sum('call_earning_ledgers.billable_minutes'),
+                    'coins' => (int) (clone $calls)->sum('call_earning_ledgers.total_coins'),
+                    'host_earnings' => (int) (clone $calls)->sum('call_earning_ledgers.host_earning'),
+                    'agency_earnings' => (int) (clone $calls)->sum('call_earning_ledgers.agency_earning'),
                     'live_rooms' => $roomMetrics['count'],
                     'live_gift_coins' => (int) (clone $liveGifts)->sum('live_room_gift_earning_ledgers.total_coins'),
                     'pk_gift_coins' => (int) (clone $pkGifts)->sum('live_room_gift_earning_ledgers.total_coins'),
@@ -132,10 +132,10 @@ class AgencyReportService
                 'video_calls' => (clone $callLedgerBase)->where('call_sessions.type', 'video')->count(),
                 'completed_calls' => (clone $base)->where('status', 'ended')->count(),
                 'failed_calls' => (clone $base)->whereIn('status', ['failed', 'missed', 'rejected'])->count(),
-                'minutes' => (int) (clone $callLedgerBase)->sum('billable_minutes'),
-                'coins' => (int) (clone $callLedgerBase)->sum('total_coins'),
-                'host_earnings' => (int) (clone $callLedgerBase)->sum('host_earning'),
-                'agency_earnings' => (int) (clone $callLedgerBase)->sum('agency_earning'),
+                'minutes' => (int) (clone $callLedgerBase)->sum('call_earning_ledgers.billable_minutes'),
+                'coins' => (int) (clone $callLedgerBase)->sum('call_earning_ledgers.total_coins'),
+                'host_earnings' => (int) (clone $callLedgerBase)->sum('call_earning_ledgers.host_earning'),
+                'agency_earnings' => (int) (clone $callLedgerBase)->sum('call_earning_ledgers.agency_earning'),
                 'live_rooms' => $liveMetrics['count'],
                 'live_minutes' => $liveMetrics['minutes'],
                 'live_gift_coins' => (int) (clone $giftBase)->sum('live_room_gift_earning_ledgers.total_coins'),
@@ -177,8 +177,7 @@ class AgencyReportService
     private function earningsOverTime(Carbon $from, Carbon $to): array
     {
         $rows = $this->successfulCallLedgerBase($from, $to)
-            ->whereBetween('created_at', [$from, $to])
-            ->selectRaw('DATE(created_at) as label, SUM(total_coins) as coins, SUM(host_earning) as host_earning, SUM(agency_earning) as agency_earning')
+            ->selectRaw('DATE(call_earning_ledgers.created_at) as label, SUM(call_earning_ledgers.total_coins) as coins, SUM(call_earning_ledgers.host_earning) as host_earning, SUM(call_earning_ledgers.agency_earning) as agency_earning')
             ->groupBy('label')
             ->orderBy('label')
             ->get()
@@ -198,9 +197,9 @@ class AgencyReportService
     {
         $rows = $this->successfulCallLedgerBase($from, $to)
             ->with('agency')
-            ->whereNotNull('agency_id')
-            ->selectRaw('agency_id, SUM(total_coins) as coins, SUM(agency_earning) as earnings')
-            ->groupBy('agency_id')
+            ->whereNotNull('call_earning_ledgers.agency_id')
+            ->selectRaw('call_earning_ledgers.agency_id as agency_id, SUM(call_earning_ledgers.total_coins) as coins, SUM(call_earning_ledgers.agency_earning) as earnings')
+            ->groupBy('call_earning_ledgers.agency_id')
             ->orderByDesc('coins')
             ->limit(8)
             ->get();
@@ -216,9 +215,9 @@ class AgencyReportService
     {
         $rows = $this->successfulCallLedgerBase($from, $to)
             ->with('host.user')
-            ->whereNotNull('host_id')
-            ->selectRaw('host_id, SUM(total_coins) as coins, COUNT(*) as calls')
-            ->groupBy('host_id')
+            ->whereNotNull('call_earning_ledgers.host_id')
+            ->selectRaw('call_earning_ledgers.host_id as host_id, SUM(call_earning_ledgers.total_coins) as coins, COUNT(*) as calls')
+            ->groupBy('call_earning_ledgers.host_id')
             ->orderByDesc('coins')
             ->limit(8)
             ->get();
@@ -306,9 +305,9 @@ class AgencyReportService
                 $roomMetrics = $this->roomMetrics($from, $to, $agency->id);
 
                 $topHostHostId = (clone $callLedger)
-                    ->selectRaw('host_id, SUM(total_coins) as coins')
-                    ->whereNotNull('host_id')
-                    ->groupBy('host_id')
+                    ->selectRaw('call_earning_ledgers.host_id as host_id, SUM(call_earning_ledgers.total_coins) as coins')
+                    ->whereNotNull('call_earning_ledgers.host_id')
+                    ->groupBy('call_earning_ledgers.host_id')
                     ->orderByDesc('coins')
                     ->value('host_id');
 
@@ -316,9 +315,9 @@ class AgencyReportService
                     'agency' => $agency,
                     'host_count' => (int) $agency->hosts_count,
                     'calls' => (clone $calls)->count(),
-                    'minutes' => (int) (clone $callLedger)->sum('billable_minutes'),
-                    'coins' => (int) (clone $callLedger)->sum('total_coins'),
-                    'earnings' => (int) (clone $callLedger)->sum('agency_earning'),
+                    'minutes' => (int) (clone $callLedger)->sum('call_earning_ledgers.billable_minutes'),
+                    'coins' => (int) (clone $callLedger)->sum('call_earning_ledgers.total_coins'),
+                    'earnings' => (int) (clone $callLedger)->sum('call_earning_ledgers.agency_earning'),
                     'live_rooms' => $roomMetrics['count'],
                     'live_minutes' => $roomMetrics['minutes'],
                     'live_gift_coins' => (int) (clone $liveGifts)->sum('live_room_gift_earning_ledgers.total_coins'),
@@ -355,10 +354,10 @@ class AgencyReportService
             return [
                 'week_start' => $weekStart->format('Y-m-d'),
                 'calls' => (clone $calls)->count(),
-                'minutes' => (int) (clone $callLedger)->sum('billable_minutes'),
-                'coins' => (int) (clone $callLedger)->sum('total_coins'),
-                'host_earnings' => (int) (clone $callLedger)->sum('host_earning'),
-                'agency_earnings' => (int) (clone $callLedger)->sum('agency_earning'),
+                'minutes' => (int) (clone $callLedger)->sum('call_earning_ledgers.billable_minutes'),
+                'coins' => (int) (clone $callLedger)->sum('call_earning_ledgers.total_coins'),
+                'host_earnings' => (int) (clone $callLedger)->sum('call_earning_ledgers.host_earning'),
+                'agency_earnings' => (int) (clone $callLedger)->sum('call_earning_ledgers.agency_earning'),
                 'live_rooms' => $roomMetrics['count'],
                 'live_minutes' => $roomMetrics['minutes'],
                 'live_gift_coins' => (int) (clone $liveGifts)->sum('live_room_gift_earning_ledgers.total_coins'),
