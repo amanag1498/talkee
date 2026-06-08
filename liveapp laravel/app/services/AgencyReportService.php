@@ -444,13 +444,13 @@ class AgencyReportService
                 SUM(
                     GREATEST(
                         TIMESTAMPDIFF(
-                            MINUTE,
+                            SECOND,
                             GREATEST(started_at, ?),
                             LEAST(COALESCE(ended_at, last_activity_at, started_at), ?)
                         ),
                         0
                     )
-                ) as total_minutes
+                ) as total_seconds
             ", [
                 $from->toDateTimeString(),
                 $to->toDateTimeString(),
@@ -459,7 +459,7 @@ class AgencyReportService
 
         return [
             'count' => (int) ($row->room_count ?? 0),
-            'minutes' => (int) ($row->total_minutes ?? 0),
+            'minutes' => (int) floor(((int) ($row->total_seconds ?? 0)) / 60),
         ];
     }
 

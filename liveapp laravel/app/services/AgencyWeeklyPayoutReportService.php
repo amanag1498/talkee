@@ -230,25 +230,25 @@ class AgencyWeeklyPayoutReportService
                     SUM(CASE
                         WHEN room_type = 'audio' THEN GREATEST(
                             TIMESTAMPDIFF(
-                                MINUTE,
+                                SECOND,
                                 GREATEST(started_at, ?),
                                 LEAST(COALESCE(ended_at, last_activity_at, started_at), ?)
                             ),
                             0
                         )
                         ELSE 0
-                    END) as audio_room_minutes,
+                    END) as audio_room_seconds,
                     SUM(CASE
                         WHEN room_type = 'video' THEN GREATEST(
                             TIMESTAMPDIFF(
-                                MINUTE,
+                                SECOND,
                                 GREATEST(started_at, ?),
                                 LEAST(COALESCE(ended_at, last_activity_at, started_at), ?)
                             ),
                             0
                         )
                         ELSE 0
-                    END) as video_room_minutes
+                    END) as video_room_seconds
                 ", [
                     $periodStart->toDateTimeString(),
                     $periodEnd->toDateTimeString(),
@@ -325,8 +325,8 @@ class AgencyWeeklyPayoutReportService
                 $roomCount = (int) ($rooms->live_room_count ?? $gift->live_room_count ?? 0);
                 $audioRoomCount = (int) ($rooms->audio_room_count ?? 0);
                 $videoRoomCount = (int) ($rooms->video_room_count ?? 0);
-                $audioRoomMinutes = (int) ($rooms->audio_room_minutes ?? 0);
-                $videoRoomMinutes = (int) ($rooms->video_room_minutes ?? 0);
+                $audioRoomMinutes = (int) floor(((int) ($rooms->audio_room_seconds ?? 0)) / 60);
+                $videoRoomMinutes = (int) floor(((int) ($rooms->video_room_seconds ?? 0)) / 60);
                 $videoGiftGross = (int) ($gift->video_gift_gross ?? 0);
                 $audioGiftGross = (int) ($gift->audio_gift_gross ?? 0);
                 $pkEventCount = (int) ($pk->pk_event_count ?? 0);
