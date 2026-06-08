@@ -162,13 +162,11 @@
                       <button class="btn btn-sm btn-success">Mark Paid</button>
                     </form>
                   @endif
-                  @if($report->status !== 'paid')
-                    <form method="post" action="{{ route('admin.agency-payout-reports.destroy', $report) }}" class="d-inline" onsubmit="return confirm('Delete this payout report draft? This cannot be undone.');">
-                      @csrf
-                      @method('DELETE')
-                      <button class="btn btn-sm btn-outline-danger">Delete</button>
-                    </form>
-                  @endif
+                  <form method="post" action="{{ route('admin.agency-payout-reports.destroy', $report) }}" class="d-inline" onsubmit="return confirm('Delete this payout report? This cannot be undone.');">
+                    @csrf
+                    @method('DELETE')
+                    <button class="btn btn-sm btn-outline-danger">Delete</button>
+                  </form>
                 </div>
               </td>
             </tr>

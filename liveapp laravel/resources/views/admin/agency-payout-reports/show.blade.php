@@ -159,18 +159,16 @@
             </div>
           </form>
 
-          @if($report->status !== 'paid')
-            <form method="post" action="{{ route('admin.agency-payout-reports.destroy', $report) }}" class="row g-2" onsubmit="return confirm('Delete this payout report draft? This cannot be undone.');">
-              @csrf
-              @method('DELETE')
-              <div class="col-md-12">
-                <input type="text" name="admin_remarks" class="form-control" placeholder="Delete reason (optional)">
-              </div>
-              <div class="col-12">
-                <button class="btn btn-outline-danger">Delete Report</button>
-              </div>
-            </form>
-          @endif
+          <form method="post" action="{{ route('admin.agency-payout-reports.destroy', $report) }}" class="row g-2" onsubmit="return confirm('Delete this payout report? This cannot be undone.');">
+            @csrf
+            @method('DELETE')
+            <div class="col-md-12">
+              <input type="text" name="admin_remarks" class="form-control" placeholder="Delete reason (optional)">
+            </div>
+            <div class="col-12">
+              <button class="btn btn-outline-danger">Delete Report</button>
+            </div>
+          </form>
         </div>
       </div>
     </div>

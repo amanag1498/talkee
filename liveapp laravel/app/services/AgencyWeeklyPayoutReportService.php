@@ -650,10 +650,6 @@ class AgencyWeeklyPayoutReportService
                 ->lockForUpdate()
                 ->findOrFail($report->id);
 
-            if ($locked->paid_at || $locked->status === 'paid') {
-                throw new InvalidArgumentException('Paid payout reports cannot be deleted.');
-            }
-
             $before = $locked->toArray();
             $owner = $locked->agency?->owner;
             $locked->delete();
