@@ -19,6 +19,8 @@ use App\Models\TeenPattiRound;
 use App\Services\GreedyGameService;
 use App\Models\GreedyRound;
 use App\Services\ProdUserDataPurgeService;
+use App\Services\DatabaseDatetimeShiftService;
+use Carbon\Carbon;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -410,3 +412,37 @@ Artisan::command('levels:recalculate {--user=} {--dry-run}', function (UserLevel
         ])->all()
     );
 })->purpose('Recalculate lifetime spend and user levels from wallet transactions');
+
+Artisan::command('timezone:shift-legacy-to-ist {before} {--minutes=330} {--table=*} {--dry-run}', function (DatabaseDatetimeShiftService $service, string $before) {
+    $minutes = (int) $this->option('minutes');
+    $tables = (array) $this->option('table');
+    $dryRun = (bool) $this->option('dry-run');
+
+    try {
+        $beforeCutoff = Carbon::parse($before, config('app.timezone'));
+        $report = $dryRun
+            ? $service->planLegacyShift($beforeCutoff, $minutes, $tables)
+            : $service->shiftLegacy($beforeCutoff, $minutes, $tables);
+    } catch (\InvalidArgumentException $e) {
+        $this->error($e->getMessage());
+        return self::FAILURE;
+    }
+
+    $this->table(
+        ['Table', 'Column', 'Type', 'Before', 'Matching Rows', 'Affected Rows', 'Mode'],
+        collect($report)->map(fn (array $row) => [
+            $row['table'],
+            $row['column'],
+            $row['data_type'],
+            $row['before'],
+            $row['matching_rows'],
+            $row['affected_rows'],
+            $row['mode'],
+        ])->all()
+    );
+
+    $this->warn('This command shifts both DATETIME and TIMESTAMP columns for values before the provided cutoff.');
+    $this->info($dryRun ? 'Dry run only. No rows changed.' : 'Legacy time shift complete.');
+
+    return self::SUCCESS;
+})->purpose('Shift legacy DATETIME and TIMESTAMP values before a cutoff from UTC clock values to IST clock values');
