@@ -7,6 +7,7 @@ use App\Models\AgencyPayoutReport;
 use App\Models\AgencyPayoutReportItem;
 use App\Models\CallEarningLedger;
 use App\Models\Host;
+use App\Models\LiveRoom;
 use App\Models\LiveRoomGiftEarningLedger;
 use App\Models\User;
 use Carbon\Carbon;
@@ -221,47 +222,16 @@ class AgencyWeeklyPayoutReportService
                 ->orderBy('id')
                 ->get();
 
-            $roomRows = DB::table('live_rooms')
-                ->selectRaw("
-                    host_id,
-                    COUNT(*) as live_room_count,
-                    SUM(CASE WHEN room_type = 'audio' THEN 1 ELSE 0 END) as audio_room_count,
-                    SUM(CASE WHEN room_type = 'video' THEN 1 ELSE 0 END) as video_room_count,
-                    SUM(CASE
-                        WHEN room_type = 'audio' THEN GREATEST(
-                            TIMESTAMPDIFF(
-                                SECOND,
-                                GREATEST(started_at, ?),
-                                LEAST(COALESCE(ended_at, last_activity_at, started_at), ?)
-                            ),
-                            0
-                        )
-                        ELSE 0
-                    END) as audio_room_seconds,
-                    SUM(CASE
-                        WHEN room_type = 'video' THEN GREATEST(
-                            TIMESTAMPDIFF(
-                                SECOND,
-                                GREATEST(started_at, ?),
-                                LEAST(COALESCE(ended_at, last_activity_at, started_at), ?)
-                            ),
-                            0
-                        )
-                        ELSE 0
-                    END) as video_room_seconds
-                ", [
-                    $periodStart->toDateTimeString(),
-                    $periodEnd->toDateTimeString(),
-                    $periodStart->toDateTimeString(),
-                    $periodEnd->toDateTimeString(),
-                ])
+            $roomRows = $this->buildRoomRows(
+                LiveRoom::query()
                 ->whereIn('host_id', $hosts->pluck('id'))
                 ->whereNotNull('started_at')
                 ->where('started_at', '<=', $periodEnd)
                 ->whereRaw('COALESCE(ended_at, last_activity_at, started_at) >= ?', [$periodStart->toDateTimeString()])
-                ->groupBy('host_id')
-                ->get()
-                ->keyBy('host_id');
+                ->get(['host_id', 'room_type', 'started_at', 'ended_at', 'last_activity_at']),
+                $periodStart,
+                $periodEnd,
+            );
 
             $generateZeroReports = (bool) config('agency_payouts.generate_zero_reports', true);
 
@@ -325,8 +295,8 @@ class AgencyWeeklyPayoutReportService
                 $roomCount = (int) ($rooms->live_room_count ?? $gift->live_room_count ?? 0);
                 $audioRoomCount = (int) ($rooms->audio_room_count ?? 0);
                 $videoRoomCount = (int) ($rooms->video_room_count ?? 0);
-                $audioRoomMinutes = (int) floor(((int) ($rooms->audio_room_seconds ?? 0)) / 60);
-                $videoRoomMinutes = (int) floor(((int) ($rooms->video_room_seconds ?? 0)) / 60);
+                $audioRoomMinutes = (int) ($rooms->audio_room_minutes ?? 0);
+                $videoRoomMinutes = (int) ($rooms->video_room_minutes ?? 0);
                 $videoGiftGross = (int) ($gift->video_gift_gross ?? 0);
                 $audioGiftGross = (int) ($gift->audio_gift_gross ?? 0);
                 $pkEventCount = (int) ($pk->pk_event_count ?? 0);
@@ -969,6 +939,53 @@ class AgencyWeeklyPayoutReportService
             'saturday' => Carbon::SATURDAY,
             default => Carbon::MONDAY,
         };
+    }
+
+    private function buildRoomRows($rooms, CarbonInterface $periodStart, CarbonInterface $periodEnd)
+    {
+        return $rooms->groupBy('host_id')->map(function ($hostRooms) use ($periodStart, $periodEnd) {
+            $liveRoomCount = 0;
+            $audioRoomCount = 0;
+            $videoRoomCount = 0;
+            $audioSeconds = 0;
+            $videoSeconds = 0;
+
+            foreach ($hostRooms as $room) {
+                $roomStart = $room->started_at?->copy();
+                $roomEnd = ($room->ended_at ?? $room->last_activity_at ?? $room->started_at)?->copy();
+                if (!$roomStart || !$roomEnd) {
+                    continue;
+                }
+
+                $effectiveStart = $roomStart->greaterThan($periodStart) ? $roomStart : $periodStart->copy();
+                $effectiveEnd = $roomEnd->lessThan($periodEnd) ? $roomEnd : $periodEnd->copy();
+                if ($effectiveEnd->lessThanOrEqualTo($effectiveStart)) {
+                    continue;
+                }
+
+                $seconds = $effectiveStart->diffInSeconds($effectiveEnd);
+                if ($seconds <= 0) {
+                    continue;
+                }
+
+                $liveRoomCount++;
+                if (($room->room_type ?? 'video') === 'audio') {
+                    $audioRoomCount++;
+                    $audioSeconds += $seconds;
+                } else {
+                    $videoRoomCount++;
+                    $videoSeconds += $seconds;
+                }
+            }
+
+            return (object) [
+                'live_room_count' => $liveRoomCount,
+                'audio_room_count' => $audioRoomCount,
+                'video_room_count' => $videoRoomCount,
+                'audio_room_minutes' => (int) floor($audioSeconds / 60),
+                'video_room_minutes' => (int) floor($videoSeconds / 60),
+            ];
+        });
     }
 
     private function assertTransitionAllowed(AgencyPayoutReport $report, array $allowedStatuses, string $message): void
