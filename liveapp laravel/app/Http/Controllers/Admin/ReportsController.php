@@ -25,8 +25,8 @@ class ReportsController extends Controller
     {
         $hostId = $request->integer('host_id');
         $range = $request->input('range', 'daily');
-        $from = $request->date('from') ?: now()->subDays(6)->startOfDay();
-        $to = $request->date('to') ?: now()->endOfDay();
+        $from = ($request->date('from') ?: now()->subDays(6))->startOfDay();
+        $to = ($request->date('to') ?: now())->endOfDay();
 
         $hosts = Host::with(['user', 'agency'])->orderBy('id', 'desc')->limit(500)->get();
         $hostsById = $hosts->keyBy('id');
@@ -209,20 +209,22 @@ class ReportsController extends Controller
         if ($range === 'weekly') {
             $rows = $rows
                 ->groupBy(fn ($row) => Carbon::parse($row['date'])->startOfWeek(Carbon::MONDAY)->format('Y-m-d'))
-                ->flatMap(function ($weekRows, $weekStart) use ($hostsById) {
-                    return $weekRows->groupBy('host_id')->map(function ($group) use ($weekStart, $hostsById) {
+                ->flatMap(function ($weekRows, $weekStart) use ($hostsById, $to) {
+                    return $weekRows->groupBy('host_id')->map(function ($group) use ($weekStart, $hostsById, $to) {
                         $grossCoins = (int) $group->sum('gross_coins');
                         $hostPayable = (int) $group->sum('host_payable');
                         $agencyPayable = (int) $group->sum('agency_payable');
                         $hostPct = $grossCoins > 0 ? round(($hostPayable / $grossCoins) * 100, 2) : 0.0;
                         $agencyPct = $grossCoins > 0 ? round(($agencyPayable / $grossCoins) * 100, 2) : 0.0;
+                        $weekFrom = Carbon::parse($weekStart)->startOfDay();
+                        $weekTo = $weekFrom->copy()->endOfWeek(Carbon::SUNDAY)->endOfDay()->min($to);
+                        $roomMetrics = $this->roomMetrics($weekFrom, $weekTo, (int) $group->first()['host_id']);
 
                         return [
                             'week_start' => $weekStart,
                             'host_id' => $group->first()['host_id'],
-                            'rooms' => (int) $group->sum('rooms'),
-                            'duration_seconds' => (int) $group->sum('duration_seconds'),
-                            'duration_min' => (int) floor(((int) $group->sum('duration_seconds')) / 60),
+                            'rooms' => (int) $roomMetrics['count'],
+                            'duration_min' => (int) $roomMetrics['minutes'],
                             'participants_total' => (int) $group->sum('participants_total'),
                             'participants_unique' => (int) $group->sum('participants_unique'),
                             'call_coins' => (int) $group->sum('call_coins'),
@@ -325,10 +327,8 @@ class ReportsController extends Controller
 
     public function hostShow(Host $host, Request $request)
     {
-        $from = $request->date('from') ?: now()->subDays(6)->startOfDay();
-        $to = $request->date('to') ?: now()->endOfDay();
-        $from = $from->copy()->startOfDay();
-        $to = $to->copy()->endOfDay();
+        $from = ($request->date('from') ?: now()->subDays(6))->startOfDay();
+        $to = ($request->date('to') ?: now())->endOfDay();
 
         $host->load(['user', 'agency', 'followers.user']);
 
@@ -496,28 +496,34 @@ class ReportsController extends Controller
 
     private function roomMetrics($from, $to, int $hostId): array
     {
-        $row = $this->roomOverlapBase($from, $to, $hostId)
-            ->selectRaw("
-                COUNT(*) as room_count,
-                SUM(
-                    GREATEST(
-                        TIMESTAMPDIFF(
-                            MINUTE,
-                            GREATEST(started_at, ?),
-                            LEAST(COALESCE(ended_at, last_activity_at, started_at), ?)
-                        ),
-                        0
-                    )
-                ) as total_minutes
-            ", [
-                $from->toDateTimeString(),
-                $to->toDateTimeString(),
-            ])
-            ->first();
+        $rooms = $this->roomOverlapBase($from, $to, $hostId)
+            ->get(['started_at', 'ended_at', 'last_activity_at']);
+
+        $totalMinutes = 0;
+        foreach ($rooms as $room) {
+            $roomStart = $room->started_at?->copy();
+            $roomEnd = ($room->ended_at ?? $room->last_activity_at ?? $room->started_at)?->copy();
+            if (!$roomStart || !$roomEnd) {
+                continue;
+            }
+
+            $effectiveStart = $roomStart->greaterThan($from) ? $roomStart : $from->copy();
+            $effectiveEnd = $roomEnd->lessThan($to) ? $roomEnd : $to->copy();
+            if ($effectiveEnd->lessThanOrEqualTo($effectiveStart)) {
+                continue;
+            }
+
+            $minutes = (int) floor($effectiveStart->diffInSeconds($effectiveEnd) / 60);
+            if ($minutes <= 0) {
+                continue;
+            }
+
+            $totalMinutes += $minutes;
+        }
 
         return [
-            'count' => (int) ($row->room_count ?? 0),
-            'minutes' => (int) ($row->total_minutes ?? 0),
+            'count' => (int) $rooms->count(),
+            'minutes' => $totalMinutes,
         ];
     }
 
