@@ -45,7 +45,14 @@ class ReportsController extends Controller
 
         $giftAgg = $this->regularGiftLedgerBase($from, $to)
             ->when($roomIds->isNotEmpty(), fn ($query) => $query->whereIn('live_room_gift_earning_ledgers.live_room_id', $roomIds))
-            ->selectRaw('live_room_gift_earning_ledgers.host_id as host_id, DATE(live_room_gift_earning_ledgers.created_at) as d, SUM(live_room_gift_earning_ledgers.total_coins) as gift_coins, COUNT(*) as gift_events')
+            ->selectRaw('
+                live_room_gift_earning_ledgers.host_id as host_id,
+                DATE(live_room_gift_earning_ledgers.created_at) as d,
+                SUM(live_room_gift_earning_ledgers.total_coins) as gift_coins,
+                SUM(live_room_gift_earning_ledgers.host_payout_coins) as host_payable,
+                SUM(live_room_gift_earning_ledgers.agency_payout_coins) as agency_payable,
+                COUNT(*) as gift_events
+            ')
             ->groupBy('host_id', 'd')
             ->get()
             ->groupBy('d');
@@ -57,7 +64,14 @@ class ReportsController extends Controller
                     ->where('live_room_pk_events.event_type', '=', 'gift');
             })
             ->when($roomIds->isNotEmpty(), fn ($query) => $query->whereIn('live_room_gift_earning_ledgers.live_room_id', $roomIds))
-            ->selectRaw('live_room_gift_earning_ledgers.host_id as host_id, DATE(live_room_gift_earning_ledgers.created_at) as d, SUM(live_room_gift_earning_ledgers.total_coins) as pk_coins, COUNT(live_room_pk_events.id) as pk_events')
+            ->selectRaw('
+                live_room_gift_earning_ledgers.host_id as host_id,
+                DATE(live_room_gift_earning_ledgers.created_at) as d,
+                SUM(live_room_gift_earning_ledgers.total_coins) as pk_coins,
+                SUM(live_room_gift_earning_ledgers.host_payout_coins) as host_payable,
+                SUM(live_room_gift_earning_ledgers.agency_payout_coins) as agency_payable,
+                COUNT(live_room_pk_events.id) as pk_events
+            ')
             ->groupBy('host_id', 'd')
             ->get()
             ->groupBy('d');
@@ -65,7 +79,14 @@ class ReportsController extends Controller
         $callAgg = $this->successfulCallLedgerBase($from, $to)
             ->when($hostId, fn ($query) => $query->where('call_earning_ledgers.host_id', $hostId))
             ->whereNotNull('call_earning_ledgers.host_id')
-            ->selectRaw('call_earning_ledgers.host_id as host_id, DATE(call_earning_ledgers.created_at) as d, SUM(call_earning_ledgers.total_coins) as call_coins, COUNT(*) as call_count')
+            ->selectRaw('
+                call_earning_ledgers.host_id as host_id,
+                DATE(call_earning_ledgers.created_at) as d,
+                SUM(call_earning_ledgers.total_coins) as call_coins,
+                SUM(call_earning_ledgers.host_earning) as host_payable,
+                SUM(call_earning_ledgers.agency_earning) as agency_payable,
+                COUNT(*) as call_count
+            ')
             ->groupBy('host_id', 'd')
             ->get()
             ->groupBy('d');
@@ -154,8 +175,10 @@ class ReportsController extends Controller
                 $giftCoins = (int) ($gift->gift_coins ?? 0);
                 $pkCoins = (int) ($pk->pk_coins ?? 0);
                 $grossCoins = $callCoins + $giftCoins + $pkCoins;
-                $hostPct = (float) ($host->payout_percentage ?? 0);
-                $agencyPct = (float) ($host->agency?->payout_percentage ?? 0);
+                $hostPayable = (int) ($call->host_payable ?? 0) + (int) ($gift->host_payable ?? 0) + (int) ($pk->host_payable ?? 0);
+                $agencyPayable = (int) ($call->agency_payable ?? 0) + (int) ($gift->agency_payable ?? 0) + (int) ($pk->agency_payable ?? 0);
+                $hostPct = $grossCoins > 0 ? round(($hostPayable / $grossCoins) * 100, 2) : 0.0;
+                $agencyPct = $grossCoins > 0 ? round(($agencyPayable / $grossCoins) * 100, 2) : 0.0;
 
                 $days->push([
                     'date' => $key,
@@ -174,8 +197,8 @@ class ReportsController extends Controller
                     'host_payout_percentage' => $hostPct,
                     'agency_payout_percentage' => $agencyPct,
                     'host_weekly_bonus' => 0,
-                    'host_payable' => (int) floor(($grossCoins * $hostPct) / 100),
-                    'agency_payable' => (int) floor(($grossCoins * $agencyPct) / 100),
+                    'host_payable' => $hostPayable,
+                    'agency_payable' => $agencyPayable,
                 ]);
             }
         }
@@ -187,11 +210,11 @@ class ReportsController extends Controller
                 ->groupBy(fn ($row) => Carbon::parse($row['date'])->startOfWeek(Carbon::MONDAY)->format('Y-m-d'))
                 ->flatMap(function ($weekRows, $weekStart) use ($hostsById) {
                     return $weekRows->groupBy('host_id')->map(function ($group) use ($weekStart, $hostsById) {
-                        $host = $hostsById->get($group->first()['host_id']);
                         $grossCoins = (int) $group->sum('gross_coins');
-                        $hostPct = (float) ($host?->payout_percentage ?? 0);
-                        $agencyPct = (float) ($host?->agency?->payout_percentage ?? 0);
-                        $hostWeeklyBonus = (int) ($host?->weekly_bonus ?? 0);
+                        $hostPayable = (int) $group->sum('host_payable');
+                        $agencyPayable = (int) $group->sum('agency_payable');
+                        $hostPct = $grossCoins > 0 ? round(($hostPayable / $grossCoins) * 100, 2) : 0.0;
+                        $agencyPct = $grossCoins > 0 ? round(($agencyPayable / $grossCoins) * 100, 2) : 0.0;
 
                         return [
                             'week_start' => $weekStart,
@@ -209,9 +232,9 @@ class ReportsController extends Controller
                             'gross_coins' => $grossCoins,
                             'host_payout_percentage' => $hostPct,
                             'agency_payout_percentage' => $agencyPct,
-                            'host_weekly_bonus' => $hostWeeklyBonus,
-                            'host_payable' => (int) floor(($grossCoins * $hostPct) / 100) + $hostWeeklyBonus,
-                            'agency_payable' => (int) floor(($grossCoins * $agencyPct) / 100),
+                            'host_weekly_bonus' => 0,
+                            'host_payable' => $hostPayable,
+                            'agency_payable' => $agencyPayable,
                         ];
                     })->values();
                 })
