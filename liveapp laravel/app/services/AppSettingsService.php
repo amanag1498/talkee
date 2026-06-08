@@ -146,10 +146,11 @@ class AppSettingsService
             'default' => false,
         ],
         'app_features.platform.android.video_room_games_enabled' => [
-            'label' => 'Video Room Games Strip',
+            'label' => 'Live Room Games',
             'type' => 'boolean',
             'group' => 'android',
             'default' => false,
+            'hint' => 'Controls whether in-room games are available in supported live room surfaces.',
         ],
     ];
 

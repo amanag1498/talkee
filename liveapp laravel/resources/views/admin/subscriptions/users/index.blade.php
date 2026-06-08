@@ -13,10 +13,42 @@
 </div>
 
 <div class="row g-3 mb-3">
-  <div class="col-md-3"><div class="card"><div class="card-body"><div class="text-muted small">Active</div><div class="h4 mb-0">{{ number_format($summary['active'] ?? 0) }}</div></div></div></div>
-  <div class="col-md-3"><div class="card"><div class="card-body"><div class="text-muted small">Expired</div><div class="h4 mb-0">{{ number_format($summary['expired'] ?? 0) }}</div></div></div></div>
-  <div class="col-md-3"><div class="card"><div class="card-body"><div class="text-muted small">Gifted</div><div class="h4 mb-0">{{ number_format($summary['gifted'] ?? 0) }}</div></div></div></div>
-  <div class="col-md-3"><div class="card"><div class="card-body"><div class="text-muted small">Renewal Rate</div><div class="h4 mb-0">{{ number_format($summary['renewal_rate'] ?? 0, 1) }}%</div></div></div></div>
+  <div class="col-md-2"><div class="card"><div class="card-body"><div class="text-muted small">Active</div><div class="h4 mb-0">{{ number_format($summary['active'] ?? 0) }}</div></div></div></div>
+  <div class="col-md-2"><div class="card"><div class="card-body"><div class="text-muted small">Purchased</div><div class="h4 mb-0">{{ number_format($summary['purchased'] ?? 0) }}</div></div></div></div>
+  <div class="col-md-2"><div class="card"><div class="card-body"><div class="text-muted small">Signup Gifts</div><div class="h4 mb-0">{{ number_format($summary['gifted'] ?? 0) }}</div></div></div></div>
+  <div class="col-md-2"><div class="card"><div class="card-body"><div class="text-muted small">Admin Grants</div><div class="h4 mb-0">{{ number_format($summary['admin_grant'] ?? 0) }}</div></div></div></div>
+  <div class="col-md-2"><div class="card"><div class="card-body"><div class="text-muted small">Admin Charged</div><div class="h4 mb-0">{{ number_format($summary['admin_charged'] ?? 0) }}</div></div></div></div>
+  <div class="col-md-2"><div class="card"><div class="card-body"><div class="text-muted small">Cancelled</div><div class="h4 mb-0">{{ number_format($summary['cancelled'] ?? 0) }}</div></div></div></div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label">Source</label>
+        <select name="origin" class="form-select">
+          <option value="">All sources</option>
+          <option value="purchased" @selected($origin === 'purchased')>Purchased by user</option>
+          <option value="gifted" @selected($origin === 'gifted')>Signup / gifted</option>
+          <option value="admin_grant" @selected($origin === 'admin_grant')>Admin grant</option>
+          <option value="admin_charged" @selected($origin === 'admin_charged')>Admin charged</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Status</label>
+        <select name="status" class="form-select">
+          <option value="">All statuses</option>
+          @foreach(['active','expired','cancelled'] as $statusOption)
+            <option value="{{ $statusOption }}" @selected($status === $statusOption)>{{ ucfirst($statusOption) }}</option>
+          @endforeach
+        </select>
+      </div>
+      <div class="col-md-5 d-flex gap-2">
+        <button class="btn btn-primary">Apply</button>
+        <a href="{{ route('admin.user-subscriptions.index') }}" class="btn btn-light border">Reset</a>
+      </div>
+    </form>
+  </div>
 </div>
 
 <div class="card">
@@ -30,24 +62,18 @@
           <th>Starts</th>
           <th>Ends</th>
           <th>Last Purchase</th>
-          <th>Meta</th> {{-- NEW --}}
+          <th>Source</th>
+          <th>Trace</th>
           <th class="text-end">Actions</th>
         </tr>
       </thead>
       <tbody>
         @forelse($subs as $s)
           @php
-            /** @var array|null $meta */
             $meta = is_array($s->meta ?? null) ? $s->meta : (is_string($s->meta ?? null) ? json_decode($s->meta, true) : []);
             $meta = is_array($meta) ? $meta : [];
-            $rowId = 'metaModal-' . $s->id;
-            // Convenience getters
-            $m = fn($key, $default=null) => $meta[$key] ?? $default;
-            $boolBadge = function($value) {
-              if ($value === true || $value === 'true' || $value === 1 || $value === '1') return '<span class="badge bg-success">true</span>';
-              if ($value === false || $value === 'false' || $value === 0 || $value === '0') return '<span class="badge bg-secondary">false</span>';
-              return '';
-            };
+            $metaId = 'sub-meta-' . $s->id;
+            $charged = filter_var($meta['charged'] ?? false, FILTER_VALIDATE_BOOL);
           @endphp
 
           <tr>
@@ -61,76 +87,36 @@
             <td>{{ $s->starts_at?->format('Y-m-d H:i') }}</td>
             <td>{{ $s->ends_at?->format('Y-m-d H:i') }}</td>
             <td>{{ $s->last_purchased_at?->format('Y-m-d H:i') }}</td>
-
-            {{-- META SUMMARY CELL --}}
-            {{-- META SUMMARY CELL: line-by-line --}}
-<td style="min-width: 360px; max-width: 520px;">
-  @php
-    // Normalize meta to array
-    $metaRaw = $s->meta ?? null;
-    $metaArr = is_array($metaRaw)
-      ? $metaRaw
-      : (is_string($metaRaw) ? json_decode($metaRaw, true) : []);
-    $metaArr = is_array($metaArr) ? $metaArr : [];
-
-    // Flattener: builds dot.notation => value lines
-    $lines = [];
-    $flatten = function ($data, $prefix = '') use (&$flatten, &$lines) {
-      if (is_array($data)) {
-        foreach ($data as $k => $v) {
-          $key = $prefix === '' ? (string)$k : "{$prefix}.{$k}";
-          $flatten($v, $key);
-        }
-      } else {
-        // Scalars & objects: stringify
-        if (is_bool($data)) {
-          $val = $data ? 'true' : 'false';
-        } elseif ($data === null) {
-          $val = 'null';
-        } elseif (is_object($data)) {
-          // If object sneaks in, dump as JSON
-          $val = json_encode($data, JSON_UNESCAPED_SLASHES);
-        } else {
-          $val = (string)$data;
-        }
-        $lines[] = [$prefix, $val];
-      }
-    };
-    $flatten($metaArr);
-
-    // Small helper to trim long values
-    $limit = function (string $v, int $len = 180) {
-      return \Illuminate\Support\Str::limit($v, $len);
-    };
-  @endphp
-
-  @if(empty($metaArr))
-    <span class="text-muted">—</span>
-  @else
-    <div class="border rounded p-2 bg-light" style="max-height: 180px; overflow:auto;">
-      <div class="small">
-        @foreach($lines as [$k, $v])
-          <div class="d-flex">
-            <div class="text-muted me-2" style="min-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-              {{ $k }}
-            </div>
-            <div class="flex-grow-1" style="word-break: break-word;">
-              : {{ $limit($v) }}
-            </div>
-          </div>
-        @endforeach
-      </div>
-    </div>
-
-    {{-- Optional: tiny copy button for full JSON (kept here for convenience) --}}
-    <button type="button" class="btn btn-sm btn-outline-secondary mt-2"
-            onclick="navigator.clipboard.writeText(this.nextElementSibling.textContent.trim()); this.innerText='Copied!'; setTimeout(()=>this.innerText='Copy JSON',1200);">
-      Copy JSON
-    </button>
-    <pre class="visually-hidden">{{ json_encode($metaArr, JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES) }}</pre>
-  @endif
-</td>
-
+            <td style="min-width: 160px;">
+              <span class="badge {{ $s->origin_badge_class }}">{{ $s->origin_label }}</span>
+              <div class="small text-muted mt-1">{{ $charged ? 'Coins charged' : 'No wallet charge' }}</div>
+            </td>
+            <td style="min-width: 260px;">
+              <div class="fw-semibold small">{{ $s->origin_description }}</div>
+              <div class="small text-muted">
+                Source: {{ $meta['source'] ?? '—' }}
+                @if(!empty($meta['event'] ?? $meta['last_action'] ?? null))
+                  · Event: {{ $meta['event'] ?? $meta['last_action'] }}
+                @endif
+              </div>
+              @if(!empty($meta['previous_source'] ?? null))
+                <div class="small text-muted">Previous source: {{ $meta['previous_source'] }}</div>
+              @endif
+              @if(!empty($meta['wallet_transaction_id'] ?? null))
+                <div class="small text-muted">Wallet Tx: #{{ $meta['wallet_transaction_id'] }}</div>
+              @endif
+              @if(!empty($meta['note'] ?? $meta['reason'] ?? null))
+                <div class="small text-muted">Note: {{ \Illuminate\Support\Str::limit($meta['note'] ?? $meta['reason'], 80) }}</div>
+              @endif
+              @if(!empty($meta))
+                <button class="btn btn-sm btn-link px-0" type="button" data-bs-toggle="collapse" data-bs-target="#{{ $metaId }}">
+                  Raw meta
+                </button>
+                <div class="collapse" id="{{ $metaId }}">
+                  <pre class="small bg-light border rounded p-2 mb-0" style="white-space: pre-wrap;">{{ json_encode($meta, JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES) }}</pre>
+                </div>
+              @endif
+            </td>
 
             <td class="text-end">
               <div class="btn-group">
@@ -163,7 +149,7 @@
           </tr>
         @empty
           <tr>
-            <td colspan="8" class="text-center text-muted py-4">No subscriptions yet.</td> {{-- colspan +1 because of Meta --}}
+            <td colspan="9" class="text-center text-muted py-4">No subscriptions yet.</td>
           </tr>
         @endforelse
       </tbody>

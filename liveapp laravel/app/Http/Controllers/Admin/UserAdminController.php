@@ -25,6 +25,7 @@ use App\Services\AdminAuditService;
 use App\Services\GameAccessService;
 use App\Services\ProfileFrameService;
 use App\Services\UserLevelService;
+use App\Services\WalletService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use App\Models\DeviceBlock;
@@ -407,10 +408,11 @@ public function deviceUnblock(User $user)
             'ends_at' => $endsAt,
             'last_purchased_at' => now(),
             'meta' => [
-                'source' => 'admin_user_360',
+                'source' => 'admin_grant',
                 'charged' => false,
                 'plan_name' => $plan->name,
                 'reason' => $data['reason'] ?? null,
+                'created_via' => 'admin_user_360',
             ],
         ]);
 
@@ -465,12 +467,32 @@ public function deviceUnblock(User $user)
             'is_active' => 'nullable|boolean',
             'purchased_at' => 'nullable|date',
             'expires_at' => 'nullable|date|after:purchased_at',
+            'charge_coins' => 'nullable|boolean',
+            'source_type' => 'nullable|in:admin_grant,gift,promotional_gift,signup_gift',
             'reason' => 'nullable|string|max:500',
         ]);
 
         return DB::transaction(function () use ($request, $user, $data) {
             $pack = EntryPack::query()->findOrFail($data['entry_pack_id']);
             $activate = $request->boolean('is_active');
+            $charge = $request->boolean('charge_coins') && (int) $pack->price_coins > 0;
+            $reference = 'ENTRY_PACK_ADMIN:'.$user->id.':'.$pack->id.':'.uniqid();
+            $walletTx = null;
+
+            if ($charge && (int) $pack->price_coins > 0) {
+                $walletTx = WalletService::spend(
+                    user: $user,
+                    coins: (int) $pack->price_coins,
+                    category: 'other',
+                    counterparty: null,
+                    reference: $reference,
+                    meta: [
+                        'event' => 'ENTRY_PACK_ADMIN_ASSIGN_CHARGED',
+                        'entry_pack_id' => $pack->id,
+                        'entry_pack_name' => $pack->name,
+                    ],
+                );
+            }
 
             $entry = UserEntryPack::query()->create([
                 'user_id' => $user->id,
@@ -479,6 +501,13 @@ public function deviceUnblock(User $user)
                 'purchased_at' => !empty($data['purchased_at']) ? Carbon::parse($data['purchased_at']) : now(),
                 'expires_at' => !empty($data['expires_at']) ? Carbon::parse($data['expires_at']) : now()->addDays((int) ($pack->duration_days ?? 30)),
                 'purchase_key' => 'admin-user-360-'.uniqid(),
+                'source' => $charge ? 'admin_charged' : ($data['source_type'] ?? 'admin_grant'),
+                'charged' => $charge,
+                'price_coins' => $charge ? (int) $pack->price_coins : 0,
+                'wallet_transaction_id' => $walletTx?->id,
+                'granted_by_admin_id' => $request->user()?->id,
+                'purchase_reference' => $reference,
+                'admin_note' => $data['reason'] ?? null,
             ]);
 
             if ($activate) {

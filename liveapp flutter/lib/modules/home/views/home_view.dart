@@ -397,12 +397,17 @@ class _GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     final liveUsersController = Get.find<LiveUsersController>();
-    final showAvailabilityToggle = liveUsersController.isHost;
 
     return Obx(() {
       final tokens = getPremiumThemeTokens(
         Get.find<AppSettingsService>().activePremiumThemeVariant,
       );
+      final canGoLive =
+          Get.find<LiveEligibilityService>().canGoLive.value;
+      final showAvailabilityToggle =
+          canGoLive ||
+          liveUsersController.isHost ||
+          Get.find<HomeController>().canGoLive;
 
       return AppBar(
         automaticallyImplyLeading: false,
@@ -435,8 +440,7 @@ class _GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
               padding: const EdgeInsets.only(right: 4),
               child: Center(
                 child: Obx(() {
-                  final online =
-                      liveUsersController.hostManualStatus.value == 'online';
+                  final online = liveUsersController.hostAppearsLive;
                   final busy = liveUsersController.togglingHostStatus.value;
                   return Row(
                     mainAxisSize: MainAxisSize.min,

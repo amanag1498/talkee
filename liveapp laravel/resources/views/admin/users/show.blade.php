@@ -283,6 +283,17 @@
             <div class="col-md-4"><div class="border rounded-3 p-3"><div class="small text-muted">Active</div><div class="fw-semibold">{{ $activeSubscription?->plan?->name ?? 'None' }}</div></div></div>
             <div class="col-md-4"><div class="border rounded-3 p-3"><div class="small text-muted">Status</div><div class="fw-semibold">{{ $activeSubscription?->status ?? '—' }}</div></div></div>
             <div class="col-md-4"><div class="border rounded-3 p-3"><div class="small text-muted">Ends</div><div class="fw-semibold">{{ $activeSubscription?->ends_at?->format('d M Y') ?? '—' }}</div></div></div>
+            <div class="col-md-12">
+              <div class="border rounded-3 p-3 bg-light">
+                <div class="small text-muted">Active Source</div>
+                @if($activeSubscription)
+                  <span class="badge {{ $activeSubscription->origin_badge_class }}">{{ $activeSubscription->origin_label }}</span>
+                  <span class="small text-muted ms-2">{{ $activeSubscription->origin_description }}</span>
+                @else
+                  <span class="text-muted">—</span>
+                @endif
+              </div>
+            </div>
           </div>
           <form method="post" action="{{ route('admin.users.subscriptions.store', $user) }}" class="row g-2 mb-3">
             @csrf
@@ -307,15 +318,34 @@
           </form>
           <div class="table-responsive">
             <table class="table table-sm align-middle mb-0">
-              <thead><tr><th>ID</th><th>Plan</th><th>Status</th><th>Starts</th><th>Ends</th><th class="text-end">Action</th></tr></thead>
+              <thead><tr><th>ID</th><th>Plan</th><th>Status</th><th>Source</th><th>Starts</th><th>Ends</th><th>Trace</th><th class="text-end">Action</th></tr></thead>
               <tbody>
               @forelse($subscriptions as $subscription)
+                @php
+                  $meta = is_array($subscription->meta ?? null) ? $subscription->meta : [];
+                @endphp
                 <tr>
                   <td>{{ $subscription->id }}</td>
                   <td>{{ $subscription->plan?->name ?? '—' }}</td>
                   <td><span class="badge bg-light text-dark">{{ strtoupper($subscription->status) }}</span></td>
+                  <td>
+                    <span class="badge {{ $subscription->origin_badge_class }}">{{ $subscription->origin_label }}</span>
+                    <div class="small text-muted">{{ filter_var($meta['charged'] ?? false, FILTER_VALIDATE_BOOL) ? 'Coins charged' : 'No wallet charge' }}</div>
+                  </td>
                   <td>{{ $subscription->starts_at?->format('d M Y H:i') }}</td>
                   <td>{{ $subscription->ends_at?->format('d M Y H:i') }}</td>
+                  <td class="small text-muted">
+                    {{ $meta['source'] ?? '—' }}
+                    @if(!empty($meta['event'] ?? $meta['last_action'] ?? null))
+                      · {{ $meta['event'] ?? $meta['last_action'] }}
+                    @endif
+                    @if(!empty($meta['previous_source'] ?? null))
+                      <div>Previous: {{ $meta['previous_source'] }}</div>
+                    @endif
+                    @if(!empty($meta['wallet_transaction_id'] ?? null))
+                      <div>Wallet Tx: #{{ $meta['wallet_transaction_id'] }}</div>
+                    @endif
+                  </td>
                   <td class="text-end">
                     <a href="{{ route('admin.user-subscriptions.edit', $subscription) }}" class="btn btn-sm btn-light border">Edit</a>
                     @if($subscription->status === 'active')
@@ -324,7 +354,7 @@
                   </td>
                 </tr>
               @empty
-                <tr><td colspan="6" class="text-center text-muted py-3">No subscriptions.</td></tr>
+                <tr><td colspan="8" class="text-center text-muted py-3">No subscriptions.</td></tr>
               @endforelse
               </tbody>
             </table>
@@ -342,6 +372,17 @@
             <div class="col-md-4"><div class="border rounded-3 p-3"><div class="small text-muted">Active Pack</div><div class="fw-semibold">{{ $activeEntryPack?->entryPack?->name ?? 'None' }}</div></div></div>
             <div class="col-md-4"><div class="border rounded-3 p-3"><div class="small text-muted">Style</div><div class="fw-semibold">{{ strtoupper($activeEntryPack?->entryPack?->animation_style ?? '—') }}</div></div></div>
             <div class="col-md-4"><div class="border rounded-3 p-3"><div class="small text-muted">Expires</div><div class="fw-semibold">{{ $activeEntryPack?->expires_at?->format('d M Y') ?? '—' }}</div></div></div>
+            <div class="col-md-12">
+              <div class="border rounded-3 p-3 bg-light">
+                <div class="small text-muted">Active Ownership Source</div>
+                @if($activeEntryPack)
+                  <span class="badge {{ $activeEntryPack->origin_badge_class }}">{{ $activeEntryPack->origin_label }}</span>
+                  <span class="small text-muted ms-2">{{ $activeEntryPack->origin_description }}</span>
+                @else
+                  <span class="text-muted">—</span>
+                @endif
+              </div>
+            </div>
           </div>
           <form method="post" action="{{ route('admin.users.entry-packs.store', $user) }}" class="row g-2 mb-3">
             @csrf
@@ -355,12 +396,26 @@
             <div class="col-md-3"><input type="datetime-local" name="purchased_at" class="form-control"></div>
             <div class="col-md-3"><input type="datetime-local" name="expires_at" class="form-control"></div>
             <div class="col-md-2 d-flex align-items-center"><div class="form-check"><input class="form-check-input" type="checkbox" name="is_active" value="1" id="is_active_entry" checked><label class="form-check-label" for="is_active_entry">Active</label></div></div>
+            <div class="col-md-4">
+              <select name="source_type" class="form-select">
+                <option value="admin_grant">Admin grant</option>
+                <option value="gift">Gift</option>
+                <option value="promotional_gift">Promotional gift</option>
+                <option value="signup_gift">Signup gift</option>
+              </select>
+            </div>
+            <div class="col-md-4 d-flex align-items-center">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="charge_coins" value="1" id="charge_entry_pack">
+                <label class="form-check-label" for="charge_entry_pack">Charge pack coins from user wallet</label>
+              </div>
+            </div>
             <div class="col-12"><input type="text" name="reason" class="form-control" placeholder="Reason"></div>
             <div class="col-12 d-grid"><button class="btn btn-primary">Assign Entry Pack</button></div>
           </form>
           <div class="table-responsive">
             <table class="table table-sm align-middle mb-0">
-              <thead><tr><th>ID</th><th>Pack</th><th>Status</th><th>Purchased</th><th>Expires</th></tr></thead>
+              <thead><tr><th>ID</th><th>Pack</th><th>Status</th><th>Source</th><th>Trace</th><th>Purchased</th><th>Expires</th></tr></thead>
               <tbody>
               @forelse($entryHistory as $entry)
                 <tr>
@@ -375,11 +430,24 @@
                       <span class="badge bg-secondary">Inactive</span>
                     @endif
                   </td>
+                  <td>
+                    <span class="badge {{ $entry->origin_badge_class }}">{{ $entry->origin_label }}</span>
+                    <div class="small text-muted">{{ $entry->charged ? 'Coins charged' : 'No wallet charge' }}</div>
+                  </td>
+                  <td class="small text-muted">
+                    Source: {{ $entry->source ?: 'legacy' }}
+                    @if($entry->wallet_transaction_id)
+                      <div>Wallet Tx: #{{ $entry->wallet_transaction_id }}</div>
+                    @endif
+                    @if($entry->admin_note)
+                      <div>Note: {{ \Illuminate\Support\Str::limit($entry->admin_note, 80) }}</div>
+                    @endif
+                  </td>
                   <td>{{ $entry->purchased_at?->format('d M Y H:i') }}</td>
                   <td>{{ $entry->expires_at?->format('d M Y H:i') ?? '—' }}</td>
                 </tr>
               @empty
-                <tr><td colspan="5" class="text-center text-muted py-3">No entry packs.</td></tr>
+                <tr><td colspan="7" class="text-center text-muted py-3">No entry packs.</td></tr>
               @endforelse
               </tbody>
             </table>

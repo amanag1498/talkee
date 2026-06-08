@@ -55,7 +55,7 @@ class EnsureFeatureEnabled
             'host_calling_enabled' => 'Host calling is currently unavailable.',
             'teen_patti_enabled' => 'Teen Patti is currently unavailable.',
             'greedy_enabled' => 'Greedy is currently unavailable.',
-            'video_room_games_enabled' => 'Video room games are currently unavailable.',
+            'video_room_games_enabled' => 'Live room games are currently unavailable.',
             default => 'This feature is currently unavailable.',
         };
     }

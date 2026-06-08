@@ -20,23 +20,29 @@ class UserSubscriptionController extends Controller
     {
     }
 
-    public function index()
+    public function index(Request $request)
     {
+        $origin = $request->string('origin')->toString();
+        $status = $request->string('status')->toString();
+
         $subs = UserSubscription::with(['user','plan'])
+            ->when(in_array($status, ['active', 'expired', 'cancelled'], true), fn ($q) => $q->where('status', $status))
+            ->origin($origin)
             ->orderByDesc('created_at')
-            ->paginate(30);
+            ->paginate(30)
+            ->withQueryString();
 
         $summary = [
             'active' => UserSubscription::query()->where('status', 'active')->count(),
             'expired' => UserSubscription::query()->where('status', 'expired')->count(),
             'cancelled' => UserSubscription::query()->where('status', 'cancelled')->count(),
-            'gifted' => UserSubscription::query()->where('meta->source', 'signup_gift')->count(),
-            'renewal_rate' => UserSubscription::query()->count() > 0
-                ? round((UserSubscription::query()->where('meta->event', 'like', '%UPDATE%')->count() / max(1, UserSubscription::query()->count())) * 100, 1)
-                : 0,
+            'purchased' => UserSubscription::query()->origin('purchased')->count(),
+            'gifted' => UserSubscription::query()->origin('gifted')->count(),
+            'admin_grant' => UserSubscription::query()->origin('admin_grant')->count(),
+            'admin_charged' => UserSubscription::query()->origin('admin_charged')->count(),
         ];
 
-        return view('admin.subscriptions.users.index', compact('subs', 'summary'));
+        return view('admin.subscriptions.users.index', compact('subs', 'summary', 'origin', 'status'));
     }
 
     public function create()
@@ -56,8 +62,9 @@ class UserSubscriptionController extends Controller
 
         return DB::transaction(function () use ($user,$plan,$data,$svc,$charge,$req) {
             // optionally charge wallet
+            $walletTx = null;
             if ($charge) {
-                WalletService::spend(
+                $walletTx = WalletService::spend(
                     user: $user,
                     coins: $plan->price_coins,
                     category: 'subscription',
@@ -73,11 +80,15 @@ class UserSubscriptionController extends Controller
 
             // compose meta
             $incomingMeta = (array)($data['meta'] ?? $req->input('meta', []));
+            $source = $charge ? 'admin_charged' : ($req->input('source_type') ?: 'admin_grant');
             $meta = array_merge($incomingMeta, [
-                'source'     => 'admin',
-                'event'      => $charge ? 'ADMIN_CREATE_CHARGED' : 'ADMIN_CREATE',
+                'source'     => $source,
+                'event'      => $charge ? 'ADMIN_CREATE_CHARGED' : 'ADMIN_CREATE_GRANT',
                 'charged'    => $charge,
                 'plan_name'  => $plan->name,
+                'price_coins' => (int) $plan->price_coins,
+                'wallet_transaction_id' => $walletTx->id ?? null,
+                'note'       => $req->input('meta.note'),
                 'created_at' => $now->toIso8601String(),
             ]);
 
@@ -117,8 +128,9 @@ class UserSubscriptionController extends Controller
 
         return DB::transaction(function () use ($user_subscription,$data,$plan,$charge,$req) {
             $before = $user_subscription->fresh(['plan', 'user'])->toArray();
+            $walletTx = null;
             if ($charge) {
-                WalletService::spend(
+                $walletTx = WalletService::spend(
                     user: $user_subscription->user,
                     coins: $plan->price_coins,
                     category: 'subscription',
@@ -136,7 +148,11 @@ class UserSubscriptionController extends Controller
             $incomingMeta = (array)($data['meta'] ?? $req->input('meta', []));
             $meta = array_merge($existingMeta, $incomingMeta, [
                 'last_action'    => $charge ? 'ADMIN_UPDATE_CHARGED' : 'ADMIN_UPDATE',
+                'source'         => $charge ? 'admin_charged' : ($incomingMeta['source'] ?? $existingMeta['source'] ?? 'admin_grant'),
+                'charged'        => $charge || filter_var($existingMeta['charged'] ?? false, FILTER_VALIDATE_BOOL),
                 'plan_name'      => $plan->name,
+                'price_coins'    => (int) $plan->price_coins,
+                'wallet_transaction_id' => $charge ? ($walletTx->id ?? null) : ($existingMeta['wallet_transaction_id'] ?? null),
                 'last_updated_at'=> now()->toIso8601String(),
             ]);
 

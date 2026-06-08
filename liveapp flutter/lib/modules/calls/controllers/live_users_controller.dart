@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import '../../../app/utils/profile_frame_payload.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/call_service.dart';
+import '../../../services/presence_service.dart';
 import '../../profile/controllers/host_follow_controller.dart';
 import 'call_controller.dart';
 
@@ -32,6 +33,7 @@ class LiveUsersController extends GetxController {
   bool _fetchInFlight = false;
 
   bool get isHost => _auth.currentUser?.roles.contains('host') ?? false;
+  bool get hostAppearsLive => hostManualStatus.value == 'online';
 
   @override
   void onInit() {
@@ -45,6 +47,9 @@ class LiveUsersController extends GetxController {
       if (event == null) return;
       final userId = (event['user_id'] as num?)?.toInt();
       if (userId == null) return;
+      if (userId == _auth.currentUser?.id) {
+        _applyHostStatus(event);
+      }
       if (!_directoryActivated) return;
       final isOnline =
           event['manual_status'] == 'online' &&
@@ -175,7 +180,7 @@ class LiveUsersController extends GetxController {
   Future<void> refreshHostStatus() async {
     if (!isHost) return;
     final status = await _callService.fetchHostStatus();
-    hostManualStatus.value = (status['manual_status'] ?? 'offline').toString();
+    _applyHostStatus(status);
   }
 
   Future<void> toggleHostStatus() async {
@@ -186,8 +191,12 @@ class LiveUsersController extends GetxController {
     final next = hostManualStatus.value == 'online' ? 'offline' : 'online';
     togglingHostStatus.value = true;
     try {
+      if (next == 'online') {
+        await PresenceService.instance.resumeOnline();
+        await _callController.restartSocket();
+      }
       final status = await _callService.toggleHostStatus(next);
-      hostManualStatus.value = (status['manual_status'] ?? next).toString();
+      _applyHostStatus(status);
       await fetch(reset: true);
     } on DioException catch (e) {
       final statusCode = e.response?.statusCode;
@@ -279,6 +288,15 @@ class LiveUsersController extends GetxController {
       return int.tryParse(value) ?? 0;
     }
     return 0;
+  }
+
+  void _applyHostStatus(Map<String, dynamic> status) {
+    final manualStatus = (status['manual_status'] ?? 'offline').toString();
+    final socketStatus = (status['socket_status'] ?? 'offline').toString();
+    hostManualStatus.value =
+        manualStatus == 'online' && socketStatus == 'online'
+            ? 'online'
+            : 'offline';
   }
 
   void _sortUsers() {

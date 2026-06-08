@@ -740,6 +740,11 @@ presenceNs.on('connection', (socket) => {
 
   socket.on('presence:ping', async () => {
     await redis.set(presenceHbKey(userId), Date.now(), 'PX', HEARTBEAT_MS);
+    const now = Date.now();
+    if (!socket.lastLaravelPresenceSyncAt || now - socket.lastLaravelPresenceSyncAt >= HEARTBEAT_MS) {
+      socket.lastLaravelPresenceSyncAt = now;
+      syncSocketPresenceWithLaravel(socket.authToken, 'online');
+    }
   });
 
   socket.on('presence:offline', async () => {

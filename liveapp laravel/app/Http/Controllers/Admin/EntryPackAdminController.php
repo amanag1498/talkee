@@ -81,19 +81,35 @@ class EntryPackAdminController extends Controller
         return redirect()->route('admin.entry-packs.index')->with('ok', 'Entry pack deleted.');
     }
 
-    public function reports()
+    public function reports(Request $request)
     {
+        $origin = $request->string('origin')->toString();
+        $status = $request->string('status')->toString();
         $report = $this->entryPacks->reportSummary();
         $report['expired_owned'] = UserEntryPack::query()->whereNotNull('expires_at')->where('expires_at', '<=', now())->count();
         $report['expiry_churn_rate'] = $report['purchases'] > 0
             ? round(($report['expired_owned'] / max(1, $report['purchases'])) * 100, 1)
             : 0;
-        $recentPurchases = UserEntryPack::query()
-            ->with(['user:id,name,email', 'entryPack:id,name,price_coins,animation_style'])
-            ->latest('id')
-            ->paginate(25);
+        $report['purchased'] = UserEntryPack::query()->origin('purchased')->count();
+        $report['gifted'] = UserEntryPack::query()->origin('gifted')->count();
+        $report['admin_grant'] = UserEntryPack::query()->origin('admin_grant')->count();
+        $report['admin_charged'] = UserEntryPack::query()->origin('admin_charged')->count();
 
-        return view('admin.entry-packs.reports', compact('report', 'recentPurchases'));
+        $recentPurchases = UserEntryPack::query()
+            ->with(['user:id,name,email', 'entryPack:id,name,price_coins,animation_style', 'walletTransaction:id,coins,balance_after,created_at', 'grantedByAdmin:id,name,email'])
+            ->origin($origin)
+            ->when($status === 'active', fn ($q) => $q->where('is_active', true)->where(function ($inner) {
+                $inner->whereNull('expires_at')->orWhere('expires_at', '>', now());
+            }))
+            ->when($status === 'expired', fn ($q) => $q->whereNotNull('expires_at')->where('expires_at', '<=', now()))
+            ->when($status === 'inactive', fn ($q) => $q->where('is_active', false)->where(function ($inner) {
+                $inner->whereNull('expires_at')->orWhere('expires_at', '>', now());
+            }))
+            ->latest('id')
+            ->paginate(25)
+            ->withQueryString();
+
+        return view('admin.entry-packs.reports', compact('report', 'recentPurchases', 'origin', 'status'));
     }
 
     public function editPurchase(UserEntryPack $userEntryPack)
@@ -118,6 +134,10 @@ class EntryPackAdminController extends Controller
             'is_active' => 'nullable|boolean',
             'purchased_at' => 'nullable|date',
             'expires_at' => 'nullable|date|after_or_equal:purchased_at',
+            'source' => 'nullable|in:USER_PURCHASE,user_purchase,admin_grant,admin_charged,admin_user_360,gift,promotional_gift,signup_gift,other',
+            'charged' => 'nullable|boolean',
+            'price_coins' => 'nullable|integer|min:0',
+            'admin_note' => 'nullable|string|max:1000',
         ]);
 
         $userEntryPack->update([
@@ -125,6 +145,10 @@ class EntryPackAdminController extends Controller
             'is_active' => $request->boolean('is_active'),
             'purchased_at' => $data['purchased_at'] ?? $userEntryPack->purchased_at,
             'expires_at' => $data['expires_at'] ?? $userEntryPack->expires_at,
+            'source' => $data['source'] ?? $userEntryPack->source,
+            'charged' => $request->boolean('charged'),
+            'price_coins' => (int) ($data['price_coins'] ?? $userEntryPack->price_coins ?? 0),
+            'admin_note' => $data['admin_note'] ?? $userEntryPack->admin_note,
         ]);
 
         if ($request->boolean('is_active')) {

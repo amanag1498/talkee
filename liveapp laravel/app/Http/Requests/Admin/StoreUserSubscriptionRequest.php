@@ -18,9 +18,9 @@ class StoreUserSubscriptionRequest extends FormRequest
             'starts_at'    => 'nullable|date',
             'ends_at'      => 'nullable|date|after_or_equal:starts_at',
             'charge_coins' => 'sometimes|boolean',   // admin toggle
-             'meta'       => ['nullable','array'],
-        'meta.note'  => ['nullable','string','max:500'],
+            'source_type'  => 'nullable|in:admin_grant,signup_gift,gift',
+            'meta'         => ['nullable','array'],
+            'meta.note'    => ['nullable','string','max:500'],
         ];
     }
 }
-

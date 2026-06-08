@@ -83,7 +83,7 @@ class UserModel {
       isBlocked: (j['is_blocked'] ?? false) as bool,
       roles: roles,
       permissions: perms,
-      canGoLive: (j['can_go_live'] ?? false) as bool,
+      canGoLive: _asBool(j['can_go_live'] ?? j['canGoLive']),
       level: (j['level'] as num?)?.toInt(),
       levelTitle: j['level_title']?.toString(),
       badgeIcon: j['badge_icon']?.toString(),
@@ -175,6 +175,13 @@ class UserModel {
       hostProfile: hostProfile ?? this.hostProfile,
     );
   }
+}
+
+bool _asBool(dynamic value) {
+  if (value is bool) return value;
+  if (value is num) return value != 0;
+  final normalized = value?.toString().trim().toLowerCase();
+  return normalized == 'true' || normalized == '1' || normalized == 'yes';
 }
 
 class HostProfile {

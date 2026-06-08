@@ -15,6 +15,15 @@
             <ul class="mb-0 ps-3">@foreach($errors->all() as $e)<li>{{ $e }}</li>@endforeach</ul>
           </div>
         @endif
+        <div class="alert alert-light border">
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <span class="badge {{ $userPack->origin_badge_class }}">{{ $userPack->origin_label }}</span>
+            <span class="small text-muted">{{ $userPack->origin_description }}</span>
+          </div>
+          @if($userPack->wallet_transaction_id)
+            <div class="small text-muted mt-1">Wallet Tx: #{{ $userPack->wallet_transaction_id }}</div>
+          @endif
+        </div>
         <form method="post" action="{{ route('admin.entry-packs.purchases.update', $userPack) }}" class="vstack gap-3">
           @csrf
           @method('PUT')
@@ -46,6 +55,40 @@
             <input type="hidden" name="is_active" value="0">
             <input class="form-check-input" type="checkbox" id="is_active" name="is_active" value="1" {{ old('is_active', (int) $userPack->is_active) ? 'checked' : '' }}>
             <label class="form-check-label" for="is_active">Active for this user</label>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Ownership Source</label>
+              <select name="source" class="form-select">
+                @foreach([
+                  'USER_PURCHASE' => 'Purchased by user',
+                  'gift' => 'Gifted',
+                  'promotional_gift' => 'Promotional gift',
+                  'signup_gift' => 'Signup gift',
+                  'admin_grant' => 'Admin grant',
+                  'admin_charged' => 'Admin charged',
+                  'admin_user_360' => 'Legacy user 360 grant',
+                  'other' => 'Other',
+                ] as $value => $label)
+                  <option value="{{ $value }}" @selected(old('source', $userPack->source ?: 'USER_PURCHASE') === $value)>{{ $label }}</option>
+                @endforeach
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Price Coins</label>
+              <input type="number" min="0" name="price_coins" class="form-control" value="{{ old('price_coins', (int) ($userPack->price_coins ?: $userPack->entryPack?->price_coins ?? 0)) }}">
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+              <div class="form-check mb-2">
+                <input type="hidden" name="charged" value="0">
+                <input class="form-check-input" type="checkbox" id="charged" name="charged" value="1" {{ old('charged', (int) $userPack->charged) ? 'checked' : '' }}>
+                <label class="form-check-label" for="charged">Coins were charged</label>
+              </div>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Admin Note</label>
+              <textarea name="admin_note" class="form-control" rows="2" placeholder="Trace note visible to admins">{{ old('admin_note', $userPack->admin_note) }}</textarea>
+            </div>
           </div>
           <div class="d-flex gap-2">
             <button class="btn btn-primary">Update</button>

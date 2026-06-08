@@ -10,8 +10,10 @@ import '../../../app/routes/app_routes.dart';
 import '../../../app/routes/app_urls.dart';
 import '../../../app/theme/brand.dart';
 import '../../../app/widgets/haptics.dart';
+import '../../../app/widgets/keep_awake_scope.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/app_settings_service.dart';
+import '../../../services/call_vibration_service.dart';
 import '../../../services/call_service.dart';
 import '../../../services/call_socket_service.dart';
 import '../../wallet/widgets/recharge_bottom_sheet.dart';
@@ -49,6 +51,7 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
   bool _isExitingCall = false;
   bool _terminalStateHandled = false;
   bool _roomBusy = false;
+  bool _callWakeLockAcquired = false;
   final Set<String> _handledEvents = <String>{};
   OverlayEntry? _callOverlay;
   OverlayEntry? _incomingOverlay;
@@ -214,6 +217,7 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
         incomingCall.value = payload;
         callState.value = 'incoming_ringing';
         _startRingingTimeout(incoming: true);
+        _startIncomingVibration();
         _emitStateHaptic('incoming');
         _showIncomingOverlay();
       },
@@ -223,11 +227,13 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
       onCallAccepted: (payload) async {
         if (_seenEvent('accepted:${payload['call_id']}')) return;
         if (_terminalStateHandled || _isExitingCall) return;
+        _stopIncomingVibration();
         _removeIncomingOverlay();
         activeCall.value = {
           ...?activeCall.value,
           ...payload,
         };
+        _acquireCallWakeLock();
         incomingCall.value = null;
         _stopRingingTimeout();
         callState.value = callToken.value == null ? 'connecting' : 'connected';
@@ -293,6 +299,7 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
       _prepareForNewCall();
       final payload = await _callService.requestCall(receiverId: receiverId, type: type);
       activeCall.value = payload;
+      _acquireCallWakeLock();
       callState.value = 'outgoing_ringing';
       _startRingingTimeout(incoming: false);
       _emitStateHaptic('outgoing');
@@ -336,8 +343,10 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
         if ((incomingSnapshot['caller_avatar_url'] ?? '').toString().trim().isNotEmpty)
           'caller_avatar_url': incomingSnapshot['caller_avatar_url'].toString(),
       };
+      _acquireCallWakeLock();
       incomingCall.value = null;
       callState.value = 'connecting';
+      _stopIncomingVibration();
       await loadTokenForCall(callId);
       _navigateSafely(Routes.activeCall, replace: true, disallowIfCurrent: const [Routes.activeCall]);
     } catch (e) {
@@ -356,6 +365,7 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
     try {
       await Haptics.heavy();
       _handledEvents.add('rejected:$callId');
+      _stopIncomingVibration();
       _removeIncomingOverlay();
       _stopRingingTimeout();
       await _callService.rejectCall(callId);
@@ -967,6 +977,7 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
     _terminalHandling = true;
     _terminalStateHandled = true;
     callState.value = state;
+    _stopIncomingVibration();
     if (payload != null) {
       activeCall.value = {...?activeCall.value, ...payload};
     }
@@ -984,6 +995,7 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
     incomingCall.value = null;
     activeCall.value = null;
     callToken.value = null;
+    _releaseCallWakeLock();
     roomError.value = '';
     callMinimized.value = false;
     _stopRingingTimeout();
@@ -1013,6 +1025,18 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
     try {
       room?.dispose();
     } catch (_) {}
+  }
+
+  void _acquireCallWakeLock() {
+    if (_callWakeLockAcquired) return;
+    _callWakeLockAcquired = true;
+    KeepAwakeController.acquire();
+  }
+
+  void _releaseCallWakeLock() {
+    if (!_callWakeLockAcquired) return;
+    _callWakeLockAcquired = false;
+    KeepAwakeController.release();
   }
 
   void _removeOverlay() {
@@ -1116,14 +1140,24 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
     ringingSecondsLeft.value = 0;
   }
 
+  void _startIncomingVibration() {
+    unawaited(CallVibrationService.startIncomingCallVibration());
+  }
+
+  void _stopIncomingVibration() {
+    unawaited(CallVibrationService.stopIncomingCallVibration());
+  }
+
   @override
   void onClose() {
     WidgetsBinding.instance.removeObserver(this);
     _removeOverlay();
     _removeIncomingOverlay();
     _stopRingingTimeout();
+    _stopIncomingVibration();
     _stopTicker();
     _disposeRoom();
+    _releaseCallWakeLock();
     _socketService.stop();
     super.onClose();
   }
@@ -1133,6 +1167,7 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       restartSocket();
       if (hasActiveCall && callToken.value != null) {
+        KeepAwakeController.reassert();
         ensureRoomConnected();
       }
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
@@ -1204,6 +1239,7 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
     _stopTicker();
     elapsedSeconds.value = 0;
     _stopRingingTimeout();
+    _stopIncomingVibration();
     _removeOverlay();
     _removeIncomingOverlay();
   }

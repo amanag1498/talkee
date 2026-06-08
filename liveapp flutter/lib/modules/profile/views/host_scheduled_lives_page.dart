@@ -47,17 +47,10 @@ class _HostScheduledLivesPageState extends State<HostScheduledLivesPage> {
       );
       await _rooms.refreshRooms();
       if (!mounted) return;
-      if (room.isAudioRoom) {
-        await Get.toNamed(
-          Routes.liveAudio,
-          arguments: {'room': started},
-        );
-      } else {
-        await Get.toNamed(
-          Routes.liveVideo,
-          arguments: {'room': started},
-        );
-      }
+      await Get.toNamed(
+        Routes.liveAudio,
+        arguments: {'room': started},
+      );
     } catch (e) {
       Get.snackbar(
         'Unable to start room',

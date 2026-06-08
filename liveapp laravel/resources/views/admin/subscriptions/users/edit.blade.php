@@ -8,6 +8,14 @@
 
 <div class="card">
   <div class="card-body">
+    @php
+      $meta = is_array($sub->meta ?? null) ? $sub->meta : [];
+    @endphp
+    <div class="alert alert-light border d-flex flex-wrap gap-2 align-items-center">
+      <span class="fw-semibold">Current source:</span>
+      <span class="badge {{ $sub->origin_badge_class }}">{{ $sub->origin_label }}</span>
+      <span class="text-muted small">{{ $sub->origin_description }}</span>
+    </div>
 
     {{-- UPDATE FORM (no submit button inside) --}}
     <form id="update-sub" method="POST"
@@ -59,6 +67,31 @@
       <div class="form-check mt-2">
         <input class="form-check-input" type="checkbox" id="charge_coins" name="charge_coins" value="1">
         <label class="form-check-label" for="charge_coins">Charge coins from user wallet now</label>
+      </div>
+
+      <div class="row">
+        <div class="col-md-4">
+          <label class="form-label">Source correction</label>
+          <select name="meta[source]" class="form-select">
+            @foreach([
+              'USER_PURCHASE' => 'Purchased by user',
+              'signup_gift' => 'Signup gift',
+              'gift' => 'Gift / promotion',
+              'admin_grant' => 'Admin grant',
+              'admin_charged' => 'Admin charged',
+              'admin' => 'Legacy admin',
+              'admin_user_360' => 'Legacy user 360',
+              'other' => 'Other',
+            ] as $value => $label)
+              <option value="{{ $value }}" @selected(($meta['source'] ?? '') === $value)>{{ $label }}</option>
+            @endforeach
+          </select>
+          <div class="form-text">Use this to fix legacy records that are unclear.</div>
+        </div>
+        <div class="col-md-8">
+          <label class="form-label">Admin note</label>
+          <input type="text" name="meta[note]" class="form-control" maxlength="500" value="{{ $meta['note'] ?? $meta['reason'] ?? '' }}">
+        </div>
       </div>
     </form>
 

@@ -54,6 +54,22 @@
         <label class="form-check-label" for="charge_coins">Charge coins from user wallet now</label>
       </div>
 
+      <div class="row">
+        <div class="col-md-4">
+          <label class="form-label">Source when not charging</label>
+          <select name="source_type" class="form-select">
+            <option value="admin_grant">Admin grant</option>
+            <option value="signup_gift">Signup gift</option>
+            <option value="gift">Gift / promotion</option>
+          </select>
+          <div class="form-text">If “Charge coins” is checked, this will be recorded as Admin Charged.</div>
+        </div>
+        <div class="col-md-8">
+          <label class="form-label">Admin note</label>
+          <input type="text" name="meta[note]" class="form-control" maxlength="500" placeholder="Reason or context visible in admin trace">
+        </div>
+      </div>
+
       <div>
         <button class="btn btn-primary">Create</button>
         <a href="{{ route('admin.user-subscriptions.index') }}" class="btn btn-light">Cancel</a>

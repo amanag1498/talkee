@@ -80,14 +80,27 @@ public function grant(User $user, SubscriptionPlan $plan, string $reason = 'sign
             $base = ($active && $active->ends_at && $active->ends_at->gt($now)) ? $active->ends_at->clone() : $now->clone();
             $ends = $base->addDays($plan->duration_days);
 
+            $purchaseMeta = [
+                'source' => 'USER_PURCHASE',
+                'event' => 'SUBSCRIPTION_PURCHASE',
+                'charged' => true,
+                'plan_name' => $plan->name,
+                'price_coins' => (int) $plan->price_coins,
+                'wallet_transaction_id' => $walletTx->id ?? null,
+                'purchased_at' => $now->toIso8601String(),
+            ];
+
             if ($active) {
                 $meta = $active->meta ?? [];
-                $meta['source'] = $meta['source'] ?? 'USER_PURCHASE';
+                if (! empty($meta['source']) && $meta['source'] !== 'USER_PURCHASE') {
+                    $meta['previous_source'] = $meta['source'];
+                }
+
                 $active->update([
                     'ends_at'           => $ends,
                     'last_purchased_at' => $now,
                     'status'            => 'active',
-                    'meta'              => $meta,
+                    'meta'              => array_merge($meta, $purchaseMeta),
                 ]);
                 DB::afterCommit(function () use ($user, $plan, $walletTx) {
                     try {
@@ -111,7 +124,7 @@ public function grant(User $user, SubscriptionPlan $plan, string $reason = 'sign
                 'starts_at'            => $now,
                 'ends_at'              => $ends,
                 'last_purchased_at'    => $now,
-                'meta'                 => ['source' => 'USER_PURCHASE'],   // 👈
+                'meta'                 => $purchaseMeta,
             ])->load('plan');
 
             DB::afterCommit(function () use ($user, $plan, $walletTx) {

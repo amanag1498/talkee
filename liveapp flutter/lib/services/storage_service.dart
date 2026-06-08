@@ -50,8 +50,8 @@ class StorageService {
   Future<void> setCanGoLive(bool value) async {
     final current = userJson ?? <String, dynamic>{};
     final copy = Map<String, dynamic>.from(current);
-    copy['canGoLive']  = value; // your app reads this
-    //copy['can_go_live'] = value; // optional: parity with backend naming
+    copy['canGoLive'] = value;
+    copy['can_go_live'] = value;
     await _box.write(_kUser, copy);
   }
 

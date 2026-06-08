@@ -37,13 +37,16 @@ class AppRuntimeGate extends StatelessWidget {
 
       if (settings.maintenanceModeEnabled) {
         return const _BlockingStateScreen(
-          icon: Icons.build_circle_rounded,
-          eyebrow: 'Maintenance mode',
-          title: 'Talkieo is temporarily unavailable.',
+          icon: Icons.engineering_rounded,
+          eyebrow: 'Maintenance in progress',
+          title: 'We are tuning Talkieo right now',
           message:
-              'The platform is under maintenance. Please try again shortly.',
-          detailLabel: 'Service status',
-          detailValue: 'We will be back soon',
+              'Rooms, calls and wallet actions are paused while we finish a platform update. Please check back shortly.',
+          detailLabel: 'Current status',
+          detailValue: 'Service paused temporarily',
+          footerMessage:
+              'Your wallet balance, subscriptions and host earnings are safe during maintenance.',
+          maintenanceMode: true,
         );
       }
 
@@ -62,6 +65,8 @@ class _BlockingStateScreen extends StatelessWidget {
     this.detailValue,
     this.primaryActionLabel,
     this.onPrimaryAction,
+    this.footerMessage,
+    this.maintenanceMode = false,
   });
 
   final IconData icon;
@@ -72,6 +77,8 @@ class _BlockingStateScreen extends StatelessWidget {
   final String? detailValue;
   final String? primaryActionLabel;
   final Future<void> Function()? onPrimaryAction;
+  final String? footerMessage;
+  final bool maintenanceMode;
 
   @override
   Widget build(BuildContext context) {
@@ -79,6 +86,11 @@ class _BlockingStateScreen extends StatelessWidget {
     final tokens = getPremiumThemeTokens(settings.activePremiumThemeVariant);
     final media = MediaQuery.of(context);
     final compact = media.size.height < 700;
+    final accent = maintenanceMode
+        ? tokens.successColor
+        : primaryActionLabel == null
+            ? tokens.primaryButtonGradient.first
+            : tokens.dangerColor;
 
     return Material(
       color: tokens.backgroundGradient.first,
@@ -97,11 +109,11 @@ class _BlockingStateScreen extends StatelessWidget {
         child: Stack(
           children: [
             Positioned(
-              top: -90,
-              right: -70,
+              top: maintenanceMode ? -60 : -90,
+              right: maintenanceMode ? -110 : -70,
               child: _GlowOrb(
-                size: 240,
-                color: tokens.primaryButtonGradient.first,
+                size: maintenanceMode ? 300 : 240,
+                color: accent,
               ),
             ),
             Positioned(
@@ -109,7 +121,9 @@ class _BlockingStateScreen extends StatelessWidget {
               left: -80,
               child: _GlowOrb(
                 size: 280,
-                color: tokens.primaryButtonGradient.last,
+                color: maintenanceMode
+                    ? tokens.primaryButtonGradient.first
+                    : tokens.primaryButtonGradient.last,
               ),
             ),
             SafeArea(
@@ -172,15 +186,17 @@ class _BlockingStateScreen extends StatelessWidget {
                                   const Spacer(),
                                   _StatusPill(
                                     label: eyebrow,
-                                    color:
-                                        primaryActionLabel == null
-                                            ? tokens.primaryButtonGradient.first
-                                            : tokens.dangerColor,
+                                    color: accent,
                                   ),
                                 ],
                               ),
                               SizedBox(height: compact ? 18 : 24),
-                              _IconBadge(icon: icon, tokens: tokens),
+                              _IconBadge(
+                                icon: icon,
+                                tokens: tokens,
+                                accent: accent,
+                                maintenanceMode: maintenanceMode,
+                              ),
                               const SizedBox(height: 16),
                               Text(
                                 title,
@@ -211,6 +227,12 @@ class _BlockingStateScreen extends StatelessWidget {
                                   label: detailLabel ?? '',
                                   value: detailValue ?? '',
                                   tokens: tokens,
+                                  leadingLabel: maintenanceMode
+                                      ? 'Mode'
+                                      : 'Current app',
+                                  trailingLabel: maintenanceMode
+                                      ? 'Status'
+                                      : 'Minimum',
                                 ),
                               ],
                               if (primaryActionLabel != null &&
@@ -233,6 +255,15 @@ class _BlockingStateScreen extends StatelessWidget {
                                     height: 1.35,
                                     fontWeight: FontWeight.w600,
                                   ),
+                                ),
+                              ],
+                              if (footerMessage != null &&
+                                  footerMessage!.trim().isNotEmpty) ...[
+                                const SizedBox(height: 18),
+                                _MaintenanceNote(
+                                  message: footerMessage!,
+                                  tokens: tokens,
+                                  accent: accent,
                                 ),
                               ],
                             ],
@@ -307,29 +338,65 @@ class _StatusPill extends StatelessWidget {
 }
 
 class _IconBadge extends StatelessWidget {
-  const _IconBadge({required this.icon, required this.tokens});
+  const _IconBadge({
+    required this.icon,
+    required this.tokens,
+    required this.accent,
+    required this.maintenanceMode,
+  });
 
   final IconData icon;
   final PremiumThemeTokens tokens;
+  final Color accent;
+  final bool maintenanceMode;
 
   @override
   Widget build(BuildContext context) {
     return Center(
       child: Container(
-        width: 74,
-        height: 74,
+        width: maintenanceMode ? 82 : 74,
+        height: maintenanceMode ? 82 : 74,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(26),
-          gradient: LinearGradient(colors: tokens.primaryButtonGradient),
+          borderRadius: BorderRadius.circular(maintenanceMode ? 30 : 26),
+          gradient: maintenanceMode
+              ? LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    accent.withOpacity(.95),
+                    tokens.primaryButtonGradient.first.withOpacity(.92),
+                  ],
+                )
+              : LinearGradient(colors: tokens.primaryButtonGradient),
+          border: maintenanceMode
+              ? Border.all(color: Colors.white.withOpacity(.18))
+              : null,
           boxShadow: [
             BoxShadow(
-              color: tokens.glowColor.withOpacity(.45),
-              blurRadius: 26,
+              color: accent.withOpacity(.38),
+              blurRadius: maintenanceMode ? 34 : 26,
               offset: const Offset(0, 14),
             ),
           ],
         ),
-        child: Icon(icon, color: Colors.white, size: 34),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            if (maintenanceMode)
+              Positioned.fill(
+                child: Padding(
+                  padding: const EdgeInsets.all(11),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: Colors.white.withOpacity(.16)),
+                    ),
+                  ),
+                ),
+              ),
+            Icon(icon, color: Colors.white, size: maintenanceMode ? 38 : 34),
+          ],
+        ),
       ),
     );
   }
@@ -340,11 +407,15 @@ class _VersionStrip extends StatelessWidget {
     required this.label,
     required this.value,
     required this.tokens,
+    required this.leadingLabel,
+    required this.trailingLabel,
   });
 
   final String label;
   final String value;
   final PremiumThemeTokens tokens;
+  final String leadingLabel;
+  final String trailingLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -357,14 +428,56 @@ class _VersionStrip extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Expanded(child: _VersionText(label: 'Current app', value: label)),
+          Expanded(child: _VersionText(label: leadingLabel, value: label)),
           Container(
             width: 1,
             height: 34,
             margin: const EdgeInsets.symmetric(horizontal: 12),
             color: Colors.white.withOpacity(.12),
           ),
-          Expanded(child: _VersionText(label: 'Minimum', value: value)),
+          Expanded(child: _VersionText(label: trailingLabel, value: value)),
+        ],
+      ),
+    );
+  }
+}
+
+class _MaintenanceNote extends StatelessWidget {
+  const _MaintenanceNote({
+    required this.message,
+    required this.tokens,
+    required this.accent,
+  });
+
+  final String message;
+  final PremiumThemeTokens tokens;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: accent.withOpacity(.10),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: accent.withOpacity(.26)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.verified_user_rounded, color: accent, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                color: tokens.textSecondary.withOpacity(.88),
+                fontSize: 12.5,
+                height: 1.35,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
         ],
       ),
     );

@@ -92,6 +92,7 @@ class EntryPackService
             $reference = 'ENTRY_PACK_PURCHASE:'.$user->id.':'.$pack->id.':'.($normalizedKey ?: Str::uuid()->toString());
 
             $walletTx = null;
+            $charged = (int) $pack->price_coins > 0;
             if ((int) $pack->price_coins > 0) {
                 try {
                     $walletTx = WalletService::spend(
@@ -119,6 +120,11 @@ class EntryPackService
                 'purchased_at' => now(),
                 'expires_at' => now()->addDays(max(1, (int) ($pack->duration_days ?? 30))),
                 'purchase_key' => $normalizedKey,
+                'source' => 'USER_PURCHASE',
+                'charged' => $charged,
+                'price_coins' => (int) $pack->price_coins,
+                'wallet_transaction_id' => $walletTx?->id,
+                'purchase_reference' => $reference,
             ]);
 
             if ((int) $pack->price_coins > 0) {
@@ -233,7 +239,10 @@ class EntryPackService
         $coinsSpent = (int) WalletTransaction::query()
             ->where('category', 'other')
             ->where('type', 'debit')
-            ->where('reference', 'like', 'ENTRY_PACK_PURCHASE:%')
+            ->where(function ($query) {
+                $query->where('reference', 'like', 'ENTRY_PACK_PURCHASE:%')
+                    ->orWhere('reference', 'like', 'ENTRY_PACK_ADMIN:%');
+            })
             ->sum('coins');
 
         $purchases = UserEntryPack::query()->count();
@@ -317,6 +326,11 @@ class EntryPackService
             'expires_at' => optional($userPack->expires_at)->toIso8601String(),
             'entry_pack' => $pack ? $this->packPayload($pack, owned: true, active: (bool) $userPack->is_active) : null,
             'wallet_transaction_id' => $walletTx?->id,
+            'source' => (string) ($userPack->source ?? ''),
+            'origin_key' => $userPack->origin_key,
+            'origin_label' => $userPack->origin_label,
+            'charged' => (bool) $userPack->charged,
+            'price_coins' => (int) $userPack->price_coins,
             'wallet_balance_after' => $walletTx ? (int) $walletTx->balance_after : null,
         ];
     }
