@@ -947,8 +947,8 @@ class AgencyWeeklyPayoutReportService
             $liveRoomCount = 0;
             $audioRoomCount = 0;
             $videoRoomCount = 0;
-            $audioSeconds = 0;
-            $videoSeconds = 0;
+            $audioMinutes = 0;
+            $videoMinutes = 0;
 
             foreach ($hostRooms as $room) {
                 $roomStart = $room->started_at?->copy();
@@ -963,18 +963,18 @@ class AgencyWeeklyPayoutReportService
                     continue;
                 }
 
-                $seconds = $effectiveStart->diffInSeconds($effectiveEnd);
-                if ($seconds <= 0) {
+                $minutes = (int) floor($effectiveStart->diffInSeconds($effectiveEnd) / 60);
+                if ($minutes <= 0) {
                     continue;
                 }
 
                 $liveRoomCount++;
                 if (($room->room_type ?? 'video') === 'audio') {
                     $audioRoomCount++;
-                    $audioSeconds += $seconds;
+                    $audioMinutes += $minutes;
                 } else {
                     $videoRoomCount++;
-                    $videoSeconds += $seconds;
+                    $videoMinutes += $minutes;
                 }
             }
 
@@ -982,8 +982,8 @@ class AgencyWeeklyPayoutReportService
                 'live_room_count' => $liveRoomCount,
                 'audio_room_count' => $audioRoomCount,
                 'video_room_count' => $videoRoomCount,
-                'audio_room_minutes' => (int) floor($audioSeconds / 60),
-                'video_room_minutes' => (int) floor($videoSeconds / 60),
+                'audio_room_minutes' => $audioMinutes,
+                'video_room_minutes' => $videoMinutes,
             ];
         });
     }

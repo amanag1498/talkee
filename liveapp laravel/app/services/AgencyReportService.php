@@ -438,28 +438,34 @@ class AgencyReportService
 
     private function roomMetrics(Carbon $from, Carbon $to, ?int $agencyId = null, ?int $hostId = null, $hostIds = null): array
     {
-        $row = $this->roomOverlapBase($from, $to, $agencyId, $hostId, $hostIds)
-            ->selectRaw("
-                COUNT(*) as room_count,
-                SUM(
-                    GREATEST(
-                        TIMESTAMPDIFF(
-                            SECOND,
-                            GREATEST(started_at, ?),
-                            LEAST(COALESCE(ended_at, last_activity_at, started_at), ?)
-                        ),
-                        0
-                    )
-                ) as total_seconds
-            ", [
-                $from->toDateTimeString(),
-                $to->toDateTimeString(),
-            ])
-            ->first();
+        $rooms = $this->roomOverlapBase($from, $to, $agencyId, $hostId, $hostIds)
+            ->get(['started_at', 'ended_at', 'last_activity_at']);
+
+        $totalMinutes = 0;
+        foreach ($rooms as $room) {
+            $roomStart = $room->started_at?->copy();
+            $roomEnd = ($room->ended_at ?? $room->last_activity_at ?? $room->started_at)?->copy();
+            if (!$roomStart || !$roomEnd) {
+                continue;
+            }
+
+            $effectiveStart = $roomStart->greaterThan($from) ? $roomStart : $from->copy();
+            $effectiveEnd = $roomEnd->lessThan($to) ? $roomEnd : $to->copy();
+            if ($effectiveEnd->lessThanOrEqualTo($effectiveStart)) {
+                continue;
+            }
+
+            $minutes = (int) floor($effectiveStart->diffInSeconds($effectiveEnd) / 60);
+            if ($minutes <= 0) {
+                continue;
+            }
+
+            $totalMinutes += $minutes;
+        }
 
         return [
-            'count' => (int) ($row->room_count ?? 0),
-            'minutes' => (int) floor(((int) ($row->total_seconds ?? 0)) / 60),
+            'count' => (int) $rooms->count(),
+            'minutes' => $totalMinutes,
         ];
     }
 
