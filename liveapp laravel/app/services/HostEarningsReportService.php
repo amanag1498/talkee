@@ -2,14 +2,12 @@
 
 namespace App\Services;
 
-use App\Models\CallSession;
+use App\Models\CallEarningLedger;
 use App\Models\Host;
 use App\Models\LiveRoom;
 use App\Models\LiveRoomGiftEarningLedger;
 use App\Models\LiveRoomPkBattle;
-use App\Models\LiveRoomPkEvent;
 use Carbon\Carbon;
-use Illuminate\Support\Collection;
 
 class HostEarningsReportService
 {
@@ -43,16 +41,16 @@ class HostEarningsReportService
 
     private function buildPeriodPayload(Host $host, Carbon $from, Carbon $to, string $label): array
     {
-        $callRows = CallSession::query()
-            ->where('host_id', $host->id)
-            ->whereNotNull('ended_at')
-            ->whereBetween('ended_at', [$from, $to])
+        $callRows = CallEarningLedger::query()
+            ->join('call_sessions', 'call_sessions.id', '=', 'call_earning_ledgers.call_session_id')
+            ->where('call_earning_ledgers.host_id', $host->id)
+            ->where('call_sessions.status', 'ended')
+            ->where('call_earning_ledgers.total_coins', '>', 0)
+            ->whereBetween('call_earning_ledgers.created_at', [$from, $to])
             ->get();
 
-        $giftRows = LiveRoomGiftEarningLedger::query()
+        $giftRows = $this->regularGiftBase($from, $to, $host->id)
             ->with('room:id,room_type')
-            ->where('host_id', $host->id)
-            ->whereBetween('created_at', [$from, $to])
             ->get();
 
         $rooms = LiveRoom::query()
@@ -86,18 +84,13 @@ class HostEarningsReportService
             })
             ->get(['id', 'host_a_id', 'host_b_id', 'status', 'started_at', 'ended_at', 'created_at']);
 
-        $pkCoins = (int) LiveRoomPkEvent::query()
-            ->whereHas('battle', function ($query) use ($host) {
-                $query->where('host_a_id', $host->id)->orWhere('host_b_id', $host->id);
-            })
-            ->whereBetween('created_at', [$from, $to])
-            ->sum('coins');
+        $pkCoins = (int) $this->pkGiftBase($from, $to, $host->id)->sum('live_room_gift_earning_ledgers.total_coins');
 
         $callSummary = [
             'audio_minutes' => (int) $callRows->where('type', 'audio')->sum('billable_minutes'),
-            'audio_earnings' => (int) $callRows->where('type', 'audio')->sum('total_coins_charged'),
+            'audio_earnings' => (int) $callRows->where('type', 'audio')->sum('total_coins'),
             'video_minutes' => (int) $callRows->where('type', 'video')->sum('billable_minutes'),
-            'video_earnings' => (int) $callRows->where('type', 'video')->sum('total_coins_charged'),
+            'video_earnings' => (int) $callRows->where('type', 'video')->sum('total_coins'),
         ];
 
         $audioGiftCoins = 0;
@@ -168,5 +161,30 @@ class HostEarningsReportService
         }
 
         return (int) ceil($effectiveStart->diffInSeconds($effectiveEnd) / 60);
+    }
+
+    private function regularGiftBase(Carbon $from, Carbon $to, int $hostId)
+    {
+        return LiveRoomGiftEarningLedger::query()
+            ->join('live_room_gifts', 'live_room_gifts.id', '=', 'live_room_gift_earning_ledgers.live_room_gift_id')
+            ->leftJoin('live_room_pk_events', function ($join) {
+                $join->on('live_room_pk_events.wallet_transaction_id', '=', 'live_room_gifts.transaction_id')
+                    ->where('live_room_pk_events.event_type', '=', 'gift');
+            })
+            ->whereNull('live_room_pk_events.id')
+            ->where('live_room_gift_earning_ledgers.host_id', $hostId)
+            ->whereBetween('live_room_gift_earning_ledgers.created_at', [$from, $to]);
+    }
+
+    private function pkGiftBase(Carbon $from, Carbon $to, int $hostId)
+    {
+        return LiveRoomGiftEarningLedger::query()
+            ->join('live_room_gifts', 'live_room_gifts.id', '=', 'live_room_gift_earning_ledgers.live_room_gift_id')
+            ->join('live_room_pk_events', function ($join) {
+                $join->on('live_room_pk_events.wallet_transaction_id', '=', 'live_room_gifts.transaction_id')
+                    ->where('live_room_pk_events.event_type', '=', 'gift');
+            })
+            ->where('live_room_gift_earning_ledgers.host_id', $hostId)
+            ->whereBetween('live_room_gift_earning_ledgers.created_at', [$from, $to]);
     }
 }

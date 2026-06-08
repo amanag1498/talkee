@@ -292,11 +292,18 @@ class AgencyPayoutReportController extends Controller
                 'callSession:id,host_id,caller_id,type,status,started_at,ended_at,billable_minutes,total_coins_charged',
             ])
             ->where('agency_id', $agencyId)
+            ->whereHas('callSession', fn ($query) => $query->where('status', 'ended'))
+            ->where('total_coins', '>', 0)
             ->whereBetween('created_at', [$periodStart, $periodEnd])
             ->orderBy('created_at')
             ->get();
 
         $giftRows = LiveRoomGiftEarningLedger::query()
+            ->join('live_room_gifts', 'live_room_gifts.id', '=', 'live_room_gift_earning_ledgers.live_room_gift_id')
+            ->leftJoin('live_room_pk_events', function ($join) {
+                $join->on('live_room_pk_events.wallet_transaction_id', '=', 'live_room_gifts.transaction_id')
+                    ->where('live_room_pk_events.event_type', '=', 'gift');
+            })
             ->with([
                 'sender:id,name',
                 'host.user:id,name',
@@ -304,6 +311,7 @@ class AgencyPayoutReportController extends Controller
                 'roomGift:id,live_room_id,gift_id,sender_user_id,quantity,coins_per_unit,total_coins,transaction_id',
                 'roomGift.gift:id,name',
             ])
+            ->whereNull('live_room_pk_events.id')
             ->where('agency_id', $agencyId)
             ->whereBetween('created_at', [$periodStart, $periodEnd])
             ->orderBy('created_at')

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Agency;
+use App\Models\CallEarningLedger;
 use App\Models\CallSession;
 use App\Models\Host;
 use App\Models\LiveRoom;
@@ -20,13 +21,12 @@ class AgencyReportService
         $base = CallSession::query()
             ->with(['agency', 'host.user'])
             ->whereBetween('created_at', [$from, $to]);
-        $liveBase = LiveRoom::query()
-            ->whereBetween('created_at', [$from, $to])
-            ->whereHas('host', fn ($query) => $query->whereNotNull('agency_id'));
-        $giftBase = LiveRoomGiftEarningLedger::query()
-            ->whereBetween('created_at', [$from, $to])
-            ->whereNotNull('agency_id');
+        $callLedgerBase = $this->successfulCallLedgerBase($from, $to);
+        $liveBase = $this->roomOverlapBase($from, $to);
+        $giftBase = $this->regularGiftBase($from, $to);
         $pkBase = $this->pkGiftBase($from, $to);
+
+        $liveMetrics = $this->roomMetrics($from, $to);
 
         $agencies = Agency::query()
             ->withCount('hosts')
@@ -42,20 +42,20 @@ class AgencyReportService
                 'total_agencies' => Agency::query()->count(),
                 'active_agencies' => Agency::query()->where('is_blocked', false)->count(),
                 'total_hosts' => Host::query()->count(),
-                'total_calls' => (clone $base)->count(),
-                'audio_calls' => (clone $base)->where('type', 'audio')->count(),
-                'video_calls' => (clone $base)->where('type', 'video')->count(),
+                'total_calls' => (clone $callLedgerBase)->count(),
+                'audio_calls' => (clone $callLedgerBase)->where('call_sessions.type', 'audio')->count(),
+                'video_calls' => (clone $callLedgerBase)->where('call_sessions.type', 'video')->count(),
                 'completed_calls' => (clone $base)->where('status', 'ended')->count(),
                 'failed_calls' => (clone $base)->whereIn('status', ['failed', 'missed', 'rejected'])->count(),
-                'total_minutes' => (int) (clone $base)->sum('billable_minutes'),
-                'total_coins' => (int) (clone $base)->sum('total_coins_charged'),
-                'host_earnings' => (int) (clone $base)->sum('host_earning'),
-                'agency_earnings' => (int) (clone $base)->sum('agency_earning'),
-                'live_rooms' => (int) (clone $liveBase)->count(),
-                'live_minutes' => (int) (clone $liveBase)->get()->sum(fn (LiveRoom $room) => (int) ($room->duration_minutes ?? 0)),
-                'live_gift_coins' => (int) (clone $giftBase)->sum('total_coins'),
-                'live_host_earnings' => (int) (clone $giftBase)->sum('host_payout_coins'),
-                'live_agency_earnings' => (int) (clone $giftBase)->sum('agency_payout_coins'),
+                'total_minutes' => (int) (clone $callLedgerBase)->sum('billable_minutes'),
+                'total_coins' => (int) (clone $callLedgerBase)->sum('total_coins'),
+                'host_earnings' => (int) (clone $callLedgerBase)->sum('host_earning'),
+                'agency_earnings' => (int) (clone $callLedgerBase)->sum('agency_earning'),
+                'live_rooms' => $liveMetrics['count'],
+                'live_minutes' => $liveMetrics['minutes'],
+                'live_gift_coins' => (int) (clone $giftBase)->sum('live_room_gift_earning_ledgers.total_coins'),
+                'live_host_earnings' => (int) (clone $giftBase)->sum('live_room_gift_earning_ledgers.host_payout_coins'),
+                'live_agency_earnings' => (int) (clone $giftBase)->sum('live_room_gift_earning_ledgers.agency_payout_coins'),
                 'pk_gift_coins' => (int) (clone $pkBase)->sum('live_room_gift_earning_ledgers.total_coins'),
                 'pk_host_earnings' => (int) (clone $pkBase)->sum('live_room_gift_earning_ledgers.host_payout_coins'),
                 'pk_agency_earnings' => (int) (clone $pkBase)->sum('live_room_gift_earning_ledgers.agency_payout_coins'),
@@ -83,12 +83,9 @@ class AgencyReportService
             ->with(['caller', 'receiver', 'host.user'])
             ->where('agency_id', $agency->id)
             ->whereBetween('created_at', [$from, $to]);
-        $liveBase = LiveRoom::query()
-            ->whereHas('host', fn ($query) => $query->where('agency_id', $agency->id))
-            ->whereBetween('created_at', [$from, $to]);
-        $giftBase = LiveRoomGiftEarningLedger::query()
-            ->where('agency_id', $agency->id)
-            ->whereBetween('created_at', [$from, $to]);
+        $callLedgerBase = $this->successfulCallLedgerBase($from, $to, $agency->id);
+        $liveBase = $this->roomOverlapBase($from, $to, $agency->id);
+        $giftBase = $this->regularGiftBase($from, $to, $agency->id);
         $pkBase = $this->pkGiftBase($from, $to, $agency->id);
 
         $hosts = Host::query()
@@ -97,26 +94,22 @@ class AgencyReportService
             ->withCount('followers')
             ->get()
             ->map(function (Host $host) use ($from, $to) {
-                $calls = CallSession::query()
-                    ->where('host_id', $host->id)
-                    ->whereBetween('created_at', [$from, $to]);
+                $calls = $this->successfulCallLedgerBase($from, $to, $host->agency_id, $host->id);
                 $liveRooms = LiveRoom::query()
-                    ->where('host_id', $host->id)
-                    ->whereBetween('created_at', [$from, $to]);
-                $liveGifts = LiveRoomGiftEarningLedger::query()
-                    ->where('host_id', $host->id)
-                    ->whereBetween('created_at', [$from, $to]);
+                    ->where('host_id', $host->id);
+                $liveGifts = $this->regularGiftBase($from, $to, $host->agency_id, $host->id);
                 $pkGifts = $this->pkGiftBase($from, $to, $host->agency_id, $host->id);
+                $roomMetrics = $this->roomMetrics($from, $to, $host->agency_id, $host->id);
 
                 return [
                     'host' => $host,
                     'calls' => (clone $calls)->count(),
                     'minutes' => (int) (clone $calls)->sum('billable_minutes'),
-                    'coins' => (int) (clone $calls)->sum('total_coins_charged'),
+                    'coins' => (int) (clone $calls)->sum('total_coins'),
                     'host_earnings' => (int) (clone $calls)->sum('host_earning'),
                     'agency_earnings' => (int) (clone $calls)->sum('agency_earning'),
-                    'live_rooms' => (int) (clone $liveRooms)->count(),
-                    'live_gift_coins' => (int) (clone $liveGifts)->sum('total_coins'),
+                    'live_rooms' => $roomMetrics['count'],
+                    'live_gift_coins' => (int) (clone $liveGifts)->sum('live_room_gift_earning_ledgers.total_coins'),
                     'pk_gift_coins' => (int) (clone $pkGifts)->sum('live_room_gift_earning_ledgers.total_coins'),
                     'pk_host_earnings' => (int) (clone $pkGifts)->sum('live_room_gift_earning_ledgers.host_payout_coins'),
                     'pk_agency_earnings' => (int) (clone $pkGifts)->sum('live_room_gift_earning_ledgers.agency_payout_coins'),
@@ -126,26 +119,28 @@ class AgencyReportService
             ->sortByDesc('coins')
             ->values();
 
+        $liveMetrics = $this->roomMetrics($from, $to, $agency->id);
+
         return [
             'agency' => $agency->load(['owner', 'hosts.user']),
             'from' => $from,
             'to' => $to,
             'summary' => [
                 'hosts' => $agency->hosts()->count(),
-                'calls' => (clone $base)->count(),
-                'audio_calls' => (clone $base)->where('type', 'audio')->count(),
-                'video_calls' => (clone $base)->where('type', 'video')->count(),
+                'calls' => (clone $callLedgerBase)->count(),
+                'audio_calls' => (clone $callLedgerBase)->where('call_sessions.type', 'audio')->count(),
+                'video_calls' => (clone $callLedgerBase)->where('call_sessions.type', 'video')->count(),
                 'completed_calls' => (clone $base)->where('status', 'ended')->count(),
                 'failed_calls' => (clone $base)->whereIn('status', ['failed', 'missed', 'rejected'])->count(),
-                'minutes' => (int) (clone $base)->sum('billable_minutes'),
-                'coins' => (int) (clone $base)->sum('total_coins_charged'),
-                'host_earnings' => (int) (clone $base)->sum('host_earning'),
-                'agency_earnings' => (int) (clone $base)->sum('agency_earning'),
-                'live_rooms' => (int) (clone $liveBase)->count(),
-                'live_minutes' => (int) (clone $liveBase)->get()->sum(fn (LiveRoom $room) => (int) ($room->duration_minutes ?? 0)),
-                'live_gift_coins' => (int) (clone $giftBase)->sum('total_coins'),
-                'live_host_earnings' => (int) (clone $giftBase)->sum('host_payout_coins'),
-                'live_agency_earnings' => (int) (clone $giftBase)->sum('agency_payout_coins'),
+                'minutes' => (int) (clone $callLedgerBase)->sum('billable_minutes'),
+                'coins' => (int) (clone $callLedgerBase)->sum('total_coins'),
+                'host_earnings' => (int) (clone $callLedgerBase)->sum('host_earning'),
+                'agency_earnings' => (int) (clone $callLedgerBase)->sum('agency_earning'),
+                'live_rooms' => $liveMetrics['count'],
+                'live_minutes' => $liveMetrics['minutes'],
+                'live_gift_coins' => (int) (clone $giftBase)->sum('live_room_gift_earning_ledgers.total_coins'),
+                'live_host_earnings' => (int) (clone $giftBase)->sum('live_room_gift_earning_ledgers.host_payout_coins'),
+                'live_agency_earnings' => (int) (clone $giftBase)->sum('live_room_gift_earning_ledgers.agency_payout_coins'),
                 'pk_gift_coins' => (int) (clone $pkBase)->sum('live_room_gift_earning_ledgers.total_coins'),
                 'pk_host_earnings' => (int) (clone $pkBase)->sum('live_room_gift_earning_ledgers.host_payout_coins'),
                 'pk_agency_earnings' => (int) (clone $pkBase)->sum('live_room_gift_earning_ledgers.agency_payout_coins'),
@@ -181,9 +176,9 @@ class AgencyReportService
 
     private function earningsOverTime(Carbon $from, Carbon $to): array
     {
-        $rows = CallSession::query()
+        $rows = $this->successfulCallLedgerBase($from, $to)
             ->whereBetween('created_at', [$from, $to])
-            ->selectRaw('DATE(created_at) as label, SUM(total_coins_charged) as coins, SUM(host_earning) as host_earning, SUM(agency_earning) as agency_earning')
+            ->selectRaw('DATE(created_at) as label, SUM(total_coins) as coins, SUM(host_earning) as host_earning, SUM(agency_earning) as agency_earning')
             ->groupBy('label')
             ->orderBy('label')
             ->get()
@@ -201,11 +196,10 @@ class AgencyReportService
 
     private function topAgencies(Carbon $from, Carbon $to): array
     {
-        $rows = CallSession::query()
+        $rows = $this->successfulCallLedgerBase($from, $to)
             ->with('agency')
-            ->whereBetween('created_at', [$from, $to])
             ->whereNotNull('agency_id')
-            ->selectRaw('agency_id, SUM(total_coins_charged) as coins, SUM(agency_earning) as earnings')
+            ->selectRaw('agency_id, SUM(total_coins) as coins, SUM(agency_earning) as earnings')
             ->groupBy('agency_id')
             ->orderByDesc('coins')
             ->limit(8)
@@ -220,11 +214,10 @@ class AgencyReportService
 
     private function topHosts(Carbon $from, Carbon $to): array
     {
-        $rows = CallSession::query()
+        $rows = $this->successfulCallLedgerBase($from, $to)
             ->with('host.user')
-            ->whereBetween('created_at', [$from, $to])
             ->whereNotNull('host_id')
-            ->selectRaw('host_id, SUM(total_coins_charged) as coins, COUNT(*) as calls')
+            ->selectRaw('host_id, SUM(total_coins) as coins, COUNT(*) as calls')
             ->groupBy('host_id')
             ->orderByDesc('coins')
             ->limit(8)
@@ -279,10 +272,9 @@ class AgencyReportService
 
     private function liveGiftsOverTime(Carbon $from, Carbon $to): array
     {
-        $rows = LiveRoomGiftEarningLedger::query()
-            ->whereBetween('created_at', [$from, $to])
-            ->whereNotNull('agency_id')
-            ->selectRaw('DATE(created_at) as label, SUM(total_coins) as gift_coins, SUM(host_payout_coins) as host_earnings, SUM(agency_payout_coins) as agency_earnings')
+        $rows = $this->regularGiftBase($from, $to)
+            ->whereNotNull('live_room_gift_earning_ledgers.agency_id')
+            ->selectRaw('DATE(live_room_gift_earning_ledgers.created_at) as label, SUM(live_room_gift_earning_ledgers.total_coins) as gift_coins, SUM(live_room_gift_earning_ledgers.host_payout_coins) as host_earnings, SUM(live_room_gift_earning_ledgers.agency_payout_coins) as agency_earnings')
             ->groupBy('label')
             ->orderBy('label')
             ->get()
@@ -308,16 +300,13 @@ class AgencyReportService
                 $calls = CallSession::query()
                     ->where('agency_id', $agency->id)
                     ->whereBetween('created_at', [$from, $to]);
-                $liveRooms = LiveRoom::query()
-                    ->whereHas('host', fn ($query) => $query->where('agency_id', $agency->id))
-                    ->whereBetween('created_at', [$from, $to]);
-                $liveGifts = LiveRoomGiftEarningLedger::query()
-                    ->where('agency_id', $agency->id)
-                    ->whereBetween('created_at', [$from, $to]);
+                $callLedger = $this->successfulCallLedgerBase($from, $to, $agency->id);
+                $liveGifts = $this->regularGiftBase($from, $to, $agency->id);
                 $pkGifts = $this->pkGiftBase($from, $to, $agency->id);
+                $roomMetrics = $this->roomMetrics($from, $to, $agency->id);
 
-                $topHostHostId = (clone $calls)
-                    ->selectRaw('host_id, SUM(total_coins_charged) as coins')
+                $topHostHostId = (clone $callLedger)
+                    ->selectRaw('host_id, SUM(total_coins) as coins')
                     ->whereNotNull('host_id')
                     ->groupBy('host_id')
                     ->orderByDesc('coins')
@@ -327,13 +316,13 @@ class AgencyReportService
                     'agency' => $agency,
                     'host_count' => (int) $agency->hosts_count,
                     'calls' => (clone $calls)->count(),
-                    'minutes' => (int) (clone $calls)->sum('billable_minutes'),
-                    'coins' => (int) (clone $calls)->sum('total_coins_charged'),
-                    'earnings' => (int) (clone $calls)->sum('agency_earning'),
-                    'live_rooms' => (int) (clone $liveRooms)->count(),
-                    'live_minutes' => (int) (clone $liveRooms)->get()->sum(fn (LiveRoom $room) => (int) ($room->duration_minutes ?? 0)),
-                    'live_gift_coins' => (int) (clone $liveGifts)->sum('total_coins'),
-                    'live_agency_earnings' => (int) (clone $liveGifts)->sum('agency_payout_coins'),
+                    'minutes' => (int) (clone $callLedger)->sum('billable_minutes'),
+                    'coins' => (int) (clone $callLedger)->sum('total_coins'),
+                    'earnings' => (int) (clone $callLedger)->sum('agency_earning'),
+                    'live_rooms' => $roomMetrics['count'],
+                    'live_minutes' => $roomMetrics['minutes'],
+                    'live_gift_coins' => (int) (clone $liveGifts)->sum('live_room_gift_earning_ledgers.total_coins'),
+                    'live_agency_earnings' => (int) (clone $liveGifts)->sum('live_room_gift_earning_ledgers.agency_payout_coins'),
                     'pk_gift_coins' => (int) (clone $pkGifts)->sum('live_room_gift_earning_ledgers.total_coins'),
                     'pk_agency_earnings' => (int) (clone $pkGifts)->sum('live_room_gift_earning_ledgers.agency_payout_coins'),
                     'pk_event_count' => (int) (clone $pkGifts)->count(),
@@ -358,25 +347,22 @@ class AgencyReportService
             $calls = CallSession::query()
                 ->where('agency_id', $agency->id)
                 ->whereBetween('created_at', [$weekStart, $weekEnd]);
-            $liveRooms = LiveRoom::query()
-                ->whereHas('host', fn ($query) => $query->where('agency_id', $agency->id))
-                ->whereBetween('created_at', [$weekStart, $weekEnd]);
-            $liveGifts = LiveRoomGiftEarningLedger::query()
-                ->where('agency_id', $agency->id)
-                ->whereBetween('created_at', [$weekStart, $weekEnd]);
+            $callLedger = $this->successfulCallLedgerBase($weekStart, $weekEnd, $agency->id);
+            $liveGifts = $this->regularGiftBase($weekStart, $weekEnd, $agency->id);
             $pkGifts = $this->pkGiftBase($weekStart, $weekEnd, $agency->id);
+            $roomMetrics = $this->roomMetrics($weekStart, $weekEnd, $agency->id);
 
             return [
                 'week_start' => $weekStart->format('Y-m-d'),
                 'calls' => (clone $calls)->count(),
-                'minutes' => (int) (clone $calls)->sum('billable_minutes'),
-                'coins' => (int) (clone $calls)->sum('total_coins_charged'),
-                'host_earnings' => (int) (clone $calls)->sum('host_earning'),
-                'agency_earnings' => (int) (clone $calls)->sum('agency_earning'),
-                'live_rooms' => (int) (clone $liveRooms)->count(),
-                'live_minutes' => (int) (clone $liveRooms)->get()->sum(fn (LiveRoom $room) => (int) ($room->duration_minutes ?? 0)),
-                'live_gift_coins' => (int) (clone $liveGifts)->sum('total_coins'),
-                'live_agency_earnings' => (int) (clone $liveGifts)->sum('agency_payout_coins'),
+                'minutes' => (int) (clone $callLedger)->sum('billable_minutes'),
+                'coins' => (int) (clone $callLedger)->sum('total_coins'),
+                'host_earnings' => (int) (clone $callLedger)->sum('host_earning'),
+                'agency_earnings' => (int) (clone $callLedger)->sum('agency_earning'),
+                'live_rooms' => $roomMetrics['count'],
+                'live_minutes' => $roomMetrics['minutes'],
+                'live_gift_coins' => (int) (clone $liveGifts)->sum('live_room_gift_earning_ledgers.total_coins'),
+                'live_agency_earnings' => (int) (clone $liveGifts)->sum('live_room_gift_earning_ledgers.agency_payout_coins'),
                 'pk_gift_coins' => (int) (clone $pkGifts)->sum('live_room_gift_earning_ledgers.total_coins'),
                 'pk_agency_earnings' => (int) (clone $pkGifts)->sum('live_room_gift_earning_ledgers.agency_payout_coins'),
                 'pk_event_count' => (int) (clone $pkGifts)->count(),
@@ -395,6 +381,68 @@ class AgencyReportService
             ->whereBetween('live_room_gift_earning_ledgers.created_at', [$from, $to])
             ->when($agencyId !== null, fn ($query) => $query->where('live_room_gift_earning_ledgers.agency_id', $agencyId))
             ->when($hostId !== null, fn ($query) => $query->where('live_room_gift_earning_ledgers.host_id', $hostId));
+    }
+
+    private function regularGiftBase(Carbon $from, Carbon $to, ?int $agencyId = null, ?int $hostId = null)
+    {
+        return LiveRoomGiftEarningLedger::query()
+            ->join('live_room_gifts', 'live_room_gifts.id', '=', 'live_room_gift_earning_ledgers.live_room_gift_id')
+            ->leftJoin('live_room_pk_events', function ($join) {
+                $join->on('live_room_pk_events.wallet_transaction_id', '=', 'live_room_gifts.transaction_id')
+                    ->where('live_room_pk_events.event_type', '=', 'gift');
+            })
+            ->whereNull('live_room_pk_events.id')
+            ->whereBetween('live_room_gift_earning_ledgers.created_at', [$from, $to])
+            ->when($agencyId !== null, fn ($query) => $query->where('live_room_gift_earning_ledgers.agency_id', $agencyId))
+            ->when($hostId !== null, fn ($query) => $query->where('live_room_gift_earning_ledgers.host_id', $hostId));
+    }
+
+    private function roomOverlapBase(Carbon $from, Carbon $to, ?int $agencyId = null, ?int $hostId = null)
+    {
+        return LiveRoom::query()
+            ->whereNotNull('started_at')
+            ->where('started_at', '<=', $to)
+            ->whereRaw('COALESCE(ended_at, last_activity_at, started_at) >= ?', [$from->toDateTimeString()])
+            ->when($agencyId !== null, fn ($query) => $query->whereHas('host', fn ($hostQuery) => $hostQuery->where('agency_id', $agencyId)))
+            ->when($hostId !== null, fn ($query) => $query->where('host_id', $hostId));
+    }
+
+    private function roomMetrics(Carbon $from, Carbon $to, ?int $agencyId = null, ?int $hostId = null): array
+    {
+        $row = $this->roomOverlapBase($from, $to, $agencyId, $hostId)
+            ->selectRaw("
+                COUNT(*) as room_count,
+                SUM(
+                    GREATEST(
+                        TIMESTAMPDIFF(
+                            MINUTE,
+                            GREATEST(started_at, ?),
+                            LEAST(COALESCE(ended_at, last_activity_at, started_at), ?)
+                        ),
+                        0
+                    )
+                ) as total_minutes
+            ", [
+                $from->toDateTimeString(),
+                $to->toDateTimeString(),
+            ])
+            ->first();
+
+        return [
+            'count' => (int) ($row->room_count ?? 0),
+            'minutes' => (int) ($row->total_minutes ?? 0),
+        ];
+    }
+
+    private function successfulCallLedgerBase(Carbon $from, Carbon $to, ?int $agencyId = null, ?int $hostId = null)
+    {
+        return CallEarningLedger::query()
+            ->join('call_sessions', 'call_sessions.id', '=', 'call_earning_ledgers.call_session_id')
+            ->where('call_sessions.status', 'ended')
+            ->where('call_earning_ledgers.total_coins', '>', 0)
+            ->whereBetween('call_earning_ledgers.created_at', [$from, $to])
+            ->when($agencyId !== null, fn ($query) => $query->where('call_earning_ledgers.agency_id', $agencyId))
+            ->when($hostId !== null, fn ($query) => $query->where('call_earning_ledgers.host_id', $hostId));
     }
 
     private function seriesFromDays(Carbon $from, Carbon $to, callable $resolver): array

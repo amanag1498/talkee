@@ -129,6 +129,8 @@ class AgencyWeeklyPayoutReportService
                     SUM(call_earning_ledgers.platform_earning) as platform_share
                 ")
                 ->where('call_earning_ledgers.agency_id', $agency->id)
+                ->where('call_sessions.status', 'ended')
+                ->where('call_earning_ledgers.total_coins', '>', 0)
                 ->whereBetween('call_earning_ledgers.created_at', [$periodStart, $periodEnd])
                 ->groupBy('call_earning_ledgers.host_id')
                 ->get()
@@ -137,18 +139,22 @@ class AgencyWeeklyPayoutReportService
             $giftRows = LiveRoomGiftEarningLedger::query()
                 ->join('live_room_gifts', 'live_room_gifts.id', '=', 'live_room_gift_earning_ledgers.live_room_gift_id')
                 ->join('live_rooms', 'live_rooms.id', '=', 'live_room_gift_earning_ledgers.live_room_id')
+                ->leftJoin('live_room_pk_events', function ($join) {
+                    $join->on('live_room_pk_events.wallet_transaction_id', '=', 'live_room_gifts.transaction_id')
+                        ->where('live_room_pk_events.event_type', '=', 'gift');
+                })
                 ->selectRaw("
                     live_room_gift_earning_ledgers.host_id as host_id,
-                    COUNT(live_room_gift_earning_ledgers.id) as gift_events,
-                    COUNT(DISTINCT live_room_gift_earning_ledgers.live_room_id) as live_room_count,
-                    COUNT(DISTINCT live_room_gift_earning_ledgers.sender_user_id) as unique_gifters,
-                    SUM(COALESCE(live_room_gifts.quantity, 0)) as gift_quantity,
-                    SUM(live_room_gift_earning_ledgers.total_coins) as gift_gross,
-                    SUM(CASE WHEN live_rooms.room_type = 'video' THEN live_room_gift_earning_ledgers.total_coins ELSE 0 END) as video_gift_gross,
-                    SUM(CASE WHEN live_rooms.room_type = 'audio' THEN live_room_gift_earning_ledgers.total_coins ELSE 0 END) as audio_gift_gross,
-                    SUM(live_room_gift_earning_ledgers.host_payout_coins) as ledger_host_share,
-                    SUM(live_room_gift_earning_ledgers.agency_payout_coins) as ledger_agency_share,
-                    SUM(live_room_gift_earning_ledgers.platform_revenue_coins) as platform_share
+                    SUM(CASE WHEN live_room_pk_events.id IS NULL THEN 1 ELSE 0 END) as gift_events,
+                    COUNT(DISTINCT CASE WHEN live_room_pk_events.id IS NULL THEN live_room_gift_earning_ledgers.live_room_id END) as live_room_count,
+                    COUNT(DISTINCT CASE WHEN live_room_pk_events.id IS NULL THEN live_room_gift_earning_ledgers.sender_user_id END) as unique_gifters,
+                    SUM(CASE WHEN live_room_pk_events.id IS NULL THEN COALESCE(live_room_gifts.quantity, 0) ELSE 0 END) as gift_quantity,
+                    SUM(CASE WHEN live_room_pk_events.id IS NULL THEN live_room_gift_earning_ledgers.total_coins ELSE 0 END) as gift_gross,
+                    SUM(CASE WHEN live_room_pk_events.id IS NULL AND live_rooms.room_type = 'video' THEN live_room_gift_earning_ledgers.total_coins ELSE 0 END) as video_gift_gross,
+                    SUM(CASE WHEN live_room_pk_events.id IS NULL AND live_rooms.room_type = 'audio' THEN live_room_gift_earning_ledgers.total_coins ELSE 0 END) as audio_gift_gross,
+                    SUM(CASE WHEN live_room_pk_events.id IS NULL THEN live_room_gift_earning_ledgers.host_payout_coins ELSE 0 END) as ledger_host_share,
+                    SUM(CASE WHEN live_room_pk_events.id IS NULL THEN live_room_gift_earning_ledgers.agency_payout_coins ELSE 0 END) as ledger_agency_share,
+                    SUM(CASE WHEN live_room_pk_events.id IS NULL THEN live_room_gift_earning_ledgers.platform_revenue_coins ELSE 0 END) as platform_share
                 ")
                 ->where('live_room_gift_earning_ledgers.agency_id', $agency->id)
                 ->whereBetween('live_room_gift_earning_ledgers.created_at', [$periodStart, $periodEnd])
