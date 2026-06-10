@@ -102,9 +102,26 @@ Artisan::command('calls:timeout-missed', function (CallSessionService $service) 
     $this->info("Timed out {$count} call(s).");
 })->purpose('Mark ringing calls as missed after timeout');
 
-Artisan::command('calls:enforce-active-billing', function (CallSessionService $service) {
-    $count = $service->enforceAcceptedCallBilling();
-    $this->info("Ended {$count} accepted call(s) due to insufficient billing balance.");
+Artisan::command('calls:enforce-active-billing {--loop : Keep checking active calls until the process is stopped} {--sleep=1 : Seconds to sleep between loop checks}', function (CallSessionService $service) {
+    $runOnce = function () use ($service): int {
+        $count = $service->enforceAcceptedCallBilling();
+        $this->info(now()->toDateTimeString()." Ended {$count} accepted call(s) due to insufficient billing balance.");
+
+        return $count;
+    };
+
+    if (! $this->option('loop')) {
+        $runOnce();
+        return 0;
+    }
+
+    $sleepSeconds = max(1, min(30, (int) $this->option('sleep')));
+    $this->info("Active call billing loop started. Checking every {$sleepSeconds} second(s).");
+
+    while (true) {
+        $runOnce();
+        sleep($sleepSeconds);
+    }
 })->purpose('Debit active private calls and end calls that cannot pay the elapsed billable minutes');
 
 Artisan::command('calls:cleanup-stale-availability {seconds=120}', function (HostAvailabilityService $service, int $seconds) {
