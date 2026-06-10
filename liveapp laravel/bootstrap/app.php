@@ -27,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withSchedule(function (Schedule $schedule) {
         $schedule->command('calls:timeout-missed')->everyMinute()->withoutOverlapping();
+        $schedule->command('calls:enforce-active-billing')->everyMinute()->withoutOverlapping();
         $schedule->command('calls:cleanup-stale-availability 120')->everyTwoMinutes()->withoutOverlapping();
         $schedule->command('calls:reconcile-billing')->hourly()->withoutOverlapping();
         $schedule->command('live-rooms:cleanup --stale-minutes=2')->everyMinute()->withoutOverlapping();

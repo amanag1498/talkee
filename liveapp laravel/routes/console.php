@@ -102,6 +102,11 @@ Artisan::command('calls:timeout-missed', function (CallSessionService $service) 
     $this->info("Timed out {$count} call(s).");
 })->purpose('Mark ringing calls as missed after timeout');
 
+Artisan::command('calls:enforce-active-billing', function (CallSessionService $service) {
+    $count = $service->enforceAcceptedCallBilling();
+    $this->info("Ended {$count} accepted call(s) due to insufficient billing balance.");
+})->purpose('Debit active private calls and end calls that cannot pay the elapsed billable minutes');
+
 Artisan::command('calls:cleanup-stale-availability {seconds=120}', function (HostAvailabilityService $service, int $seconds) {
     $count = $service->cleanupStaleSocketStatuses($seconds);
     $this->info("Cleaned {$count} stale availability record(s).");

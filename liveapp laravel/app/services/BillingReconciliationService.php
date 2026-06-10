@@ -76,13 +76,14 @@ class BillingReconciliationService
 
         $callsMissingLedger = $billedEndedCalls->filter(fn (CallSession $call) => !$call->earningLedger()->exists())->count();
 
-        $duplicateBilling = WalletTransaction::query()
-            ->selectRaw('reference, COUNT(*) as duplicate_count')
-            ->where('reference', 'like', 'call_billing:%')
-            ->groupBy('reference')
-            ->having('duplicate_count', '>', 1)
-            ->get()
-            ->count();
+        $walletDebitMismatch = $billedEndedCalls->filter(function (CallSession $call) {
+            $walletDebitTotal = (int) WalletTransaction::query()
+                ->where('type', 'debit')
+                ->where('reference', $this->billingReference($call->id))
+                ->sum('coins');
+
+            return $walletDebitTotal !== (int) $call->total_coins_charged;
+        })->count();
 
         $failedCallsWithBilling = CallSession::query()
             ->where('status', 'failed')
@@ -99,7 +100,7 @@ class BillingReconciliationService
         return array_merge([
             'calls_missing_wallet_transaction' => $callsMissingWallet,
             'calls_missing_earning_ledger' => $callsMissingLedger,
-            'duplicate_billing_references' => $duplicateBilling,
+            'call_wallet_debit_total_mismatch' => $walletDebitMismatch,
             'failed_calls_with_billing_entries' => $failedCallsWithBilling,
             'completed_calls_missing_billing' => $completedMissingBilling,
         ], $this->rechargeOrders->anomalies());

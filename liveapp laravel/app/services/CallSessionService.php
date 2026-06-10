@@ -166,6 +166,8 @@ class CallSessionService
                 'livekit_room_name' => $call->livekit_room_name ?: $this->makeRoomName($call),
             ]);
 
+            $this->billingService->ensureInitialCharge($call->fresh());
+
             $liveRoomToEnd = LiveRoom::query()
                 ->where('host_id', $call->host_id)
                 ->where('status', 'live')
@@ -318,6 +320,62 @@ class CallSessionService
         }
 
         return $calls->count();
+    }
+
+    public function enforceAcceptedCallBilling(): int
+    {
+        $ended = 0;
+
+        $calls = CallSession::query()
+            ->where('status', 'accepted')
+            ->whereNotNull('accepted_at')
+            ->whereNull('billing_processed_at')
+            ->oldest('id')
+            ->get();
+
+        foreach ($calls as $call) {
+            $canContinue = true;
+
+            try {
+                $canContinue = $this->billingService->syncAcceptedCallBilling($call);
+            } catch (\Throwable $e) {
+                Log::error('CALL_ACTIVE_BILLING_SYNC_FAIL', [
+                    'call_id' => $call->id,
+                    'error' => $e->getMessage(),
+                ]);
+                $canContinue = false;
+            }
+
+            if ($canContinue) {
+                continue;
+            }
+
+            DB::transaction(function () use ($call, &$ended) {
+                $locked = CallSession::query()->lockForUpdate()->find($call->id);
+                if (! $locked || $locked->status !== 'accepted') {
+                    return;
+                }
+
+                $locked->update([
+                    'status' => 'ended',
+                    'ended_at' => now(),
+                    'end_reason' => 'insufficient_balance',
+                ]);
+
+                $billed = $this->billingService->processEndedCall($locked->fresh());
+                $this->releaseUsers($billed);
+                $this->publishCallEvent('call_ended', $billed->fresh(), [
+                    'reason' => $billed->end_reason,
+                    'duration_seconds' => $billed->duration_seconds,
+                    'billable_minutes' => $billed->billable_minutes,
+                    'total_coins_charged' => $billed->total_coins_charged,
+                ]);
+
+                $ended++;
+            });
+        }
+
+        return $ended;
     }
 
     public function issueParticipantToken(CallSession $call, User $actor): array
