@@ -228,6 +228,8 @@ class LiveRoomController extends Controller
             /** @var LiveRoom $room */
             $room = LiveRoom::where('room_id', $data['room_id'])->firstOrFail();
             Log::info('LIVE_ROOM_START_EXISTING_LOOKUP_OK', ['room_id' => $room->room_id, 'db_id' => $room->id]);
+            $effectiveRoomType = (string) ($data['room_type'] ?? $room->room_type ?? 'video');
+            abort_if(!$host->roomTypeEnabled($effectiveRoomType), 403, ucfirst($effectiveRoomType).' rooms are disabled for this host.');
 
             $ownerUserId = optional($room->host)->user_id;
             abort_unless($user->id === $ownerUserId || $user->hasAnyRole(['admin', 'super-admin']), 403, 'Not your room.');
@@ -347,6 +349,7 @@ class LiveRoomController extends Controller
 
         /** @var LiveRoom $room */
         $room = DB::transaction(function () use ($request, $host, $data, $startNow, $user, $deviceId, $roomType, $resolvedMaxSpeakers, $resolvedMaxParticipants, &$hostToken, &$identity) {
+            abort_if(!$host->roomTypeEnabled($roomType), 403, ucfirst($roomType).' rooms are disabled for this host.');
             $roomId = $this->generateRoomId();
 
             $room = LiveRoom::create([

@@ -33,6 +33,12 @@ class CallSessionService
             if (!$host) {
                 throw new InvalidArgumentException('Receiver is not a host.');
             }
+            if (!$host->callTypeEnabled($type)) {
+                throw new InvalidArgumentException(sprintf(
+                    'Receiver is not accepting %s calls right now.',
+                    strtolower($type) === 'video' ? 'video' : 'audio'
+                ));
+            }
 
             if ($this->moderation->isBlockedByHostUserId($receiver->id, $caller->id)) {
                 throw new InvalidArgumentException('You were blocked by this host.');

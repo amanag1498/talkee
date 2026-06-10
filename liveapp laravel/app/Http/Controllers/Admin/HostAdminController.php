@@ -42,6 +42,10 @@ class HostAdminController extends Controller
             'payout_percentage' => 'nullable|numeric|min:0|max:100',
             'weekly_bonus'      => 'nullable|integer|min:0',
             'agency_id'         => 'nullable|exists:agencies,id',
+            'video_rooms_enabled' => 'nullable|boolean',
+            'audio_rooms_enabled' => 'nullable|boolean',
+            'video_calls_enabled' => 'nullable|boolean',
+            'audio_calls_enabled' => 'nullable|boolean',
             'audio_call_rate_per_minute' => 'nullable|integer|min:1|max:100000',
             'video_call_rate_per_minute' => 'nullable|integer|min:1|max:100000',
             'goal_followers' => ['nullable', 'string', 'regex:/^\s*\d+(\s*,\s*\d+)*\s*$/'],
@@ -59,6 +63,10 @@ class HostAdminController extends Controller
                 'payout_percentage' => (float)($data['payout_percentage'] ?? $host->payout_percentage ?? 0),
                 'weekly_bonus'      => (int)  ($data['weekly_bonus']      ?? $host->weekly_bonus      ?? 0),
                 'agency_id'         => array_key_exists('agency_id', $data) ? $data['agency_id'] : $host->agency_id,
+                'video_rooms_enabled' => $request->boolean('video_rooms_enabled', $host->video_rooms_enabled),
+                'audio_rooms_enabled' => $request->boolean('audio_rooms_enabled', $host->audio_rooms_enabled),
+                'video_calls_enabled' => $request->boolean('video_calls_enabled', $host->video_calls_enabled),
+                'audio_calls_enabled' => $request->boolean('audio_calls_enabled', $host->audio_calls_enabled),
                 'audio_call_rate_per_minute' => array_key_exists('audio_call_rate_per_minute', $data)
                     ? $data['audio_call_rate_per_minute']
                     : $host->audio_call_rate_per_minute,

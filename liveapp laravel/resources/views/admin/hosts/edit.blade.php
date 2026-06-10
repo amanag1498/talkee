@@ -51,6 +51,44 @@
         </select>
         <small class="text-muted">Admin can directly detach or reassign this host without an enroll request.</small>
       </div>
+      <div class="col-12">
+        <div class="border rounded-3 p-3">
+          <div class="fw-semibold mb-1">Host Feature Access</div>
+          <div class="text-muted small mb-3">
+            These switches control what this host is allowed to start or receive. Existing live sessions are not force-ended.
+          </div>
+          <div class="row g-3">
+            <div class="col-md-3">
+              <div class="form-check form-switch">
+                <input type="hidden" name="video_rooms_enabled" value="0">
+                <input class="form-check-input" type="checkbox" id="video_rooms_enabled" name="video_rooms_enabled" value="1" @checked(old('video_rooms_enabled', $host->video_rooms_enabled))>
+                <label class="form-check-label" for="video_rooms_enabled">Video Rooms Enabled</label>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="form-check form-switch">
+                <input type="hidden" name="audio_rooms_enabled" value="0">
+                <input class="form-check-input" type="checkbox" id="audio_rooms_enabled" name="audio_rooms_enabled" value="1" @checked(old('audio_rooms_enabled', $host->audio_rooms_enabled))>
+                <label class="form-check-label" for="audio_rooms_enabled">Audio Rooms Enabled</label>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="form-check form-switch">
+                <input type="hidden" name="video_calls_enabled" value="0">
+                <input class="form-check-input" type="checkbox" id="video_calls_enabled" name="video_calls_enabled" value="1" @checked(old('video_calls_enabled', $host->video_calls_enabled))>
+                <label class="form-check-label" for="video_calls_enabled">Video Calls Enabled</label>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="form-check form-switch">
+                <input type="hidden" name="audio_calls_enabled" value="0">
+                <input class="form-check-input" type="checkbox" id="audio_calls_enabled" name="audio_calls_enabled" value="1" @checked(old('audio_calls_enabled', $host->audio_calls_enabled))>
+                <label class="form-check-label" for="audio_calls_enabled">Audio Calls Enabled</label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="col-md-4">
         <label class="form-label">Audio Call Rate / min</label>
         <input type="number" min="1" class="form-control" name="audio_call_rate_per_minute"

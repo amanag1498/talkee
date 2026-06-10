@@ -154,7 +154,17 @@ class HostAvailabilityService
             $videoRate = $callSessionService->resolveCoinRatePerMinute($host, 'video');
             $audioRequired = max($baseMinimumBalance, $audioRate);
             $videoRequired = max($baseMinimumBalance, $videoRate);
-            $canCallAny = $isOnline && $isAvailable && $viewerWalletBalance >= min($audioRequired, $videoRequired);
+            $audioEnabled = (bool) ($host?->audio_calls_enabled ?? true);
+            $videoEnabled = (bool) ($host?->video_calls_enabled ?? true);
+            $audioCallable = $audioEnabled && $isOnline && $isAvailable && $viewerWalletBalance >= $audioRequired;
+            $videoCallable = $videoEnabled && $isOnline && $isAvailable && $viewerWalletBalance >= $videoRequired;
+            $canCallAny = $audioCallable || $videoCallable;
+            $minimumRequiredBalance = $this->minimumRequiredBalanceForEnabledTypes(
+                $audioEnabled,
+                $videoEnabled,
+                $audioRequired,
+                $videoRequired
+            );
 
             return [
                 'id' => $hostUser->id,
@@ -175,11 +185,19 @@ class HostAvailabilityService
                     'bio' => $host?->bio,
                     'audio_call_rate_per_minute' => $host?->audio_call_rate_per_minute,
                     'video_call_rate_per_minute' => $host?->video_call_rate_per_minute,
+                    'audio_calls_enabled' => $audioEnabled,
+                    'video_calls_enabled' => $videoEnabled,
+                    'audio_rooms_enabled' => (bool) ($host?->audio_rooms_enabled ?? true),
+                    'video_rooms_enabled' => (bool) ($host?->video_rooms_enabled ?? true),
                 ],
                 'audio_call_rate_per_minute' => $audioRate,
                 'video_call_rate_per_minute' => $videoRate,
                 'audio_minimum_balance_required' => $audioRequired,
                 'video_minimum_balance_required' => $videoRequired,
+                'audio_calls_enabled' => $audioEnabled,
+                'video_calls_enabled' => $videoEnabled,
+                'audio_call_available' => $audioEnabled && $isOnline && $isAvailable,
+                'video_call_available' => $videoEnabled && $isOnline && $isAvailable,
                 'availability' => [
                     'manual_status' => $availability->manual_status,
                     'socket_status' => $availability->socket_status,
@@ -197,12 +215,24 @@ class HostAvailabilityService
                 'is_following' => isset($followingIds[(int) $host?->id]),
                 'follower_count' => (int) ($counts[$host?->id] ?? 0),
                 'can_call' => $canCallAny,
-                'call_unavailable_reason' => !$canCallAny && $viewerWalletBalance < min($audioRequired, $videoRequired)
-                    ? 'viewer_low_balance'
-                    : $reason,
-                'unavailable_reason' => !$canCallAny && $viewerWalletBalance < min($audioRequired, $videoRequired)
-                    ? 'viewer_low_balance'
-                    : $reason,
+                'call_unavailable_reason' => $this->callUnavailableReason(
+                    $isOnline,
+                    $isAvailable,
+                    $audioEnabled,
+                    $videoEnabled,
+                    $viewerWalletBalance,
+                    $minimumRequiredBalance,
+                    $reason
+                ),
+                'unavailable_reason' => $this->callUnavailableReason(
+                    $isOnline,
+                    $isAvailable,
+                    $audioEnabled,
+                    $videoEnabled,
+                    $viewerWalletBalance,
+                    $minimumRequiredBalance,
+                    $reason
+                ),
             ];
         })->sortBy(function (array $user) {
             if (($user['is_available'] ?? false)) {
@@ -256,6 +286,47 @@ class HostAvailabilityService
         }
 
         return 'available';
+    }
+
+    private function callUnavailableReason(
+        bool $isOnline,
+        bool $isAvailable,
+        bool $audioEnabled,
+        bool $videoEnabled,
+        int $viewerWalletBalance,
+        int $minimumRequiredBalance,
+        string $availabilityReason
+    ): string {
+        if (!$audioEnabled && !$videoEnabled) {
+            return 'host_calls_disabled';
+        }
+        if (!$isOnline || !$isAvailable) {
+            return $availabilityReason;
+        }
+        if ($viewerWalletBalance < $minimumRequiredBalance) {
+            return 'viewer_low_balance';
+        }
+
+        return 'available';
+    }
+
+    private function minimumRequiredBalanceForEnabledTypes(
+        bool $audioEnabled,
+        bool $videoEnabled,
+        int $audioRequired,
+        int $videoRequired
+    ): int {
+        if ($audioEnabled && $videoEnabled) {
+            return min($audioRequired, $videoRequired);
+        }
+        if ($audioEnabled) {
+            return $audioRequired;
+        }
+        if ($videoEnabled) {
+            return $videoRequired;
+        }
+
+        return min($audioRequired, $videoRequired);
     }
 
     public function publishAvailability(HostAvailability $availability): void

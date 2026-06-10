@@ -12,11 +12,16 @@ class Host extends Model
         'user_id','agency_id','stage_name','contact_phone','country','city','bio','kyc','is_blocked',
         'payout_percentage','weekly_bonus','audio_call_rate_per_minute','video_call_rate_per_minute',
         'goal_followers','goal_weekly_live_minutes','goal_weekly_gifted_coins',
+        'video_rooms_enabled','audio_rooms_enabled','video_calls_enabled','audio_calls_enabled',
     ];
 
     protected $casts = [
         'kyc'         => 'array',
         'is_blocked'  => 'boolean',
+        'video_rooms_enabled' => 'boolean',
+        'audio_rooms_enabled' => 'boolean',
+        'video_calls_enabled' => 'boolean',
+        'audio_calls_enabled' => 'boolean',
         'payout_percentage' => 'decimal:2',
         'weekly_bonus'      => 'integer',
         'audio_call_rate_per_minute' => 'integer',
@@ -64,5 +69,21 @@ class Host extends Model
 
         // Remove any extra existing photos beyond provided list
         $this->photos()->where('sort', '>=', count($desired))->delete();
+    }
+
+    public function roomTypeEnabled(string $roomType): bool
+    {
+        return match (strtolower($roomType)) {
+            'audio' => (bool) $this->audio_rooms_enabled,
+            default => (bool) $this->video_rooms_enabled,
+        };
+    }
+
+    public function callTypeEnabled(string $type): bool
+    {
+        return match (strtolower($type)) {
+            'audio' => (bool) $this->audio_calls_enabled,
+            default => (bool) $this->video_calls_enabled,
+        };
     }
 }
