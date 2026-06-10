@@ -41,9 +41,29 @@ class CallBillingService
             );
             $targetCoins = $elapsedBillableMinutes * $rate;
             $alreadyBilledCoins = $this->billedCoinsForCall($call);
+            $paidThroughSeconds = intdiv($alreadyBilledCoins, $rate) * 60;
             $deltaCoins = max(0, $targetCoins - $alreadyBilledCoins);
 
             if ($deltaCoins <= 0) {
+                if ($paidThroughSeconds > 0 && $durationSeconds >= $paidThroughSeconds) {
+                    $wallet = Wallet::query()
+                        ->where('user_id', $call->caller_id)
+                        ->lockForUpdate()
+                        ->first();
+
+                    if (! $wallet || (int) $wallet->balance < $rate) {
+                        return false;
+                    }
+
+                    $this->createDebit(
+                        $call,
+                        $wallet,
+                        $rate,
+                        intdiv($alreadyBilledCoins, $rate) + 1,
+                        'Call next minute prepaid'
+                    );
+                }
+
                 return true;
             }
 
