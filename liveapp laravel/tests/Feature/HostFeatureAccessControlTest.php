@@ -110,6 +110,33 @@ class HostFeatureAccessControlTest extends TestCase
         $this->assertTrue((bool) data_get($row, 'video_call_available'));
     }
 
+    public function test_live_users_excludes_blocked_hosts(): void
+    {
+        $viewer = User::factory()->create();
+        $viewer->assignRole('user');
+        Wallet::query()->updateOrCreate(['user_id' => $viewer->id], ['balance' => 5000]);
+
+        $receiver = User::factory()->create();
+        $receiver->assignRole('host');
+        Host::query()->create([
+            'user_id' => $receiver->id,
+            'stage_name' => 'Blocked Host',
+            'is_blocked' => true,
+        ]);
+        HostAvailability::query()->create([
+            'user_id' => $receiver->id,
+            'manual_status' => 'online',
+            'socket_status' => 'online',
+            'call_status' => 'available',
+        ]);
+
+        Sanctum::actingAs($viewer);
+
+        $response = $this->getJson('/api/live-users')->assertOk();
+
+        $this->assertCount(0, data_get($response->json(), 'data.users', []));
+    }
+
     private function makeCallableUsers(array $hostAttributes = []): array
     {
         $caller = User::factory()->create();

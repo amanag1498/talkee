@@ -3028,6 +3028,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
           tokens: tokens,
           accent: const Color(0xFF5D8BFF),
           onTap: _showRequestsSheet,
+          badgeCount: _pendingRequests.length,
           iconOnly: true,
           tooltip:
               _pendingRequests.isEmpty
@@ -3249,7 +3250,8 @@ class _AudioRoomPageState extends State<AudioRoomPage>
                                         : _showPkInviteSheet,
                               ),
                               _SmallAction(
-                                label: 'Requests ${_pendingRequests.length}',
+                                label: 'Requests',
+                                badgeCount: _pendingRequests.length,
                                 onTap: _showRequestsSheet,
                               ),
                             ],
@@ -5386,11 +5388,13 @@ class _SmallAction extends StatelessWidget {
     required this.onTap,
     this.tokens,
     this.compact = false,
+    this.badgeCount = 0,
   });
   final String label;
   final VoidCallback onTap;
   final PremiumThemeTokens? tokens;
   final bool compact;
+  final int badgeCount;
 
   @override
   Widget build(BuildContext context) {
@@ -5402,24 +5406,40 @@ class _SmallAction extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: compact ? 8 : 10,
-          vertical: compact ? 5 : 6,
-        ),
-        decoration: BoxDecoration(
-          color: resolvedTokens.chipColor.withOpacity(.84),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: resolvedTokens.borderColor.withOpacity(.20)),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: resolvedTokens.textPrimary,
-            fontSize: compact ? 10.5 : 12,
-            fontWeight: FontWeight.w700,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 8 : 10,
+              vertical: compact ? 5 : 6,
+            ),
+            decoration: BoxDecoration(
+              color: resolvedTokens.chipColor.withOpacity(.84),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: resolvedTokens.borderColor.withOpacity(.20),
+              ),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: resolvedTokens.textPrimary,
+                fontSize: compact ? 10.5 : 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
-        ),
+          if (badgeCount > 0)
+            Positioned(
+              top: -6,
+              right: -6,
+              child: _CountBadge(
+                count: badgeCount,
+                backgroundColor: const Color(0xFF5D8BFF),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -5982,6 +6002,7 @@ class _ChatInputActionPill extends StatelessWidget {
     this.label = '',
     this.iconOnly = false,
     this.tooltip,
+    this.badgeCount = 0,
   });
 
   final IconData icon;
@@ -5991,6 +6012,7 @@ class _ChatInputActionPill extends StatelessWidget {
   final VoidCallback? onTap;
   final bool iconOnly;
   final String? tooltip;
+  final int badgeCount;
 
   @override
   Widget build(BuildContext context) {
@@ -6006,45 +6028,105 @@ class _ChatInputActionPill extends StatelessWidget {
           child: AnimatedOpacity(
             duration: const Duration(milliseconds: 180),
             opacity: enabled ? 1 : .46,
-            child: Container(
-              width: iconOnly ? controlSize : null,
-              height: iconOnly ? controlSize : null,
-              padding:
-                  iconOnly
-                      ? EdgeInsets.zero
-                      : const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: tokens.chipColor.withOpacity(.82),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: tokens.borderColor.withOpacity(.26)),
-                boxShadow: [
-                  BoxShadow(
-                    color: accent.withOpacity(.14),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child:
-                  iconOnly
-                      ? Icon(icon, size: 18, color: accent)
-                      : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(icon, size: 15, color: accent),
-                          const SizedBox(width: 6),
-                          Text(
-                            label,
-                            style: TextStyle(
-                              color: tokens.textPrimary,
-                              fontSize: 11.6,
-                              fontWeight: FontWeight.w800,
-                            ),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: iconOnly ? controlSize : null,
+                  height: iconOnly ? controlSize : null,
+                  padding:
+                      iconOnly
+                          ? EdgeInsets.zero
+                          : const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
                           ),
-                        ],
+                  decoration: BoxDecoration(
+                    color: tokens.chipColor.withOpacity(.82),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: tokens.borderColor.withOpacity(.26),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: accent.withOpacity(.14),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
                       ),
+                    ],
+                  ),
+                  child:
+                      iconOnly
+                          ? Icon(icon, size: 18, color: accent)
+                          : Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(icon, size: 15, color: accent),
+                              const SizedBox(width: 6),
+                              Text(
+                                label,
+                                style: TextStyle(
+                                  color: tokens.textPrimary,
+                                  fontSize: 11.6,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ],
+                          ),
+                ),
+                if (badgeCount > 0)
+                  Positioned(
+                    top: -4,
+                    right: -4,
+                    child: _CountBadge(
+                      count: badgeCount,
+                      backgroundColor: accent,
+                    ),
+                  ),
+              ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CountBadge extends StatelessWidget {
+  const _CountBadge({
+    required this.count,
+    required this.backgroundColor,
+  });
+
+  final int count;
+  final Color backgroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = count > 99 ? '99+' : '$count';
+    return Container(
+      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withOpacity(.22)),
+        boxShadow: [
+          BoxShadow(
+            color: backgroundColor.withOpacity(.34),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
+          height: 1,
         ),
       ),
     );

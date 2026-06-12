@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
@@ -34,6 +36,21 @@ class LiveUsersController extends GetxController {
 
   bool get isHost => _auth.currentUser?.roles.contains('host') ?? false;
   bool get hostAppearsLive => hostManualStatus.value == 'online';
+  bool get hostVideoRoomsEnabled =>
+      _auth.currentUser?.hostProfile?.videoRoomsEnabled ?? true;
+  bool get hostAudioRoomsEnabled =>
+      _auth.currentUser?.hostProfile?.audioRoomsEnabled ?? true;
+  bool get hostVideoCallsEnabled =>
+      _auth.currentUser?.hostProfile?.videoCallsEnabled ?? true;
+  bool get hostAudioCallsEnabled =>
+      _auth.currentUser?.hostProfile?.audioCallsEnabled ?? true;
+  bool get hostAccountBlocked =>
+      (_auth.currentUser?.isBlocked ?? false) ||
+      (_auth.currentUser?.hostProfile?.isBlocked ?? false);
+  bool get hostHasAnyRoomEnabled => hostVideoRoomsEnabled || hostAudioRoomsEnabled;
+  bool get hostHasAnyCallEnabled => hostVideoCallsEnabled || hostAudioCallsEnabled;
+  bool get canToggleHostAvailability =>
+      isHost && !hostAccountBlocked && hostHasAnyCallEnabled;
 
   @override
   void onInit() {
@@ -83,8 +100,8 @@ class LiveUsersController extends GetxController {
       updated['is_busy'] = isOnline && !isAvailable;
       updated['call_unavailable_reason'] = event['reason'] ?? updated['call_unavailable_reason'];
       updated['unavailable_reason'] = event['reason'] ?? updated['unavailable_reason'];
-      updated['can_call'] = ((updated['availability'] as Map)['is_available'] == true) &&
-          viewerBalance.value >= minimumBalance.value;
+      updated['can_call'] =
+          canStartCall(updated, 'audio') || canStartCall(updated, 'video');
       users[index] = updated;
       _sortUsers();
     });
@@ -126,6 +143,7 @@ class LiveUsersController extends GetxController {
       final list =
           (data['users'] as List?)
               ?.map((e) => Map<String, dynamic>.from(e as Map))
+              .where((row) => isCallTypeEnabled(row, 'audio') || isCallTypeEnabled(row, 'video'))
               .toList() ??
           <Map<String, dynamic>>[];
       final firstUser = list.isNotEmpty ? list.first : null;
@@ -185,6 +203,17 @@ class LiveUsersController extends GetxController {
 
   Future<void> toggleHostStatus() async {
     if (togglingHostStatus.value) {
+      return;
+    }
+    if (!canToggleHostAvailability) {
+      Get.snackbar(
+        'Host status',
+        hostAccountBlocked
+            ? 'Blocked hosts cannot go online.'
+            : 'Calls are disabled for this host.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      await refreshHostStatus();
       return;
     }
 
@@ -248,7 +277,16 @@ class LiveUsersController extends GetxController {
   bool canStartCall(Map<String, dynamic> user, String type) {
     final availability = Map<String, dynamic>.from(user['availability'] as Map? ?? const {});
     final isAvailable = availability['is_available'] == true;
-    return isAvailable && viewerBalance.value >= requiredBalanceFor(user, type);
+    return isCallTypeEnabled(user, type) &&
+        isAvailable &&
+        viewerBalance.value >= requiredBalanceFor(user, type);
+  }
+
+  bool isCallTypeEnabled(Map<String, dynamic> user, String type) {
+    final key = type == 'video' ? 'video_calls_enabled' : 'audio_calls_enabled';
+    final hostProfile = Map<String, dynamic>.from(user['host_profile'] as Map? ?? const {});
+    final raw = user[key] ?? hostProfile[key] ?? true;
+    return _asBool(raw);
   }
 
   String availabilityLabel(Map<String, dynamic> user) {
@@ -265,6 +303,9 @@ class LiveUsersController extends GetxController {
     final availability = Map<String, dynamic>.from(user['availability'] as Map? ?? const {});
     final reason = (user['call_unavailable_reason'] ?? user['unavailable_reason'] ?? availability['reason'] ?? '').toString();
     final required = requiredBalanceFor(user, type);
+    if (!isCallTypeEnabled(user, type)) {
+      return 'This host is not accepting ${type == 'video' ? 'video' : 'audio'} calls right now.';
+    }
     if (viewerBalance.value < required) {
       return 'You need at least $required coins to start this ${type == 'video' ? 'video' : 'audio'} call.';
     }
@@ -276,6 +317,9 @@ class LiveUsersController extends GetxController {
     }
     if (reason == 'in_another_call' || reason == 'busy') {
       return 'This host is already in another call.';
+    }
+    if (reason == 'host_calls_disabled') {
+      return 'This host is not accepting calls right now.';
     }
     return 'This host is unavailable right now.';
   }
@@ -291,12 +335,54 @@ class LiveUsersController extends GetxController {
   }
 
   void _applyHostStatus(Map<String, dynamic> status) {
+    final userBlocked = _asBool(status['is_blocked'], fallback: _auth.currentUser?.isBlocked);
+    final hostBlocked = _asBool(
+      status['host_is_blocked'],
+      fallback: _auth.currentUser?.hostProfile?.isBlocked,
+    );
     final manualStatus = (status['manual_status'] ?? 'offline').toString();
     final socketStatus = (status['socket_status'] ?? 'offline').toString();
+    unawaited(
+      _auth.storage.updateUserJson((json) {
+        json['is_blocked'] = userBlocked;
+        final currentHostProfile = Map<String, dynamic>.from(
+          json['host_profile'] as Map? ?? const <String, dynamic>{},
+        );
+        currentHostProfile['is_blocked'] = hostBlocked;
+        currentHostProfile['video_rooms_enabled'] = _asBool(
+          status['video_rooms_enabled'],
+          fallback: currentHostProfile['video_rooms_enabled'],
+        );
+        currentHostProfile['audio_rooms_enabled'] = _asBool(
+          status['audio_rooms_enabled'],
+          fallback: currentHostProfile['audio_rooms_enabled'],
+        );
+        currentHostProfile['video_calls_enabled'] = _asBool(
+          status['video_calls_enabled'],
+          fallback: currentHostProfile['video_calls_enabled'],
+        );
+        currentHostProfile['audio_calls_enabled'] = _asBool(
+          status['audio_calls_enabled'],
+          fallback: currentHostProfile['audio_calls_enabled'],
+        );
+        json['host_profile'] = currentHostProfile;
+      }),
+    );
     hostManualStatus.value =
-        manualStatus == 'online' && socketStatus == 'online'
+        !userBlocked &&
+                !hostBlocked &&
+                manualStatus == 'online' &&
+                socketStatus == 'online'
             ? 'online'
             : 'offline';
+  }
+
+  bool _asBool(dynamic value, {dynamic fallback}) {
+    final resolved = value ?? fallback;
+    if (resolved is bool) return resolved;
+    if (resolved is num) return resolved != 0;
+    if (resolved == null) return true;
+    return resolved.toString().trim().toLowerCase() == 'true';
   }
 
   void _sortUsers() {

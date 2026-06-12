@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
@@ -18,6 +19,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   static const String _kThemeVariantOverride = 'premium_theme_variant_override';
 
   static const String androidPlatform = 'android';
+  static const String iosPlatform = 'ios';
   static String appVersionName = String.fromEnvironment(
     'APP_VERSION_NAME',
     defaultValue: '1.0.0',
@@ -37,6 +39,12 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   bool _activitySyncInFlight = false;
   String? _registeredActiveRemoteThemeKey;
+
+  static String get currentPlatform {
+    if (Platform.isAndroid) return androidPlatform;
+    if (Platform.isIOS) return iosPlatform;
+    return Platform.operatingSystem.toLowerCase();
+  }
 
   Future<void> initialize() async {
     WidgetsBinding.instance.addObserver(this);
@@ -211,12 +219,61 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       return false;
     }
 
+    if (currentPlatform != androidPlatform) {
+      return false;
+    }
+
     return appVersionCode < config.androidMinVersionCode;
   }
 
   String get forceUpgradeMessage =>
       payload.value?.androidUpdateMessage ??
       'Please update Talkieo to continue using the app.';
+
+  void applyUpgradeRequirement({
+    required int minimumAndroidVersionCode,
+    String? minimumAndroidVersionName,
+    String? message,
+  }) {
+    final current = payload.value;
+    final next =
+        (current ??
+                AppSettingsPayload.fromJson({
+                  'enable_premium_theme_variants': false,
+                  'enable_theme_environment_effects': true,
+                  'maintenance_mode_enabled': false,
+                  'force_app_upgrade_enabled': false,
+                  'premium_theme_variant': 'midnight',
+                  'active_theme_key': 'midnight',
+                  'fallback_theme_key': 'midnight',
+                  'active_theme_token_source': 'local',
+                  'unlocked_theme_keys': const <String>['midnight'],
+                  'available_theme_keys': const <String>['midnight'],
+                  'android_min_version_code': 1,
+                  'android_min_version_name': '1.0.0',
+                  'android_update_message':
+                      'Please update Talkieo to continue using the app.',
+                  'host_goals': const <String, dynamic>{},
+                  'features': const <String, dynamic>{},
+                }))
+            .copyWith(
+              forceAppUpgradeEnabled: true,
+              androidMinVersionCode: minimumAndroidVersionCode,
+              androidMinVersionName:
+                  minimumAndroidVersionName?.trim().isNotEmpty == true
+                      ? minimumAndroidVersionName!.trim()
+                      : (current?.androidMinVersionName ?? '1.0.0'),
+              androidUpdateMessage:
+                  message?.trim().isNotEmpty == true
+                      ? message!.trim()
+                      : (current?.androidUpdateMessage ??
+                          'Please update Talkieo to continue using the app.'),
+            );
+
+    payload.value = next;
+    loaded.value = true;
+    error.value = null;
+  }
 
   bool get audioRoomsEnabled =>
       payload.value?.features.audioRoomsEnabled ?? true;

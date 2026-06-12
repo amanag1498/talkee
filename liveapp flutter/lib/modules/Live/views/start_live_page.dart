@@ -10,6 +10,7 @@ import 'package:camera/camera.dart';
 import '../../../../app/theme/brand.dart';
 import '../../../../app/widgets/haptics.dart';
 import '../../../../services/app_settings_service.dart';
+import '../../../../services/auth_service.dart';
 import '../services/live_service.dart';
 import '../models/live_room_model.dart';
 import 'video_call_page.dart';
@@ -92,6 +93,11 @@ class _LiveWaitingPageState extends State<LiveWaitingPage>
       // camera bg (non-blocking)
       unawaited(_startCameraBackground());
       await Future.delayed(const Duration(milliseconds: 420));
+
+      final hostProfile = Get.find<AuthService>().currentUser?.hostProfile;
+      if ((hostProfile?.videoRoomsEnabled ?? true) != true) {
+        throw 'Video live is disabled for your host account.';
+      }
 
       setState(() => phase = _Phase.create);
       final created = await live.createOrStart(

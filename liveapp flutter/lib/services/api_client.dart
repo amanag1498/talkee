@@ -1,14 +1,15 @@
 // lib/services/api_client.dart
 import 'dart:convert';
 
-import 'package:dio/dio.dart';
+import 'package:dio/dio.dart' as dio_pkg;
+import 'package:get/get.dart';
 
 import 'storage_service.dart';
 import '../services/device_id_service.dart';
 import 'app_settings_service.dart';
 
 class ApiClient {
-  final Dio dio;
+  final dio_pkg.Dio dio;
   final StorageService storage;
 
   // In-memory deviceId cache to avoid repeated platform calls
@@ -16,8 +17,8 @@ class ApiClient {
   Future<String>? _fetchInFlight;
 
   ApiClient({required String baseUrl, required this.storage})
-    : dio = Dio(
-        BaseOptions(
+    : dio = dio_pkg.Dio(
+        dio_pkg.BaseOptions(
           baseUrl: _normalizeBase(baseUrl),
           connectTimeout: const Duration(seconds: 15),
           receiveTimeout: const Duration(seconds: 20),
@@ -27,7 +28,7 @@ class ApiClient {
       ) {
     // ── Auth / Device headers ────────────────────────────────────────────────
     dio.interceptors.add(
-      InterceptorsWrapper(
+      dio_pkg.InterceptorsWrapper(
         onRequest: (options, handler) async {
           // Bearer auth
           final t = storage.token;
@@ -42,7 +43,7 @@ class ApiClient {
           }
 
           options.headers['X-Client-Platform'] =
-              AppSettingsService.androidPlatform;
+              AppSettingsService.currentPlatform;
           options.headers['X-App-Version'] = AppSettingsService.appVersionName;
           options.headers['X-App-Version-Code'] =
               AppSettingsService.appVersionCode.toString();
@@ -54,7 +55,7 @@ class ApiClient {
 
     // ── Verbose logging (requests, responses, errors) ───────────────────────
     dio.interceptors.add(
-      InterceptorsWrapper(
+      dio_pkg.InterceptorsWrapper(
         onRequest: (o, h) {
           String pretty(dynamic v) {
             try {
@@ -76,7 +77,8 @@ class ApiClient {
           print('➡️  ${o.method} ${o.uri}');
           print('➡️  headers: ${pretty(redacted)}');
           if (o.data != null) {
-            final body = (o.data is FormData) ? '(FormData)' : pretty(o.data);
+            final body =
+                (o.data is dio_pkg.FormData) ? '(FormData)' : pretty(o.data);
             print('➡️  body:\n$body');
           }
           h.next(o);
@@ -113,6 +115,25 @@ class ApiClient {
             print('❌  error body:\n${pretty(e.response!.data)}');
           }
           print('❌  dio error: ${e.type} ${e.message}');
+
+          final statusCode = e.response?.statusCode ?? 0;
+          final body = e.response?.data;
+          if (statusCode == 426 && body is Map) {
+            final map = Map<String, dynamic>.from(body);
+            final error = (map['error'] ?? '').toString().trim().toUpperCase();
+            if (error == 'APP_UPGRADE_REQUIRED' &&
+                Get.isRegistered<AppSettingsService>()) {
+              Get.find<AppSettingsService>().applyUpgradeRequirement(
+                minimumAndroidVersionCode:
+                    int.tryParse(
+                      (map['minimum_android_version_code'] ?? '').toString(),
+                    ) ??
+                    1,
+                message: map['message']?.toString(),
+              );
+            }
+          }
+
           h.next(e);
         },
       ),
@@ -124,7 +145,7 @@ class ApiClient {
   // ────────────────────────────────────────────────────────────────────────────
 
   /// GET (you can use `query:` or `params:` as aliases for queryParameters)
-  Future<Response<T>> get<T>(
+  Future<dio_pkg.Response<T>> get<T>(
     String path, {
     Map<String, dynamic>? query,
     Map<String, dynamic>? params, // alias
@@ -132,7 +153,7 @@ class ApiClient {
     String? ifNoneMatch, // optional ETag
   }) {
     final qp = query ?? params;
-    final opts = Options(
+    final opts = dio_pkg.Options(
       headers: {
         if (headers != null) ...headers,
         if (ifNoneMatch != null && ifNoneMatch.isNotEmpty)
@@ -143,7 +164,7 @@ class ApiClient {
   }
 
   /// POST
-  Future<Response<T>> post<T>(
+  Future<dio_pkg.Response<T>> post<T>(
     String path, {
     dynamic data,
     Map<String, dynamic>? query,
@@ -151,7 +172,7 @@ class ApiClient {
     Map<String, String>? headers,
   }) {
     final qp = query ?? params;
-    final opts = Options(headers: headers);
+    final opts = dio_pkg.Options(headers: headers);
     return dio.post<T>(
       _normalizePath(path),
       data: data,
@@ -161,7 +182,7 @@ class ApiClient {
   }
 
   /// PUT
-  Future<Response<T>> put<T>(
+  Future<dio_pkg.Response<T>> put<T>(
     String path, {
     dynamic data,
     Map<String, dynamic>? query,
@@ -169,7 +190,7 @@ class ApiClient {
     Map<String, String>? headers,
   }) {
     final qp = query ?? params;
-    final opts = Options(headers: headers);
+    final opts = dio_pkg.Options(headers: headers);
     return dio.put<T>(
       _normalizePath(path),
       data: data,
@@ -179,7 +200,7 @@ class ApiClient {
   }
 
   /// PATCH
-  Future<Response<T>> patch<T>(
+  Future<dio_pkg.Response<T>> patch<T>(
     String path, {
     dynamic data,
     Map<String, dynamic>? query,
@@ -187,7 +208,7 @@ class ApiClient {
     Map<String, String>? headers,
   }) {
     final qp = query ?? params;
-    final opts = Options(headers: headers);
+    final opts = dio_pkg.Options(headers: headers);
     return dio.patch<T>(
       _normalizePath(path),
       data: data,
@@ -197,7 +218,7 @@ class ApiClient {
   }
 
   /// DELETE
-  Future<Response<T>> delete<T>(
+  Future<dio_pkg.Response<T>> delete<T>(
     String path, {
     dynamic data,
     Map<String, dynamic>? query,
@@ -205,7 +226,7 @@ class ApiClient {
     Map<String, String>? headers,
   }) {
     final qp = query ?? params;
-    final opts = Options(headers: headers);
+    final opts = dio_pkg.Options(headers: headers);
     return dio.delete<T>(
       _normalizePath(path),
       data: data,

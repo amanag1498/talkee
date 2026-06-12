@@ -33,6 +33,10 @@ class LiveRoomAccessService
             throw new HttpException(401, 'Login is required to join live rooms.');
         }
 
+        if (($room->room_type ?? 'video') === 'audio') {
+            return;
+        }
+
         if (!$this->hasActiveSubscription($authUser)) {
             throw new HttpException(402, 'An active subscription is required to join live rooms.');
         }

@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:liveapp/services/live_eligibility_service.dart';
 import 'package:liveapp/services/app_settings_service.dart';
+import 'package:liveapp/services/auth_service.dart';
+import 'package:liveapp/services/storage_service.dart';
 
 import '../../../../app/theme/brand.dart';
 import '../../../../app/widgets/animated_background.dart';
@@ -17,7 +19,6 @@ import '../../notifications/widgets/bell_badge_btn.dart';
 import '../../calls/views/live_users_view.dart';
 import '../../dashboard/views/dashboard_page.dart';
 import '../widgets/capsule_orb_nav_bar.dart';
-import '../pages/live_page.dart';
 import '../pages/rooms_page.dart';
 import '../pages/settings_page.dart';
 import '../controllers/home_controller.dart';
@@ -145,8 +146,11 @@ class _HomeShellState extends State<_HomeShell> {
                 right: 0,
                 bottom: mq.padding.bottom + 6,
                 child: Obx(() {
+                  Get.find<StorageService>().userRevision.value;
                   final canLive =
                       Get.find<LiveEligibilityService>().canGoLive.value;
+                  final hostRoomsEnabled =
+                      Get.find<AuthService>().currentUser?.hostProfile?.anyRoomsEnabled ?? true;
                   return Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     child: CapsuleOrbNavBar(
@@ -166,12 +170,14 @@ class _HomeShellState extends State<_HomeShell> {
                           curve: Curves.easeOutCubic,
                         );
                       },
-                      showGoLive: appSettings.anyLiveCreationEnabled,
+                      showGoLive: appSettings.anyLiveCreationEnabled && hostRoomsEnabled,
                       activeAccent: tokens.primaryButtonGradient.first,
                       inactiveIcon: tokens.textSecondary.withValues(alpha: .86),
                       goLiveColor: tokens.dangerColor,
                       onGoLive:
-                          canLive && appSettings.anyLiveCreationEnabled
+                          canLive &&
+                                  appSettings.anyLiveCreationEnabled &&
+                                  hostRoomsEnabled
                               ? widget.onGoLive
                               : null,
                     ),
@@ -321,19 +327,11 @@ class _HomeShellState extends State<_HomeShell> {
       );
     }
 
-    if (settings.videoRoomsEnabled) {
+    if (settings.videoRoomsEnabled || settings.audioRoomsEnabled) {
       addTab(
-        icon: Icons.ondemand_video_rounded,
-        label: 'Video Rooms',
+        icon: Icons.meeting_room_rounded,
+        label: 'Rooms',
         pageBuilder: (_) => const RoomsPage(bottomPadding: 120),
-      );
-    }
-    if (settings.audioRoomsEnabled) {
-      addTab(
-        icon: Icons.graphic_eq_rounded,
-        label: 'Audio Rooms',
-        pageBuilder:
-            (_) => const LivePage(bottomPadding: 120, bannerPlacement: 'home'),
       );
     }
     if (settings.hostCallingEnabled) {
@@ -399,15 +397,15 @@ class _GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
     final liveUsersController = Get.find<LiveUsersController>();
 
     return Obx(() {
+      Get.find<StorageService>().userRevision.value;
       final tokens = getPremiumThemeTokens(
         Get.find<AppSettingsService>().activePremiumThemeVariant,
       );
       final canGoLive =
           Get.find<LiveEligibilityService>().canGoLive.value;
       final showAvailabilityToggle =
-          canGoLive ||
-          liveUsersController.isHost ||
-          Get.find<HomeController>().canGoLive;
+          (canGoLive || liveUsersController.isHost) &&
+          liveUsersController.canToggleHostAvailability;
 
       return AppBar(
         automaticallyImplyLeading: false,
@@ -459,7 +457,7 @@ class _GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
                       Switch.adaptive(
                         value: online,
                         onChanged:
-                            busy
+                            busy || !liveUsersController.canToggleHostAvailability
                                 ? null
                                 : (_) => liveUsersController.toggleHostStatus(),
                         activeColor: tokens.primaryButtonGradient.first,

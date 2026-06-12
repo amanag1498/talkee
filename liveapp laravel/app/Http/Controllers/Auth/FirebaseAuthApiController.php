@@ -252,7 +252,18 @@ class FirebaseAuthApiController extends Controller
         $canGoLive   = (!$user->is_blocked) && (
             $user->hasAnyRole(['host','admin']) || $user->can('go live')
         );
-        $hostProfile = optional($user->host)->only(['id','stage_name','country','city','bio','contact_phone']);
+        $hostProfile = optional($user->host)->only([
+            'id',
+            'stage_name',
+            'country',
+            'city',
+            'bio',
+            'contact_phone',
+            'video_rooms_enabled',
+            'audio_rooms_enabled',
+            'video_calls_enabled',
+            'audio_calls_enabled',
+        ]);
         $level = app(\App\Services\UserLevelService::class)->profileProgress($user);
         $profileFrame = app(\App\Services\ProfileFrameService::class)->equippedFramePayload($user);
         $timings['response_enrichment_ms'] = $this->elapsedMs($stepAt);

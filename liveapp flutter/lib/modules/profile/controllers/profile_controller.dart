@@ -177,6 +177,10 @@ class ProfileController extends GetxController {
                 city: data.hostProfile?.city,
                 bio: data.hostProfile?.bio,
                 contactPhone: data.hostProfile?.contactPhone,
+                videoRoomsEnabled: data.hostProfile?.videoRoomsEnabled ?? true,
+                audioRoomsEnabled: data.hostProfile?.audioRoomsEnabled ?? true,
+                videoCallsEnabled: data.hostProfile?.videoCallsEnabled ?? true,
+                audioCallsEnabled: data.hostProfile?.audioCallsEnabled ?? true,
               ),
       ).toJson(),
     );

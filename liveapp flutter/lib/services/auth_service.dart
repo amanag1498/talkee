@@ -10,7 +10,11 @@ import 'package:liveapp/services/call_socket_service.dart';
 
 import '../app/routes/app_routes.dart';
 import '../data/models/user_model.dart';
+import '../modules/profile/models/profile_dto.dart';
 import 'api_client.dart';
+import 'auth_exception.dart';
+import 'app_settings_service.dart';
+import 'live_eligibility_service.dart';
 import 'storage_service.dart';
 
 class AuthService {
@@ -133,13 +137,31 @@ class AuthService {
         final vStatus = v.statusCode ?? 0;
         final vData   = v.data ?? {};
         if (vStatus != 200 || vData['blocked'] == true) {
+          if (_isUpgradeRequiredResponse(vStatus, vData)) {
+            throw AppUpgradeRequiredException(
+              _upgradeRequiredMessageFromBody(vData),
+            );
+          }
           await _signOutLocalOnly();
           throw Exception('Your account has been blocked.');
         }
         debugPrint('[auth] ws verify succeeded');
+      } on DioException catch (e) {
+        final status = e.response?.statusCode ?? 0;
+        final body = e.response?.data;
+        if (_isUpgradeRequiredResponse(status, body)) {
+          debugPrint('[auth] ws verify blocked by force-upgrade');
+          return model;
+        }
+        debugPrint('[auth] ws verify failed: $e');
+        await _signOutLocalOnly();
+        rethrow;
       } catch (e) {
         // If verify fails for any reason, clean up and surface the error
         debugPrint('[auth] ws verify failed: $e');
+        if (e is AppUpgradeRequiredException) {
+          return model;
+        }
         await _signOutLocalOnly();
         rethrow;
       }
@@ -159,6 +181,11 @@ class AuthService {
           (body is Map && (body['blocked'] == true || body['error'] == 'blocked'))) {
         await _signOutLocalOnly();
         throw Exception('Your account has been blocked.');
+      }
+      if (_isUpgradeRequiredResponse(status, body)) {
+        throw AppUpgradeRequiredException(
+          _upgradeRequiredMessageFromBody(body),
+        );
       }
       if (body is Map<String, dynamic>) {
         throw Exception(_friendlyAuthMessage(
@@ -191,6 +218,64 @@ class AuthService {
     Get.offAllNamed(Routes.login);
   }
 
+  Future<UserModel?> refreshCurrentUserFromProfile() async {
+    final current = currentUser;
+    if (current == null || !isLoggedIn) return current;
+
+    try {
+      final res = await api.get<Map<String, dynamic>>('profile');
+      final body = _asMap(res.data);
+      final data = _asMap(body['data']);
+      final profile = ProfileDto.fromJson(data);
+
+      final refreshed = current.copyWith(
+        name: profile.name,
+        avatarUrl: profile.avatarUrl,
+        isBlocked: profile.isBlocked,
+        profileFrame: profile.profileFrame == null
+            ? null
+            : UserProfileFrameSummary.fromJson(profile.profileFrame!.toJson()),
+        roles: profile.roles,
+        canGoLive: profile.canGoLive,
+        level: profile.level,
+        levelTitle: profile.levelTitle,
+        badgeIcon: profile.badgeIcon,
+        badgeColor: profile.badgeColor,
+        lifetimeSpendCoins: profile.lifetimeSpendCoins,
+        nextLevel: profile.nextLevel,
+        nextLevelTitle: profile.nextLevelTitle,
+        nextLevelRequiredSpend: profile.nextLevelRequiredSpend,
+        remainingSpendToNextLevel: profile.remainingSpendToNextLevel,
+        progressPercent: profile.progressPercent,
+        hostProfile: profile.hostProfile == null
+            ? null
+            : HostProfile(
+                stageName: profile.hostProfile?.stageName,
+                country: profile.hostProfile?.country,
+                city: profile.hostProfile?.city,
+                bio: profile.hostProfile?.bio,
+                contactPhone: profile.hostProfile?.contactPhone,
+                isBlocked: profile.hostProfile?.isBlocked ?? false,
+                videoRoomsEnabled: profile.hostProfile?.videoRoomsEnabled ?? true,
+                audioRoomsEnabled: profile.hostProfile?.audioRoomsEnabled ?? true,
+                videoCallsEnabled: profile.hostProfile?.videoCallsEnabled ?? true,
+                audioCallsEnabled: profile.hostProfile?.audioCallsEnabled ?? true,
+              ),
+      );
+
+      await storage.saveUserJson(refreshed.toJson());
+      if (Get.isRegistered<LiveEligibilityService>()) {
+        Get.find<LiveEligibilityService>().setFromUser(refreshed);
+      }
+      return refreshed;
+    } on DioException catch (e) {
+      if (_isUpgradeRequiredResponse(e.response?.statusCode, e.response?.data)) {
+        return current;
+      }
+      rethrow;
+    }
+  }
+
   String _friendlyAuthMessage(int status, String msg, String code) {
     if (status == 503 && code == 'firebase_service_account_missing') {
       return 'Server login is not configured yet. Firebase admin credentials are missing.';
@@ -205,5 +290,34 @@ class AuthService {
       return 'This Google account did not provide an email address.';
     }
     return msg;
+  }
+
+  Map<String, dynamic> _asMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return <String, dynamic>{};
+  }
+
+  bool _isUpgradeRequiredResponse(int? status, dynamic body) {
+    if (status != 426) return false;
+    if (body is Map) {
+      final map = Map<String, dynamic>.from(body);
+      return (map['error'] ?? '').toString().trim().toUpperCase() ==
+          'APP_UPGRADE_REQUIRED';
+    }
+    return false;
+  }
+
+  String _upgradeRequiredMessageFromBody(dynamic body) {
+    if (body is Map) {
+      final map = Map<String, dynamic>.from(body);
+      final message = map['message']?.toString().trim();
+      if (message != null && message.isNotEmpty) {
+        return message;
+      }
+    }
+    return Get.isRegistered<AppSettingsService>()
+        ? Get.find<AppSettingsService>().forceUpgradeMessage
+        : 'Please update Talkieo to continue using the app.';
   }
 }

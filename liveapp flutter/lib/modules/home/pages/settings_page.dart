@@ -1933,22 +1933,19 @@ class _PlacementBannerStripState extends State<_PlacementBannerStrip> {
                         ),
                       Container(
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors:
-                                b.hasImage
-                                    ? const [
-                                      Color(0x660D0818),
-                                      Color(0xB0261640),
-                                      Color(0xD8382161),
-                                    ]
-                                    : const [
+                          color: b.hasImage ? Colors.transparent : null,
+                          gradient:
+                              b.hasImage
+                                  ? null
+                                  : const LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
                                       Color(0xFF201236),
                                       Color(0xFF3A225E),
                                       Color(0xFF61409D),
                                     ],
-                          ),
+                                  ),
                           border: Border.all(
                             color: Colors.white.withOpacity(.18),
                           ),

@@ -4,6 +4,7 @@ class ProfileDto {
   final String? displayName;
   final String email;
   final String? avatarUrl;
+  final bool isBlocked;
   final ProfileFrameDto? profileFrame;
   final String? bio;
   final String? city;
@@ -39,6 +40,7 @@ class ProfileDto {
     required this.email,
     required this.roles,
     required this.isVip,
+    required this.isBlocked,
     required this.canGoLive,
     required this.walletBalance,
     required this.status,
@@ -81,6 +83,7 @@ class ProfileDto {
       displayName: json['display_name']?.toString(),
       email: (json['email'] ?? '').toString(),
       avatarUrl: json['avatar_url']?.toString(),
+      isBlocked: json['is_blocked'] == true,
       profileFrame: json['profile_frame'] is Map<String, dynamic>
           ? ProfileFrameDto.fromJson(json['profile_frame'] as Map<String, dynamic>)
           : (json['profile_frame'] is Map
@@ -215,6 +218,10 @@ class ProfileHostDto {
   final String? bio;
   final int? agencyId;
   final bool isBlocked;
+  final bool videoRoomsEnabled;
+  final bool audioRoomsEnabled;
+  final bool videoCallsEnabled;
+  final bool audioCallsEnabled;
   final ProfileHostGoalOverrides? goalOverrides;
   final ProfileAgencyDto? agency;
 
@@ -226,6 +233,10 @@ class ProfileHostDto {
     this.bio,
     this.agencyId,
     required this.isBlocked,
+    this.videoRoomsEnabled = true,
+    this.audioRoomsEnabled = true,
+    this.videoCallsEnabled = true,
+    this.audioCallsEnabled = true,
     this.goalOverrides,
     this.agency,
   });
@@ -239,6 +250,10 @@ class ProfileHostDto {
       bio: json['bio']?.toString(),
       agencyId: (json['agency_id'] as num?)?.toInt(),
       isBlocked: json['is_blocked'] == true,
+      videoRoomsEnabled: json['video_rooms_enabled'] != false,
+      audioRoomsEnabled: json['audio_rooms_enabled'] != false,
+      videoCallsEnabled: json['video_calls_enabled'] != false,
+      audioCallsEnabled: json['audio_calls_enabled'] != false,
       goalOverrides: json['goal_overrides'] is Map<String, dynamic>
           ? ProfileHostGoalOverrides.fromJson(json['goal_overrides'] as Map<String, dynamic>)
           : (json['goal_overrides'] is Map

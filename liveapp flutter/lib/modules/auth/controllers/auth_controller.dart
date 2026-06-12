@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import '../../../app/widgets/logout_and_blocked_dialog.dart';
 import '../../../data/models/user_model.dart';
 import '../../../services/auth_service.dart';
+import '../../../services/auth_exception.dart';
 import '../../../services/app_settings_service.dart';
 import '../../../modules/calls/controllers/call_controller.dart';
 import '../../../modules/home/controllers/live_room_controller.dart';
@@ -43,6 +44,12 @@ class AuthController extends GetxController {
       }
       Get.offAllNamed(Routes.home);
     } catch (e) {
+      if (e is AppUpgradeRequiredException ||
+          (Get.isRegistered<AppSettingsService>() &&
+              Get.find<AppSettingsService>().shouldForceUpgrade)) {
+        error.value = '';
+        return;
+      }
       final msg = e.toString();
       error.value = msg;
 

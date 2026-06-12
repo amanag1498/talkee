@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Host;
 use App\Services\HostAvailabilityService;
 use Illuminate\Http\Request;
 
@@ -45,7 +46,7 @@ class LiveUsersController extends Controller
 
         return response()->json([
             'ok' => true,
-            'data' => $availability,
+            'data' => $this->statusPayload($user->id, $availability),
         ]);
     }
 
@@ -54,9 +55,17 @@ class LiveUsersController extends Controller
         $user = $request->user();
         abort_unless($user->hasRole('host'), 403, 'Only hosts can view host availability.');
 
+        $availability = $this->availabilityService->ensureForUser($user);
+        if ($this->availabilityService->isHostBlocked($user)) {
+            $availability->forceFill([
+                'manual_status' => 'offline',
+                'socket_status' => 'offline',
+            ]);
+        }
+
         return response()->json([
             'ok' => true,
-            'data' => $this->availabilityService->ensureForUser($user),
+            'data' => $this->statusPayload($user->id, $availability),
         ]);
     }
 
@@ -71,6 +80,22 @@ class LiveUsersController extends Controller
         return response()->json([
             'ok' => true,
             'data' => $availability,
+        ]);
+    }
+
+    private function statusPayload(int $userId, mixed $availability): array
+    {
+        $host = Host::query()->where('user_id', $userId)->first();
+        $hostUserBlocked = (bool) optional($host?->user)->is_blocked;
+        $hostBlocked = (bool) ($host?->is_blocked ?? false);
+
+        return array_merge($availability->toArray(), [
+            'is_blocked' => $hostUserBlocked,
+            'host_is_blocked' => $hostBlocked,
+            'video_rooms_enabled' => (bool) ($host?->video_rooms_enabled ?? true),
+            'audio_rooms_enabled' => (bool) ($host?->audio_rooms_enabled ?? true),
+            'video_calls_enabled' => (bool) ($host?->video_calls_enabled ?? true),
+            'audio_calls_enabled' => (bool) ($host?->audio_calls_enabled ?? true),
         ]);
     }
 }

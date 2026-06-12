@@ -32,7 +32,7 @@ class LiveRoomAccessAndGiftTest extends TestCase
         Redis::shouldReceive('publish')->zeroOrMoreTimes()->andReturn(1);
     }
 
-    public function test_viewer_join_requires_active_subscription(): void
+    public function test_video_room_join_requires_active_subscription(): void
     {
         [, $room] = $this->makeLiveRoom();
         $viewer = User::factory()->create();
@@ -46,7 +46,25 @@ class LiveRoomAccessAndGiftTest extends TestCase
         ])->assertStatus(402);
     }
 
-    public function test_viewer_with_active_subscription_can_join_room(): void
+    public function test_audio_room_join_does_not_require_active_subscription(): void
+    {
+        [, $room] = $this->makeLiveRoom([
+            'room_type' => 'audio',
+        ]);
+        $viewer = User::factory()->create();
+        $viewer->assignRole('user');
+
+        Sanctum::actingAs($viewer);
+
+        $this->postJson("/api/live/rooms/{$room->room_id}/join", [
+            'role' => 'listener',
+            'session_id' => 'sess-audio-no-sub',
+        ])->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('room_type', 'audio');
+    }
+
+    public function test_video_room_with_active_subscription_can_join_room(): void
     {
         [, $room] = $this->makeLiveRoom();
         $viewer = User::factory()->create();

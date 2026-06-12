@@ -212,7 +212,7 @@ class PresenceService with WidgetsBindingObserver {
         'auth': {
           'token': _token,
           if ((_deviceId ?? '').isNotEmpty) 'device_id': _deviceId,
-          'platform': AppSettingsService.androidPlatform,
+          'platform': AppSettingsService.currentPlatform,
           'app_version': AppSettingsService.appVersionName,
           'app_version_code': AppSettingsService.appVersionCode,
         },

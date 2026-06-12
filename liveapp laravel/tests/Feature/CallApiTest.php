@@ -54,6 +54,55 @@ class CallApiTest extends TestCase
         $response->assertForbidden();
     }
 
+    public function test_blocked_host_cannot_toggle_online_status(): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole('host');
+        Host::query()->create([
+            'user_id' => $user->id,
+            'stage_name' => 'Blocked Host',
+            'is_blocked' => true,
+        ]);
+        HostAvailability::query()->create([
+            'user_id' => $user->id,
+            'manual_status' => 'offline',
+            'socket_status' => 'offline',
+            'call_status' => 'available',
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $this->postJson('/api/host/status/toggle', [
+            'manual_status' => 'online',
+        ])->assertStatus(403)
+            ->assertJsonPath('message', 'Blocked hosts cannot go online.');
+    }
+
+    public function test_host_status_reports_blocked_host_as_offline(): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole('host');
+        Host::query()->create([
+            'user_id' => $user->id,
+            'stage_name' => 'Blocked Host',
+            'is_blocked' => true,
+        ]);
+        HostAvailability::query()->create([
+            'user_id' => $user->id,
+            'manual_status' => 'online',
+            'socket_status' => 'online',
+            'call_status' => 'available',
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $this->getJson('/api/host/status')
+            ->assertOk()
+            ->assertJsonPath('data.manual_status', 'offline')
+            ->assertJsonPath('data.socket_status', 'offline')
+            ->assertJsonPath('data.host_is_blocked', true);
+    }
+
     public function test_duplicate_call_request_returns_existing_active_call(): void
     {
         $caller = User::factory()->create();

@@ -26,12 +26,16 @@ class EnforceAndroidClientVersion
         $versionCode = (int) $request->header('X-App-Version-Code', 0);
         $minimumVersionCode = $this->settings->minimumAndroidVersionCode();
 
-        if ($platform !== 'android') {
+        if ($platform === '') {
             return $this->reject(
-                'UNSUPPORTED_CLIENT_PLATFORM',
-                'Android client headers are required to access this API while a mandatory upgrade is active.',
+                'APP_UPGRADE_REQUIRED',
+                $this->settings->androidUpdateMessage(),
                 $minimumVersionCode,
             );
+        }
+
+        if ($platform !== 'android') {
+            return $next($request);
         }
 
         if ($versionCode < $minimumVersionCode) {

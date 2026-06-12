@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 
 class StorageService {
@@ -9,6 +10,7 @@ class StorageService {
   static const _kWelcomeTipAckPrefix = 'welcome_tip_ack_user_';
 
   final GetStorage _box = GetStorage();
+  final RxInt userRevision = 0.obs;
 
   /// Call this once in main() before using StorageService:
   ///   await StorageService.init();
@@ -31,11 +33,13 @@ class StorageService {
   Future<void> saveAuth(String token, Map<String, dynamic> user) async {
     await _box.write(_kToken, token);
     await _box.write(_kUser, user);
+    userRevision.value++;
   }
 
   /// Overwrite only the user payload (keeps existing token)
   Future<void> saveUserJson(Map<String, dynamic> user) async {
     await _box.write(_kUser, user);
+    userRevision.value++;
   }
 
   /// Read-modify-write helper for user payload
@@ -44,6 +48,7 @@ class StorageService {
     final copy = Map<String, dynamic>.from(current);
     mutate(copy);
     await _box.write(_kUser, copy);
+    userRevision.value++;
   }
 
   /// Convenience setter for the go-live flag (writes both camel & snake case)
@@ -53,6 +58,7 @@ class StorageService {
     copy['canGoLive'] = value;
     copy['can_go_live'] = value;
     await _box.write(_kUser, copy);
+    userRevision.value++;
   }
 
   /// Returns a stable session id for this app install.
@@ -79,5 +85,6 @@ class StorageService {
   Future<void> clear() async {
     await _box.remove(_kToken);
     await _box.remove(_kUser);
+    userRevision.value++;
   }
 }

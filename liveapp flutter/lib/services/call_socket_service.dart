@@ -29,7 +29,7 @@ class CallSocketService {
       'auth': {
         'token': bearerToken,
         if (deviceId.isNotEmpty) 'device_id': deviceId,
-        'platform': AppSettingsService.androidPlatform,
+        'platform': AppSettingsService.currentPlatform,
         'app_version': AppSettingsService.appVersionName,
         'app_version_code': AppSettingsService.appVersionCode,
       },

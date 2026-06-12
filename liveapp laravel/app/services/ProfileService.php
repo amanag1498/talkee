@@ -49,6 +49,7 @@ class ProfileService
             'name' => $user->name,
             'display_name' => $displayName,
             'email' => $public ? '' : $user->email,
+            'is_blocked' => (bool) $user->is_blocked,
             'avatar_url' => $user->avatar_url,
             'profile_frame' => $this->frames->equippedFramePayload($user),
             'joined_at' => optional($user->created_at)->toIso8601String(),
@@ -90,6 +91,10 @@ class ProfileService
                 'bio' => $host->bio,
                 'agency_id' => $host->agency_id,
                 'is_blocked' => (bool) $host->is_blocked,
+                'video_rooms_enabled' => (bool) $host->video_rooms_enabled,
+                'audio_rooms_enabled' => (bool) $host->audio_rooms_enabled,
+                'video_calls_enabled' => (bool) $host->video_calls_enabled,
+                'audio_calls_enabled' => (bool) $host->audio_calls_enabled,
                 'goal_overrides' => $hostGoalOverrides,
                 'agency' => $agency ? [
                     'id' => $agency->id,

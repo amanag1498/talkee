@@ -190,6 +190,11 @@ class HostProfile {
   final String? city;
   final String? bio;
   final String? contactPhone;
+  final bool isBlocked;
+  final bool videoRoomsEnabled;
+  final bool audioRoomsEnabled;
+  final bool videoCallsEnabled;
+  final bool audioCallsEnabled;
 
   const HostProfile({
     this.stageName,
@@ -197,7 +202,15 @@ class HostProfile {
     this.city,
     this.bio,
     this.contactPhone,
+    this.isBlocked = false,
+    this.videoRoomsEnabled = true,
+    this.audioRoomsEnabled = true,
+    this.videoCallsEnabled = true,
+    this.audioCallsEnabled = true,
   });
+
+  bool get anyRoomsEnabled => videoRoomsEnabled || audioRoomsEnabled;
+  bool get anyCallsEnabled => videoCallsEnabled || audioCallsEnabled;
 
   factory HostProfile.fromJson(Map<String, dynamic> j) => HostProfile(
     stageName: j['stage_name'] as String?,
@@ -205,6 +218,11 @@ class HostProfile {
     city: j['city'] as String?,
     bio: j['bio'] as String?,
     contactPhone: j['contact_phone'] as String?,
+    isBlocked: _asBool(j['is_blocked'] ?? false),
+    videoRoomsEnabled: _asBool(j['video_rooms_enabled'] ?? true),
+    audioRoomsEnabled: _asBool(j['audio_rooms_enabled'] ?? true),
+    videoCallsEnabled: _asBool(j['video_calls_enabled'] ?? true),
+    audioCallsEnabled: _asBool(j['audio_calls_enabled'] ?? true),
   );
 
   Map<String, dynamic> toJson() => {
@@ -213,6 +231,11 @@ class HostProfile {
     'city': city,
     'bio': bio,
     'contact_phone': contactPhone,
+    'is_blocked': isBlocked,
+    'video_rooms_enabled': videoRoomsEnabled,
+    'audio_rooms_enabled': audioRoomsEnabled,
+    'video_calls_enabled': videoCallsEnabled,
+    'audio_calls_enabled': audioCallsEnabled,
   };
 }
 

@@ -115,9 +115,12 @@ class RoomsPage extends StatelessWidget {
     required LiveRoomModel room,
   }) async {
     Future<void> attemptJoin() async {
-      final joined = await live.join(room.id, role: 'viewer');
+      final joined =
+          room.isAudioRoom
+              ? await live.joinAudioRoom(room.id)
+              : await live.join(room.id, role: 'viewer');
       await Get.toNamed(
-        '/live/video',
+        room.isAudioRoom ? '/live/audio' : '/live/video',
         arguments: {'room': joined, 'viewer_only': true},
       );
     }
@@ -128,7 +131,8 @@ class RoomsPage extends StatelessWidget {
       final message = e.toString().replaceFirst('Exception: ', '');
       final normalized = message.toLowerCase();
 
-      if (normalized.contains('active subscription is required')) {
+      if (!room.isAudioRoom &&
+          normalized.contains('active subscription is required')) {
         await gate.ensureAccessThen(onGranted: attemptJoin);
         return;
       }
@@ -170,9 +174,8 @@ class RoomsPage extends StatelessWidget {
       final tokens = getPremiumThemeTokens(
         Get.find<AppSettingsService>().activePremiumThemeVariant,
       );
-      final rooms = ctrl.liveRooms.where((room) => room.isVideoRoom).toList();
-      final scheduledRooms =
-          ctrl.scheduledRooms.where((room) => room.isVideoRoom).toList();
+      final rooms = ctrl.liveRooms.toList();
+      final scheduledRooms = ctrl.scheduledRooms.toList();
       final follows = Get.find<HostFollowController>();
 
       return RefreshIndicator(
@@ -195,7 +198,7 @@ class RoomsPage extends StatelessWidget {
               slivers: [
                 SliverToBoxAdapter(
                   child: _VideoBannerStrip(
-                    placement: 'video_rooms',
+                    placement: 'home',
                     tokens: tokens,
                   ),
                 ),
@@ -254,9 +257,10 @@ class RoomsPage extends StatelessWidget {
                   SliverFillRemaining(
                     hasScrollBody: false,
                     child: _CompactEmptyState(
-                      title: 'No video rooms right now',
-                      message: 'Pull to refresh when hosts go live again.',
-                      icon: Icons.ondemand_video_rounded,
+                      title: 'No rooms right now',
+                      message:
+                          'Pull to refresh when hosts start audio or video rooms.',
+                      icon: Icons.meeting_room_rounded,
                       tokens: tokens,
                     ),
                   )
@@ -690,21 +694,24 @@ class _VideoBannerStripState extends State<_VideoBannerStrip>
                     Container(
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(18),
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: banners[i].hasImage
-                              ? const [
-                                  Color(0x2B06040C),
-                                  Color(0x8A151020),
-                                  Color(0xCC1E1731),
-                                ]
-                              : [
-                                  tokens.cardGradient.first,
-                                  tokens.cardGradient.last,
-                                  tokens.primaryButtonGradient.last.withOpacity(.78),
-                                ],
-                        ),
+                        color:
+                            banners[i].hasImage
+                                ? Colors.transparent
+                                : null,
+                        gradient:
+                            banners[i].hasImage
+                                ? null
+                                : LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    tokens.cardGradient.first,
+                                    tokens.cardGradient.last,
+                                    tokens.primaryButtonGradient.last.withOpacity(
+                                      .78,
+                                    ),
+                                  ],
+                                ),
                         border: Border.all(
                           color: tokens.borderColor.withOpacity(.46),
                         ),
@@ -853,6 +860,9 @@ class _CompactVideoRoomTile extends StatelessWidget {
     final imageUrl = room.thumbnail;
     final hostName =
         room.hostName?.trim().isNotEmpty == true ? room.hostName!.trim() : 'Host';
+    final roomTypeLabel = room.isAudioRoom ? 'AUDIO' : 'VIDEO';
+    final roomTypeColor =
+        room.isAudioRoom ? const Color(0xFF4CC9F0) : const Color(0xFFFF385C);
 
     return InkWell(
       onTap: onTap,
@@ -879,13 +889,17 @@ class _CompactVideoRoomTile extends StatelessWidget {
                 child: Image.network(
                   imageUrl,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _CompactTileFallback(tokens: tokens),
+                  errorBuilder:
+                      (_, __, ___) => _CompactTileFallback(
+                        tokens: tokens,
+                        room: room,
+                      ),
                 ),
               )
             else
               ClipRRect(
                 borderRadius: BorderRadius.circular(14),
-                child: _CompactTileFallback(tokens: tokens),
+                child: _CompactTileFallback(tokens: tokens, room: room),
               ),
             DecoratedBox(
               decoration: BoxDecoration(
@@ -926,10 +940,33 @@ class _CompactVideoRoomTile extends StatelessWidget {
                       ),
                     ),
                   ),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: roomTypeColor.withOpacity(.92),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      roomTypeLabel,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: .5,
+                      ),
+                    ),
+                  ),
                   const Spacer(),
                   _CompactCornerPill(
                     label: _compactCount(room.liveAudience),
-                    icon: Icons.visibility_rounded,
+                    icon:
+                        room.isAudioRoom
+                            ? Icons.headset_rounded
+                            : Icons.visibility_rounded,
                   ),
                 ],
               ),
@@ -1031,9 +1068,13 @@ class _CompactCornerPill extends StatelessWidget {
 }
 
 class _CompactTileFallback extends StatelessWidget {
-  const _CompactTileFallback({required this.tokens});
+  const _CompactTileFallback({
+    required this.tokens,
+    required this.room,
+  });
 
   final PremiumThemeTokens tokens;
+  final LiveRoomModel room;
 
   @override
   Widget build(BuildContext context) {
@@ -1048,9 +1089,9 @@ class _CompactTileFallback extends StatelessWidget {
           ],
         ),
       ),
-      child: const Center(
+      child: Center(
         child: Icon(
-          Icons.videocam_rounded,
+          room.isAudioRoom ? Icons.graphic_eq_rounded : Icons.videocam_rounded,
           color: Colors.white,
           size: 32,
         ),

@@ -10,6 +10,7 @@ import '../../../../app/theme/brand.dart';
 import '../../../../app/widgets/animated_background.dart';
 import '../../../../app/widgets/haptics.dart';
 import '../../../../services/app_settings_service.dart';
+import '../../../../services/auth_service.dart';
 import '../models/live_room_model.dart';
 import '../services/live_service.dart';
 import 'video_call_page.dart';
@@ -80,6 +81,11 @@ class _BackstagePageState extends State<BackstagePage>
 
       final ok = await _ensurePermissions();
       if (!ok) throw 'Camera and microphone permissions are required.';
+
+      final hostProfile = Get.find<AuthService>().currentUser?.hostProfile;
+      if ((hostProfile?.videoRoomsEnabled ?? true) != true) {
+        throw 'Video live is disabled for your host account.';
+      }
 
       unawaited(_startCameraBackground());
 

@@ -17,7 +17,6 @@ import '../../banners/services/banner_service.dart';
 import '../../profile/controllers/host_follow_controller.dart';
 import '../controllers/live_room_controller.dart';
 import '../models/live_room_dto.dart';
-import 'package:liveapp/modules/subscriptions/controllers/viewer_gate_controller.dart';
 
 class LivePage extends StatefulWidget {
   final double bottomPadding;
@@ -128,12 +127,6 @@ class _LivePageState extends State<LivePage> {
   Widget build(BuildContext context) {
     final ctrl = Get.find<LiveRoomsController>();
     final live = Get.find<LiveService>();
-
-    // Ensure gate controller is available (safe if already registered elsewhere)
-    final gate =
-        Get.isRegistered<ViewerGateController>()
-            ? Get.find<ViewerGateController>()
-            : Get.put(ViewerGateController(), permanent: true);
 
     return Obx(() {
       final tokens = _tokens();
@@ -263,15 +256,6 @@ class _LivePageState extends State<LivePage> {
                                   '',
                                 );
                                 final normalized = message.toLowerCase();
-
-                                if (normalized.contains(
-                                  'active subscription is required',
-                                )) {
-                                  await gate.ensureAccessThen(
-                                    onGranted: attemptJoin,
-                                  );
-                                  return;
-                                }
 
                                 if (normalized.contains(
                                   'blocked by this host',

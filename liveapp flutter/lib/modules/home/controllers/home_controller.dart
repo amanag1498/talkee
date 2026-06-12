@@ -16,9 +16,11 @@ import '../../../app/widgets/logout_and_blocked_dialog.dart';
 import '../../../app/widgets/profile_frame_unlock_card.dart';
 import '../../../app/widgets/theme_unlock_card.dart';
 import '../../../data/models/user_model.dart';
+import '../../calls/controllers/live_users_controller.dart';
 import '../../themes/controllers/theme_center_controller.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/app_settings_service.dart';
+import '../../../services/live_eligibility_service.dart';
 import '../../../services/presence_service.dart';
 import '../../../services/storage_service.dart';
 
@@ -53,6 +55,7 @@ class HomeController extends SuperController {
     if (Get.isRegistered<AppSettingsService>()) {
       unawaited(Get.find<AppSettingsService>().refresh());
     }
+    unawaited(auth.refreshCurrentUserFromProfile());
     _ensurePresence();
     _maybeShowWelcome(); // one-time popup if server says so
     _refreshNotifications(); // refresh notifications on first show
@@ -67,6 +70,7 @@ class HomeController extends SuperController {
     if (Get.isRegistered<AppSettingsService>()) {
       unawaited(Get.find<AppSettingsService>().refresh());
     }
+    unawaited(auth.refreshCurrentUserFromProfile());
     // Called when Home route becomes active again (app foreground / navigated back)
     _ensurePresence();
     _refreshNotifications();
@@ -134,6 +138,11 @@ class HomeController extends SuperController {
   // Presence & notify routing (your existing logic)
   // ─────────────────────────────────────────────────────────────────────────
   Future<void> _ensurePresence() async {
+    if (Get.isRegistered<AppSettingsService>() &&
+        Get.find<AppSettingsService>().shouldForceUpgrade) {
+      await PresenceService.instance.stop();
+      return;
+    }
     if (_presenceStarted) {
       await PresenceService.instance.resumeOnline();
       return;
@@ -267,6 +276,7 @@ class HomeController extends SuperController {
               );
               break;
             case 'host_approved':
+              await _applyRuntimeAccountState(type, meta);
               Get.dialog(
                 ApprovalDialog(
                   title: title.isNotEmpty ? title : 'Host request approved 🎉',
@@ -277,6 +287,7 @@ class HomeController extends SuperController {
               );
               break;
             case 'agency_approved':
+              await _applyRuntimeAccountState(type, meta);
               Get.dialog(
                 ApprovalDialog(
                   title: title.isNotEmpty ? title : 'Agency approved 🎉',
@@ -287,7 +298,31 @@ class HomeController extends SuperController {
               );
               break;
             case 'host_rejected':
+              await _applyRuntimeAccountState(type, meta);
+              Get.dialog(
+                ApprovalDialog(
+                  title: title.isNotEmpty ? title : 'Request reviewed',
+                  message:
+                      body.isNotEmpty ? body : 'Your request was not approved.',
+                  ctaText: 'OK',
+                ),
+              );
+              break;
+            case 'host_blocked':
+            case 'host_unblocked':
+            case 'agency_blocked':
+            case 'agency_unblocked':
+              await _applyRuntimeAccountState(type, meta);
+              Get.dialog(
+                ApprovalDialog(
+                  title: title.isNotEmpty ? title : 'Account updated',
+                  message: body.isNotEmpty ? body : 'Your account access changed.',
+                  ctaText: 'OK',
+                ),
+              );
+              break;
             case 'agency_rejected':
+              await _applyRuntimeAccountState(type, meta);
               Get.dialog(
                 ApprovalDialog(
                   title: title.isNotEmpty ? title : 'Request reviewed',
@@ -312,6 +347,37 @@ class HomeController extends SuperController {
         },
       );
       _presenceStarted = true;
+    }
+  }
+
+  Future<void> _applyRuntimeAccountState(
+    String type,
+    Map<String, dynamic> meta,
+  ) async {
+    final rawVer = meta['ver'];
+    final ver = rawVer is num ? rawVer.toInt() : int.tryParse('$rawVer');
+    final canGoLiveMeta =
+        meta['can_go_live'] is bool ? meta['can_go_live'] as bool : null;
+
+    if (Get.isRegistered<LiveEligibilityService>()) {
+      Get.find<LiveEligibilityService>().applyEvent(
+        type,
+        ver: ver,
+        at: DateTime.now(),
+        canFromMeta: canGoLiveMeta,
+      );
+    }
+
+    await auth.refreshCurrentUserFromProfile();
+
+    if (Get.isRegistered<LiveUsersController>()) {
+      final liveUsers = Get.find<LiveUsersController>();
+      if (liveUsers.isHost) {
+        await liveUsers.refreshHostStatus();
+      }
+      if (liveUsers.users.isNotEmpty) {
+        unawaited(liveUsers.fetch(reset: true));
+      }
     }
   }
 
@@ -383,11 +449,13 @@ class HomeController extends SuperController {
 
   // Existing convenience
   bool get canGoLive {
+    final current = auth.currentUser;
+    if (current == null) return false;
     try {
-      final v = (user as dynamic).canGoLive;
+      final v = (current as dynamic).canGoLive;
       if (v is bool) return v;
     } catch (_) {}
-    final roles = (user.roles);
+    final roles = current.roles;
     return roles.contains('host');
   }
 

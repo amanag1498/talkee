@@ -10,6 +10,7 @@ import '../../../../app/routes/app_routes.dart';
 import '../../../../app/theme/brand.dart';
 import '../../../../app/widgets/haptics.dart';
 import '../../../../services/app_settings_service.dart';
+import '../../../../services/auth_service.dart';
 import '../../home/controllers/live_room_controller.dart';
 import '../services/live_service.dart';
 import 'video_call_page.dart';
@@ -20,6 +21,13 @@ Future<void> showLivePreflightSheet(
 }) async {
   final live = Get.find<LiveService>();
   final appSettings = Get.find<AppSettingsService>();
+  final auth = Get.find<AuthService>();
+  final hostProfile = auth.currentUser?.hostProfile;
+  final hostVideoRoomsEnabled = hostProfile?.videoRoomsEnabled ?? true;
+  final hostAudioRoomsEnabled = hostProfile?.audioRoomsEnabled ?? true;
+  final videoRoomAvailable = appSettings.videoRoomsEnabled && hostVideoRoomsEnabled;
+  final audioRoomAvailable = appSettings.audioRoomsEnabled && hostAudioRoomsEnabled;
+  final anyHostRoomAvailable = videoRoomAvailable || audioRoomAvailable;
   if (!appSettings.anyLiveCreationEnabled) {
     Get.snackbar(
       'Live unavailable',
@@ -28,8 +36,16 @@ Future<void> showLivePreflightSheet(
     );
     return;
   }
+  if (!anyHostRoomAvailable) {
+    Get.snackbar(
+      'Live unavailable',
+      'Admin has disabled live room creation for your host account.',
+      snackPosition: SnackPosition.BOTTOM,
+    );
+    return;
+  }
 
-  String roomType = appSettings.videoRoomsEnabled ? 'video' : 'audio';
+  String roomType = videoRoomAvailable ? 'video' : 'audio';
   bool micOn = true;
   bool camOn = true;
   bool scheduleMode = false;
@@ -54,10 +70,10 @@ Future<void> showLivePreflightSheet(
               err = null;
             });
             try {
-              if (roomType == 'video' && !appSettings.videoRoomsEnabled) {
+              if (roomType == 'video' && !videoRoomAvailable) {
                 throw Exception('Video live is currently unavailable.');
               }
-              if (roomType == 'audio' && !appSettings.audioRoomsEnabled) {
+              if (roomType == 'audio' && !audioRoomAvailable) {
                 throw Exception('Audio rooms are currently unavailable.');
               }
               if (scheduleMode && scheduledAt == null) {
@@ -179,7 +195,7 @@ Future<void> showLivePreflightSheet(
                         const SizedBox(height: 14),
                         Row(
                           children: [
-                            if (appSettings.videoRoomsEnabled)
+                            if (videoRoomAvailable)
                               Expanded(
                                 child: _ModeChip(
                                   icon: Icons.videocam_rounded,
@@ -191,10 +207,10 @@ Future<void> showLivePreflightSheet(
                                       ),
                                 ),
                               ),
-                            if (appSettings.videoRoomsEnabled &&
-                                appSettings.audioRoomsEnabled)
+                            if (videoRoomAvailable &&
+                                audioRoomAvailable)
                               const SizedBox(width: 8),
-                            if (appSettings.audioRoomsEnabled)
+                            if (audioRoomAvailable)
                               Expanded(
                                 child: _ModeChip(
                                   icon: Icons.graphic_eq_rounded,

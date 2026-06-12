@@ -198,6 +198,11 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> _startSocketIfPossible({bool force = false}) async {
+    if (Get.isRegistered<AppSettingsService>() &&
+        Get.find<AppSettingsService>().shouldForceUpgrade) {
+      await _socketService.stop();
+      return;
+    }
     final token = _auth.storage.token;
     if (token == null || token.isEmpty) return;
     if (_socketService.isConnected && !force) return;

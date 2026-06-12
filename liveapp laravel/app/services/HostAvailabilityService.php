@@ -32,6 +32,10 @@ class HostAvailabilityService
             abort(403, 'Only hosts can toggle availability.');
         }
 
+        if ($manualStatus === 'online' && $this->isHostBlocked($user)) {
+            abort(403, 'Blocked hosts cannot go online.');
+        }
+
         return DB::transaction(function () use ($user, $manualStatus) {
             $availability = $this->ensureForUser($user);
             $before = $availability->replicate();
@@ -61,6 +65,9 @@ class HostAvailabilityService
     {
         return DB::transaction(function () use ($userId, $socketStatus) {
             $user = User::query()->findOrFail($userId);
+            if ($socketStatus === 'online' && $this->isHostBlocked($user)) {
+                $socketStatus = 'offline';
+            }
             $availability = $this->ensureForUser($user);
             $before = $availability->replicate();
 
@@ -126,7 +133,9 @@ class HostAvailabilityService
                 'hostAvailability',
             ])
             ->where('is_blocked', false)
-            ->whereHas('host')
+            ->whereHas('host', function ($query) {
+                $query->where('is_blocked', false);
+            })
             ->whereHas('hostAvailability', function ($query) {
                 $query
                     ->where('manual_status', 'online')
@@ -340,5 +349,12 @@ class HostAvailabilityService
             'current_call_session_id' => $availability->current_call_session_id,
             'reason' => $this->availabilityReason($availability),
         ]);
+    }
+
+    public function isHostBlocked(User $user): bool
+    {
+        $host = $user->relationLoaded('host') ? $user->host : $user->host()->first();
+
+        return (bool) ($user->is_blocked || $host?->is_blocked);
     }
 }
