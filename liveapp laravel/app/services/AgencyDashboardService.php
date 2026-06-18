@@ -297,17 +297,24 @@ class AgencyDashboardService
     {
         $period = strtolower(trim((string) ($filters['period'] ?? 'weekly')));
         $today = now()->startOfDay();
+        $anchor = $this->parseDate($filters['from'] ?? null)
+            ?? $this->parseDate($filters['to'] ?? null)
+            ?? $today->copy();
 
         if ($period === 'daily') {
-            $from = $today->copy();
-            $to = $today->copy()->endOfDay();
+            $from = $anchor->copy()->startOfDay();
+            $to = $anchor->copy()->endOfDay();
         } elseif ($period === 'weekly') {
-            $from = $today->copy()->startOfWeek(Carbon::MONDAY);
-            $to = $today->copy()->endOfWeek(Carbon::SUNDAY);
+            $from = $anchor->copy()->startOfWeek(Carbon::MONDAY);
+            $to = $anchor->copy()->endOfWeek(Carbon::SUNDAY);
         } else {
             $period = 'custom';
-            $from = $this->parseDate($filters['from'] ?? null)?->startOfDay() ?? $today->copy()->startOfWeek(Carbon::MONDAY);
-            $to = $this->parseDate($filters['to'] ?? null)?->endOfDay() ?? $today->copy()->endOfDay();
+            $from = $this->parseDate($filters['from'] ?? null)?->startOfDay()
+                ?? $this->parseDate($filters['to'] ?? null)?->startOfDay()
+                ?? $today->copy()->startOfWeek(Carbon::MONDAY);
+            $to = $this->parseDate($filters['to'] ?? null)?->endOfDay()
+                ?? $this->parseDate($filters['from'] ?? null)?->endOfDay()
+                ?? $today->copy()->endOfDay();
         }
 
         if ($from->gt($to)) {

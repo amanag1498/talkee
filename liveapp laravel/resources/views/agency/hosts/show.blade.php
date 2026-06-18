@@ -24,7 +24,7 @@
 
   <section class="card mb-3">
     <div class="card-body">
-      <form method="GET" class="row g-2 align-items-end">
+      <form method="GET" class="row g-2 align-items-end" data-period-range-form>
         <div class="col-md-3">
           <label class="form-label">View</label>
           <select name="period" class="form-select">
@@ -163,3 +163,46 @@
     </div>
   </section>
 @endsection
+
+@once
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const forms = document.querySelectorAll('[data-period-range-form]');
+      const pad = (value) => String(value).padStart(2, '0');
+      const iso = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+      const startOfWeek = (date) => {
+        const copy = new Date(date);
+        const day = copy.getDay();
+        const diff = day === 0 ? -6 : 1 - day;
+        copy.setDate(copy.getDate() + diff);
+        return copy;
+      };
+      const endOfWeek = (date) => {
+        const copy = startOfWeek(date);
+        copy.setDate(copy.getDate() + 6);
+        return copy;
+      };
+
+      forms.forEach((form) => {
+        const period = form.querySelector('select[name="period"]');
+        const from = form.querySelector('input[name="from"]');
+        const to = form.querySelector('input[name="to"]');
+        if (!period || !from || !to) return;
+
+        const sync = () => {
+          const base = from.value ? new Date(`${from.value}T00:00:00`) : new Date();
+          if (period.value === 'daily') {
+            const value = iso(base);
+            from.value = value;
+            to.value = value;
+          } else if (period.value === 'weekly') {
+            from.value = iso(startOfWeek(base));
+            to.value = iso(endOfWeek(base));
+          }
+        };
+
+        period.addEventListener('change', sync);
+      });
+    });
+  </script>
+@endonce
