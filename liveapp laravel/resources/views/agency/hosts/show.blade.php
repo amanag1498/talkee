@@ -10,6 +10,7 @@
 @section('content')
   @php
     $summary = $detail['summary'];
+    $filters = $detail['filters'] ?? ['period' => 'weekly', 'from' => now()->toDateString(), 'to' => now()->toDateString(), 'label' => ''];
     $availability = $host->user?->hostAvailability;
     $isOnline = in_array($availability?->socket_status, ['online'], true) || in_array($availability?->manual_status, ['online'], true);
   @endphp
@@ -19,6 +20,34 @@
     <div class="col-md-6 col-xl-3"><div class="card agency-stat-card"><div class="card-body"><small class="text-muted">Minutes</small><div class="stat-value mt-1">{{ number_format($summary['total_minutes']) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card agency-stat-card"><div class="card-body"><small class="text-muted">Gross Total</small><div class="stat-value mt-1">{{ number_format($summary['gross_total']) }}</div></div></div></div>
     <div class="col-md-6 col-xl-3"><div class="card agency-stat-card"><div class="card-body"><small class="text-muted">Followers</small><div class="stat-value mt-1">{{ number_format($summary['followers']) }}</div></div></div></div>
+  </section>
+
+  <section class="card mb-3">
+    <div class="card-body">
+      <form method="GET" class="row g-2 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label">View</label>
+          <select name="period" class="form-select">
+            <option value="daily" @selected(($filters['period'] ?? 'weekly') === 'daily')>Daily</option>
+            <option value="weekly" @selected(($filters['period'] ?? 'weekly') === 'weekly')>Weekly</option>
+            <option value="custom" @selected(($filters['period'] ?? 'weekly') === 'custom')>Custom</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">From</label>
+          <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="form-control">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">To</label>
+          <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="form-control">
+        </div>
+        <div class="col-md-3 d-flex gap-2">
+          <button type="submit" class="btn btn-primary w-100">Apply</button>
+          <a href="{{ request()->url() }}" class="btn btn-light border">Reset</a>
+        </div>
+      </form>
+      <div class="text-muted small mt-2">{{ $filters['label'] ?? '' }}</div>
+    </div>
   </section>
 
   <section class="row g-3">
@@ -54,10 +83,9 @@
             <tbody>
               <tr><th>Video Room Minutes</th><td>{{ number_format($summary['video_room_minutes']) }}</td><th>Video Gift Gross</th><td>{{ number_format($summary['video_gift_gross']) }}</td></tr>
               <tr><th>Audio Room Minutes</th><td>{{ number_format($summary['audio_room_minutes']) }}</td><th>Audio Gift Gross</th><td>{{ number_format($summary['audio_gift_gross']) }}</td></tr>
-              <tr><th>PK Gross / Events</th><td>{{ number_format($summary['pk_gross']) }} / {{ number_format($summary['pk_event_count']) }}</td><th>PK Host / Agency</th><td>{{ number_format($summary['pk_host_earnings']) }} / {{ number_format($summary['pk_agency_earnings']) }}</td></tr>
+              <tr><th>PK Gross / Events</th><td>{{ number_format($summary['pk_gross']) }} / {{ number_format($summary['pk_event_count']) }}</td><th>Live Rooms</th><td>{{ number_format($summary['live_rooms']) }} / {{ number_format($summary['live_rooms_active']) }} live</td></tr>
               <tr><th>Video Call Min / Gross</th><td>{{ number_format($summary['video_call_minutes']) }} / {{ number_format($summary['video_call_gross']) }}</td><th>Audio Call Min / Gross</th><td>{{ number_format($summary['audio_call_minutes']) }} / {{ number_format($summary['audio_call_gross']) }}</td></tr>
-              <tr><th>Host Payout</th><td>{{ number_format($summary['host_payout']) }} <span class="text-muted">({{ number_format($summary['host_payout_percentage'], 2) }}%)</span></td><th>Agency Payout</th><td>{{ number_format($summary['agency_payout']) }} <span class="text-muted">({{ number_format($summary['agency_payout_percentage'], 2) }}%)</span></td></tr>
-              <tr><th>Total Payout</th><td>{{ number_format($summary['total_payout']) }}</td><th>Live Rooms</th><td>{{ number_format($summary['live_rooms']) }} / {{ number_format($summary['live_rooms_active']) }} live</td></tr>
+              <tr><th>Gross Total</th><td>{{ number_format($summary['gross_total']) }}</td><th>Completed / Active Calls</th><td>{{ number_format($summary['completed_calls']) }} / {{ number_format($summary['active_calls']) }}</td></tr>
             </tbody>
           </table>
         </div>

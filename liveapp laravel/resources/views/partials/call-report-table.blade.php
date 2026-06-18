@@ -188,30 +188,32 @@
       </div>
     </div>
   </div>
-  <div class="col-md-6 col-xl-2">
-    <div class="card {{ $isAdminStyle ? 'call-admin-card call-admin-kpi' : '' }}">
-      <div class="card-body">
-        <small class="text-muted">Host Earnings</small>
-        <div class="fs-4 fw-semibold mt-1">{{ number_format($summary['total_host_earnings']) }}</div>
+  @if($layout !== 'agency')
+    <div class="col-md-6 col-xl-2">
+      <div class="card {{ $isAdminStyle ? 'call-admin-card call-admin-kpi' : '' }}">
+        <div class="card-body">
+          <small class="text-muted">Host Earnings</small>
+          <div class="fs-4 fw-semibold mt-1">{{ number_format($summary['total_host_earnings']) }}</div>
+        </div>
       </div>
     </div>
-  </div>
-  <div class="col-md-6 col-xl-2">
-    <div class="card {{ $isAdminStyle ? 'call-admin-card call-admin-kpi' : '' }}">
-      <div class="card-body">
-        <small class="text-muted">Agency Earnings</small>
-        <div class="fs-4 fw-semibold mt-1">{{ number_format($summary['total_agency_earnings']) }}</div>
+    <div class="col-md-6 col-xl-2">
+      <div class="card {{ $isAdminStyle ? 'call-admin-card call-admin-kpi' : '' }}">
+        <div class="card-body">
+          <small class="text-muted">Agency Earnings</small>
+          <div class="fs-4 fw-semibold mt-1">{{ number_format($summary['total_agency_earnings']) }}</div>
+        </div>
       </div>
     </div>
-  </div>
-  <div class="col-md-12 col-xl-2">
-    <div class="card {{ $isAdminStyle ? 'call-admin-card call-admin-kpi' : '' }}">
-      <div class="card-body">
-        <small class="text-muted">Platform Earnings</small>
-        <div class="fs-4 fw-semibold mt-1">{{ number_format($summary['total_platform_earnings']) }}</div>
+    <div class="col-md-12 col-xl-2">
+      <div class="card {{ $isAdminStyle ? 'call-admin-card call-admin-kpi' : '' }}">
+        <div class="card-body">
+          <small class="text-muted">Platform Earnings</small>
+          <div class="fs-4 fw-semibold mt-1">{{ number_format($summary['total_platform_earnings']) }}</div>
+        </div>
       </div>
     </div>
-  </div>
+  @endif
 </div>
 
 @if($isAdminStyle)
@@ -299,7 +301,7 @@
             @endforeach
           </select>
         </div>
-        @if($filters)
+        @if($filters && !empty($filters['hosts']))
           <div>
             <label class="form-label">Host</label>
             <select name="host_id" class="form-select">
@@ -309,6 +311,8 @@
               @endforeach
             </select>
           </div>
+        @endif
+        @if($filters && !empty($filters['agencies']))
           <div>
             <label class="form-label">Agency</label>
             <select name="agency_id" class="form-select">

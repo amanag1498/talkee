@@ -89,12 +89,12 @@ class AgencyAdminController extends Controller
         ));
     }
 
-    public function hostShow(Agency $agency, Host $host)
+    public function hostShow(Request $request, Agency $agency, Host $host)
     {
         abort_unless((int) $host->agency_id === (int) $agency->id, 404);
 
         $host->load(['user', 'user.hostAvailability']);
-        $detail = $this->dashboardService->hostDetail($agency, $host);
+        $detail = $this->dashboardService->hostDetail($agency, $host, $request->only(['period', 'from', 'to']));
         $this->previewRoutes($agency, $overviewRoute, $hostsIndexRoute, $baseCallsRoute, $payoutReportsRoute, $profileRoute, $videoRoomsRoute, $audioRoomsRoute, $pkBattlesRoute);
         $callsRoute = route('admin.agencies.calls.index', ['agency' => $agency->id, 'host_id' => $host->id]);
 

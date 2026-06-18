@@ -20,6 +20,7 @@
     @php
       $summary = $dashboard['summary'] ?? [];
       $hosts = $dashboard['hosts'] ?? collect();
+      $filters = $dashboard['filters'] ?? ['period' => 'weekly', 'from' => now()->toDateString(), 'to' => now()->toDateString(), 'label' => ''];
       $recentPayoutReports = $dashboard['recentPayoutReports'] ?? collect();
       $recentLiveRooms = $dashboard['recentLiveRooms'] ?? collect();
       $topHosts = $dashboard['topHosts'] ?? collect();
@@ -186,8 +187,34 @@
 
     <section class="card">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">Host Roster</h5>
-        <span class="text-muted small">Agency-scoped host performance</span>
+        <div>
+          <h5 class="mb-0">Host Roster</h5>
+          <span class="text-muted small">{{ $filters['label'] ?? 'Agency-scoped host performance' }}</span>
+        </div>
+      </div>
+      <div class="card-body border-bottom">
+        <form method="GET" class="row g-2 align-items-end">
+          <div class="col-md-3">
+            <label class="form-label">View</label>
+            <select name="period" class="form-select">
+              <option value="daily" @selected(($filters['period'] ?? 'weekly') === 'daily')>Daily</option>
+              <option value="weekly" @selected(($filters['period'] ?? 'weekly') === 'weekly')>Weekly</option>
+              <option value="custom" @selected(($filters['period'] ?? 'weekly') === 'custom')>Custom</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">From</label>
+            <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="form-control">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">To</label>
+            <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="form-control">
+          </div>
+          <div class="col-md-3 d-flex gap-2">
+            <button type="submit" class="btn btn-primary w-100">Apply</button>
+            <a href="{{ route('agency.dashboard') }}" class="btn btn-light border">Reset</a>
+          </div>
+        </form>
       </div>
       <div class="card-body table-responsive">
         <table class="table align-middle">
@@ -203,8 +230,6 @@
               <th>Video Call Min / Earn</th>
               <th>Audio Call Min / Earn</th>
               <th>Gross</th>
-              <th>Host Payout</th>
-              <th>Agency Payout</th>
               <th>Total Payout</th>
               <th>Joined</th>
             </tr>
@@ -236,13 +261,11 @@
                 <td>{{ number_format((int) $host->dashboard_video_call_minutes) }} / {{ number_format((int) $host->dashboard_video_call_gross) }}</td>
                 <td>{{ number_format((int) $host->dashboard_audio_call_minutes) }} / {{ number_format((int) $host->dashboard_audio_call_gross) }}</td>
                 <td>{{ number_format((int) $host->dashboard_total_gross) }}</td>
-                <td>{{ number_format((float) $host->dashboard_host_payout_percentage, 2) }}% · {{ number_format((int) $host->dashboard_host_payout) }}</td>
-                <td>{{ number_format((float) $host->dashboard_agency_payout_percentage, 2) }}% · {{ number_format((int) $host->dashboard_agency_payout) }}</td>
                 <td>{{ number_format((int) $host->dashboard_total_payout) }}</td>
                 <td>{{ optional($host->created_at)->format('d M Y') ?: '—' }}</td>
               </tr>
             @empty
-              <tr><td colspan="14" class="text-center text-muted py-4">No hosts attached to this agency.</td></tr>
+              <tr><td colspan="12" class="text-center text-muted py-4">No hosts attached to this agency for the selected period.</td></tr>
             @endforelse
           </tbody>
         </table>

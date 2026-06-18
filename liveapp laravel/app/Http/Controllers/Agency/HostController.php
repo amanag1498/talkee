@@ -17,12 +17,14 @@ class HostController extends Controller
     public function index(Request $request)
     {
         $agency = Agency::where('owner_user_id', $request->user()->id)->firstOrFail();
-        $dashboard = $this->dashboard->build($agency, 25);
+        $dashboard = $this->dashboard->build($agency, 25, $request->only(['period', 'from', 'to']));
+        $dashboard['hosts']->appends($request->query());
 
         return view('agency.hosts.index', [
             'agency' => $agency,
             'hosts' => $dashboard['hosts'],
             'summary' => $dashboard['summary'],
+            'filters' => $dashboard['filters'],
         ]);
     }
 
@@ -32,7 +34,7 @@ class HostController extends Controller
         abort_unless((int) $host->agency_id === (int) $agency->id, 404);
 
         $host->load(['user', 'user.hostAvailability']);
-        $detail = $this->dashboard->hostDetail($agency, $host);
+        $detail = $this->dashboard->hostDetail($agency, $host, $request->only(['period', 'from', 'to']));
 
         return view('agency.hosts.show', [
             'agency' => $agency,

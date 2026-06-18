@@ -19,7 +19,11 @@ class DashboardController extends Controller
     public function index(Request $request)
     {
         $agency = Agency::where('owner_user_id', $request->user()->id)->first();
-        $dashboard = $agency ? $this->dashboard->build($agency) : null;
+        $filters = $request->only(['period', 'from', 'to']);
+        $dashboard = $agency ? $this->dashboard->build($agency, 20, $filters) : null;
+        if ($dashboard && isset($dashboard['hosts'])) {
+            $dashboard['hosts']->appends($request->query());
+        }
         $walletSummary = $agency ? $this->wallets->summary($agency) : null;
 
         $callsRoute = route('agency.calls.index');

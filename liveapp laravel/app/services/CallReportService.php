@@ -44,7 +44,7 @@ class CallReportService
     public function forAgency(Request $request, Agency $agency): array
     {
         if (!$this->schemaReady()) {
-            return $this->emptyResponse(false);
+            return $this->emptyResponse(false, $agency->id);
         }
 
         $query = $this->baseQuery($request)->where('agency_id', $agency->id);
@@ -104,9 +104,14 @@ class CallReportService
             'earnings' => $earnings,
             'schema_ready' => true,
             'setup_message' => null,
-            'filters' => $includeFilters ? [
-                'hosts' => Host::with('user')->orderBy('id', 'desc')->get(),
-                'agencies' => Agency::orderBy('id', 'desc')->get(),
+            'filters' => $includeFilters || $agencyId !== null || $hostId !== null ? [
+                'hosts' => Host::with('user')
+                    ->when($agencyId, fn ($q) => $q->where('agency_id', $agencyId))
+                    ->orderBy('id', 'desc')
+                    ->get(),
+                'agencies' => $includeFilters
+                    ? Agency::orderBy('id', 'desc')->get()
+                    : collect(),
             ] : null,
         ];
     }
@@ -148,7 +153,7 @@ class CallReportService
             && Schema::hasTable('host_availabilities');
     }
 
-    private function emptyResponse(bool $includeFilters): array
+    private function emptyResponse(bool $includeFilters, ?int $agencyId = null): array
     {
         return [
             'calls' => new LengthAwarePaginator([], 0, 20),
@@ -169,9 +174,14 @@ class CallReportService
             ],
             'schema_ready' => false,
             'setup_message' => 'Call reporting tables are not available yet. Run php artisan migrate to create call_sessions, call_earning_ledgers, and host_availabilities.',
-            'filters' => $includeFilters ? [
-                'hosts' => Host::with('user')->orderBy('id', 'desc')->get(),
-                'agencies' => Agency::orderBy('id', 'desc')->get(),
+            'filters' => $includeFilters || $agencyId !== null ? [
+                'hosts' => Host::with('user')
+                    ->when($agencyId, fn ($q) => $q->where('agency_id', $agencyId))
+                    ->orderBy('id', 'desc')
+                    ->get(),
+                'agencies' => $includeFilters
+                    ? Agency::orderBy('id', 'desc')->get()
+                    : collect(),
             ] : null,
         ];
     }
