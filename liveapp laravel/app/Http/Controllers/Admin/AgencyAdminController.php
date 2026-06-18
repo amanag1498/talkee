@@ -44,10 +44,13 @@ class AgencyAdminController extends Controller
         return view('admin.agencies.edit', compact('agency'));
     }
 
-    public function dashboard(Agency $agency)
+    public function dashboard(Request $request, Agency $agency)
     {
         $agency->load('owner');
-        $dashboard = $this->dashboardService->build($agency);
+        $dashboard = $this->dashboardService->build($agency, 20, $request->only(['period', 'from', 'to']));
+        if (isset($dashboard['hosts'])) {
+            $dashboard['hosts']->appends($request->query());
+        }
         $walletSummary = $this->agencyWalletService->summary($agency);
         $this->previewRoutes($agency, $overviewRoute, $hostsIndexRoute, $callsRoute, $payoutReportsRoute, $profileRoute, $videoRoomsRoute, $audioRoomsRoute, $pkBattlesRoute);
 
@@ -66,18 +69,21 @@ class AgencyAdminController extends Controller
         ));
     }
 
-    public function hosts(Agency $agency)
+    public function hosts(Request $request, Agency $agency)
     {
         $agency->load('owner');
-        $dashboard = $this->dashboardService->build($agency, 25);
+        $dashboard = $this->dashboardService->build($agency, 25, $request->only(['period', 'from', 'to']));
         $hosts = $dashboard['hosts'];
+        $hosts->appends($request->query());
         $summary = $dashboard['summary'];
+        $filters = $dashboard['filters'];
         $this->previewRoutes($agency, $overviewRoute, $hostsIndexRoute, $callsRoute, $payoutReportsRoute, $profileRoute, $videoRoomsRoute, $audioRoomsRoute, $pkBattlesRoute);
 
         return view('agency.hosts.index', compact(
             'agency',
             'hosts',
             'summary',
+            'filters',
             'overviewRoute',
             'hostsIndexRoute',
             'callsRoute',
