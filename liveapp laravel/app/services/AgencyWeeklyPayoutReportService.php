@@ -17,6 +17,261 @@ use InvalidArgumentException;
 
 class AgencyWeeklyPayoutReportService
 {
+    public function aggregateAgencySettlementMetrics(
+        Agency $agency,
+        CarbonInterface $periodStart,
+        CarbonInterface $periodEnd,
+        ?int $hostId = null,
+    ): array {
+        $callRows = CallEarningLedger::query()
+            ->join('hosts', 'hosts.id', '=', 'call_earning_ledgers.host_id')
+            ->join('call_sessions', 'call_sessions.id', '=', 'call_earning_ledgers.call_session_id')
+            ->selectRaw("
+                call_earning_ledgers.host_id as host_id,
+                COUNT(*) as call_count,
+                COUNT(*) as completed_call_count,
+                SUM(call_earning_ledgers.billable_minutes) as billable_minutes,
+                SUM(call_earning_ledgers.total_coins) as call_gross,
+                SUM(CASE WHEN call_sessions.type = 'video' THEN call_earning_ledgers.billable_minutes ELSE 0 END) as video_call_minutes,
+                SUM(CASE WHEN call_sessions.type = 'video' THEN call_earning_ledgers.total_coins ELSE 0 END) as video_call_gross,
+                SUM(CASE WHEN call_sessions.type = 'audio' THEN call_earning_ledgers.billable_minutes ELSE 0 END) as audio_call_minutes,
+                SUM(CASE WHEN call_sessions.type = 'audio' THEN call_earning_ledgers.total_coins ELSE 0 END) as audio_call_gross,
+                SUM(call_earning_ledgers.host_earning) as ledger_host_share,
+                SUM(call_earning_ledgers.agency_earning) as ledger_agency_share,
+                SUM(call_earning_ledgers.platform_earning) as platform_share
+            ")
+            ->where(function ($query) use ($agency) {
+                $query->where('call_earning_ledgers.agency_id', $agency->id)
+                    ->orWhere(function ($fallback) use ($agency) {
+                        $fallback->whereNull('call_earning_ledgers.agency_id')
+                            ->where('call_sessions.agency_id', $agency->id);
+                    })
+                    ->orWhere(function ($hostFallback) use ($agency) {
+                        $hostFallback->whereNull('call_earning_ledgers.agency_id')
+                            ->whereNull('call_sessions.agency_id')
+                            ->where('hosts.agency_id', $agency->id);
+                    });
+            })
+            ->when($hostId, fn ($query) => $query->where('call_earning_ledgers.host_id', $hostId))
+            ->where('call_sessions.status', 'ended')
+            ->where('call_earning_ledgers.total_coins', '>', 0)
+            ->whereBetween('call_earning_ledgers.created_at', [$periodStart, $periodEnd])
+            ->groupBy('call_earning_ledgers.host_id')
+            ->get()
+            ->keyBy('host_id');
+
+        $giftRows = LiveRoomGiftEarningLedger::query()
+            ->join('hosts', 'hosts.id', '=', 'live_room_gift_earning_ledgers.host_id')
+            ->join('live_room_gifts', 'live_room_gifts.id', '=', 'live_room_gift_earning_ledgers.live_room_gift_id')
+            ->join('live_rooms', 'live_rooms.id', '=', 'live_room_gift_earning_ledgers.live_room_id')
+            ->leftJoin('live_room_pk_events', function ($join) {
+                $join->on('live_room_pk_events.wallet_transaction_id', '=', 'live_room_gifts.transaction_id')
+                    ->where('live_room_pk_events.event_type', '=', 'gift');
+            })
+            ->selectRaw("
+                live_room_gift_earning_ledgers.host_id as host_id,
+                SUM(CASE WHEN live_room_pk_events.id IS NULL THEN 1 ELSE 0 END) as gift_events,
+                COUNT(DISTINCT CASE WHEN live_room_pk_events.id IS NULL THEN live_room_gift_earning_ledgers.live_room_id END) as live_room_count,
+                COUNT(DISTINCT CASE WHEN live_room_pk_events.id IS NULL THEN live_room_gift_earning_ledgers.sender_user_id END) as unique_gifters,
+                SUM(CASE WHEN live_room_pk_events.id IS NULL THEN COALESCE(live_room_gifts.quantity, 0) ELSE 0 END) as gift_quantity,
+                SUM(CASE WHEN live_room_pk_events.id IS NULL THEN live_room_gift_earning_ledgers.total_coins ELSE 0 END) as gift_gross,
+                SUM(CASE WHEN live_room_pk_events.id IS NULL AND live_rooms.room_type = 'video' THEN live_room_gift_earning_ledgers.total_coins ELSE 0 END) as video_gift_gross,
+                SUM(CASE WHEN live_room_pk_events.id IS NULL AND live_rooms.room_type = 'audio' THEN live_room_gift_earning_ledgers.total_coins ELSE 0 END) as audio_gift_gross,
+                SUM(CASE WHEN live_room_pk_events.id IS NULL THEN live_room_gift_earning_ledgers.host_payout_coins ELSE 0 END) as ledger_host_share,
+                SUM(CASE WHEN live_room_pk_events.id IS NULL THEN live_room_gift_earning_ledgers.agency_payout_coins ELSE 0 END) as ledger_agency_share,
+                SUM(CASE WHEN live_room_pk_events.id IS NULL THEN live_room_gift_earning_ledgers.platform_revenue_coins ELSE 0 END) as platform_share
+            ")
+            ->where(function ($query) use ($agency) {
+                $query->where('live_room_gift_earning_ledgers.agency_id', $agency->id)
+                    ->orWhere(function ($fallback) use ($agency) {
+                        $fallback->whereNull('live_room_gift_earning_ledgers.agency_id')
+                            ->where('hosts.agency_id', $agency->id);
+                    });
+            })
+            ->when($hostId, fn ($query) => $query->where('live_room_gift_earning_ledgers.host_id', $hostId))
+            ->whereBetween('live_room_gift_earning_ledgers.created_at', [$periodStart, $periodEnd])
+            ->groupBy('live_room_gift_earning_ledgers.host_id')
+            ->get()
+            ->keyBy('host_id');
+
+        $pkRows = LiveRoomGiftEarningLedger::query()
+            ->join('hosts', 'hosts.id', '=', 'live_room_gift_earning_ledgers.host_id')
+            ->join('live_room_gifts', 'live_room_gifts.id', '=', 'live_room_gift_earning_ledgers.live_room_gift_id')
+            ->join('live_room_pk_events', function ($join) {
+                $join->on('live_room_pk_events.wallet_transaction_id', '=', 'live_room_gifts.transaction_id')
+                    ->where('live_room_pk_events.event_type', '=', 'gift');
+            })
+            ->selectRaw('live_room_gift_earning_ledgers.host_id as host_id, COUNT(live_room_pk_events.id) as pk_event_count, SUM(live_room_gift_earning_ledgers.total_coins) as pk_gross')
+            ->where(function ($query) use ($agency) {
+                $query->where('live_room_gift_earning_ledgers.agency_id', $agency->id)
+                    ->orWhere(function ($fallback) use ($agency) {
+                        $fallback->whereNull('live_room_gift_earning_ledgers.agency_id')
+                            ->where('hosts.agency_id', $agency->id);
+                    });
+            })
+            ->when($hostId, fn ($query) => $query->where('live_room_gift_earning_ledgers.host_id', $hostId))
+            ->whereBetween('live_room_gift_earning_ledgers.created_at', [$periodStart, $periodEnd])
+            ->groupBy('live_room_gift_earning_ledgers.host_id')
+            ->get()
+            ->keyBy('host_id');
+
+        $historicalHostIds = collect()
+            ->merge(
+                Host::query()
+                    ->where('agency_id', $agency->id)
+                    ->when($hostId, fn ($query) => $query->whereKey($hostId))
+                    ->pluck('id')
+            )
+            ->merge($callRows->keys())
+            ->merge($giftRows->keys())
+            ->merge($pkRows->keys())
+            ->merge(
+                DB::table('live_rooms')
+                    ->join('hosts', 'hosts.id', '=', 'live_rooms.host_id')
+                    ->where('hosts.agency_id', $agency->id)
+                    ->when($hostId, fn ($query) => $query->where('live_rooms.host_id', $hostId))
+                    ->whereNotNull('live_rooms.started_at')
+                    ->where('live_rooms.started_at', '<=', $periodEnd)
+                    ->whereRaw('COALESCE(live_rooms.ended_at, live_rooms.last_activity_at, live_rooms.started_at) >= ?', [$periodStart->toDateTimeString()])
+                    ->distinct()
+                    ->pluck('live_rooms.host_id')
+            )
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $hosts = Host::query()
+            ->with('user')
+            ->whereIn('id', $historicalHostIds)
+            ->orderBy('id')
+            ->get();
+
+        $roomRows = $this->buildRoomRows(
+            LiveRoom::query()
+                ->whereIn('host_id', $hosts->pluck('id'))
+                ->whereNotNull('started_at')
+                ->where('started_at', '<=', $periodEnd)
+                ->whereRaw('COALESCE(ended_at, last_activity_at, started_at) >= ?', [$periodStart->toDateTimeString()])
+                ->get(['host_id', 'room_type', 'started_at', 'ended_at', 'last_activity_at']),
+            $periodStart,
+            $periodEnd,
+        );
+
+        $totals = [
+            'call_count' => 0,
+            'completed_call_count' => 0,
+            'billable_minutes' => 0,
+            'gift_events' => 0,
+            'gift_quantity' => 0,
+            'unique_gifters' => 0,
+            'live_room_count' => 0,
+            'audio_room_count' => 0,
+            'video_room_count' => 0,
+            'audio_room_minutes' => 0,
+            'video_room_minutes' => 0,
+            'audio_gift_gross' => 0,
+            'video_gift_gross' => 0,
+            'audio_call_minutes' => 0,
+            'video_call_minutes' => 0,
+            'audio_call_gross' => 0,
+            'video_call_gross' => 0,
+            'pk_event_count' => 0,
+            'pk_gross' => 0,
+            'bonus_coins' => 0,
+            'agency_commission_coins' => 0,
+            'total_coins' => 0,
+            'total_coins_to_be_paid' => 0,
+        ];
+
+        $metrics = collect();
+
+        foreach ($hosts as $host) {
+            $call = $callRows->get($host->id);
+            $gift = $giftRows->get($host->id);
+            $pk = $pkRows->get($host->id);
+            $rooms = $roomRows->get($host->id);
+
+            $videoGiftGross = (int) ($gift->video_gift_gross ?? 0);
+            $audioGiftGross = (int) ($gift->audio_gift_gross ?? 0);
+            $pkGiftCoins = (int) ($pk->pk_gross ?? 0);
+            $videoCallGross = (int) ($call->video_call_gross ?? 0);
+            $audioCallGross = (int) ($call->audio_call_gross ?? 0);
+            $bonusCoins = 0;
+            $agencyCommissionCoins = 0;
+            $totalCoins = $this->calculateTotalCoins([
+                'video_gift_coins' => $videoGiftGross,
+                'audio_gift_coins' => $audioGiftGross,
+                'pk_gift_coins' => $pkGiftCoins,
+                'video_call_coins' => $videoCallGross,
+                'audio_call_coins' => $audioCallGross,
+                'bonus_coins' => $bonusCoins,
+            ]);
+            $totalCoinsToBePaid = $this->calculateTotalCoinsToBePaid($totalCoins, $agencyCommissionCoins);
+
+            $row = [
+                'host_id' => $host->id,
+                'call_count' => (int) ($call->call_count ?? 0),
+                'completed_call_count' => (int) ($call->completed_call_count ?? 0),
+                'billable_minutes' => (int) ($call->billable_minutes ?? 0),
+                'call_gross' => (int) ($call->call_gross ?? 0),
+                'video_call_minutes' => (int) ($call->video_call_minutes ?? 0),
+                'video_call_gross' => $videoCallGross,
+                'audio_call_minutes' => (int) ($call->audio_call_minutes ?? 0),
+                'audio_call_gross' => $audioCallGross,
+                'gift_events' => (int) ($gift->gift_events ?? 0),
+                'gift_quantity' => (int) ($gift->gift_quantity ?? 0),
+                'unique_gifters' => (int) ($gift->unique_gifters ?? 0),
+                'live_room_count' => (int) ($rooms->live_room_count ?? $gift->live_room_count ?? 0),
+                'audio_room_count' => (int) ($rooms->audio_room_count ?? 0),
+                'video_room_count' => (int) ($rooms->video_room_count ?? 0),
+                'audio_room_minutes' => (int) ($rooms->audio_room_minutes ?? 0),
+                'video_room_minutes' => (int) ($rooms->video_room_minutes ?? 0),
+                'gift_gross' => (int) ($gift->gift_gross ?? 0),
+                'video_gift_gross' => $videoGiftGross,
+                'audio_gift_gross' => $audioGiftGross,
+                'pk_event_count' => (int) ($pk->pk_event_count ?? 0),
+                'pk_gross' => $pkGiftCoins,
+                'bonus_coins' => $bonusCoins,
+                'agency_commission_coins' => $agencyCommissionCoins,
+                'total_coins' => $totalCoins,
+                'total_coins_to_be_paid' => $totalCoinsToBePaid,
+            ];
+
+            $metrics->put($host->id, $row);
+
+            $totals['call_count'] += $row['call_count'];
+            $totals['completed_call_count'] += $row['completed_call_count'];
+            $totals['billable_minutes'] += $row['billable_minutes'];
+            $totals['gift_events'] += $row['gift_events'];
+            $totals['gift_quantity'] += $row['gift_quantity'];
+            $totals['unique_gifters'] += $row['unique_gifters'];
+            $totals['live_room_count'] += $row['live_room_count'];
+            $totals['audio_room_count'] += $row['audio_room_count'];
+            $totals['video_room_count'] += $row['video_room_count'];
+            $totals['audio_room_minutes'] += $row['audio_room_minutes'];
+            $totals['video_room_minutes'] += $row['video_room_minutes'];
+            $totals['audio_gift_gross'] += $row['audio_gift_gross'];
+            $totals['video_gift_gross'] += $row['video_gift_gross'];
+            $totals['audio_call_minutes'] += $row['audio_call_minutes'];
+            $totals['video_call_minutes'] += $row['video_call_minutes'];
+            $totals['audio_call_gross'] += $row['audio_call_gross'];
+            $totals['video_call_gross'] += $row['video_call_gross'];
+            $totals['pk_event_count'] += $row['pk_event_count'];
+            $totals['pk_gross'] += $row['pk_gross'];
+            $totals['bonus_coins'] += $row['bonus_coins'];
+            $totals['agency_commission_coins'] += $row['agency_commission_coins'];
+            $totals['total_coins'] += $row['total_coins'];
+            $totals['total_coins_to_be_paid'] += $row['total_coins_to_be_paid'];
+        }
+
+        return [
+            'hosts' => $hosts,
+            'metrics' => $metrics,
+            'totals' => $totals,
+        ];
+    }
+
     public function resolvePeriod(?string $start = null, ?string $end = null): array
     {
         $tz = config('app.timezone');
@@ -107,134 +362,9 @@ class AgencyWeeklyPayoutReportService
                 $existing->delete();
             }
 
-            $callRows = CallEarningLedger::query()
-                ->join('hosts', 'hosts.id', '=', 'call_earning_ledgers.host_id')
-                ->join('call_sessions', 'call_sessions.id', '=', 'call_earning_ledgers.call_session_id')
-                ->selectRaw("
-                    call_earning_ledgers.host_id as host_id,
-                    COUNT(*) as call_count,
-                    COUNT(*) as completed_call_count,
-                    SUM(call_earning_ledgers.billable_minutes) as billable_minutes,
-                    SUM(call_earning_ledgers.total_coins) as call_gross,
-                    SUM(CASE WHEN call_sessions.type = 'video' THEN call_earning_ledgers.billable_minutes ELSE 0 END) as video_call_minutes,
-                    SUM(CASE WHEN call_sessions.type = 'video' THEN call_earning_ledgers.total_coins ELSE 0 END) as video_call_gross,
-                    SUM(CASE WHEN call_sessions.type = 'audio' THEN call_earning_ledgers.billable_minutes ELSE 0 END) as audio_call_minutes,
-                    SUM(CASE WHEN call_sessions.type = 'audio' THEN call_earning_ledgers.total_coins ELSE 0 END) as audio_call_gross,
-                    SUM(call_earning_ledgers.host_earning) as ledger_host_share,
-                    SUM(call_earning_ledgers.agency_earning) as ledger_agency_share,
-                    SUM(call_earning_ledgers.platform_earning) as platform_share
-                ")
-                ->where(function ($query) use ($agency) {
-                    $query->where('call_earning_ledgers.agency_id', $agency->id)
-                        ->orWhere(function ($fallback) use ($agency) {
-                            $fallback->whereNull('call_earning_ledgers.agency_id')
-                                ->where('call_sessions.agency_id', $agency->id);
-                        })
-                        ->orWhere(function ($hostFallback) use ($agency) {
-                            $hostFallback->whereNull('call_earning_ledgers.agency_id')
-                                ->whereNull('call_sessions.agency_id')
-                                ->where('hosts.agency_id', $agency->id);
-                        });
-                })
-                ->where('call_sessions.status', 'ended')
-                ->where('call_earning_ledgers.total_coins', '>', 0)
-                ->whereBetween('call_earning_ledgers.created_at', [$periodStart, $periodEnd])
-                ->groupBy('call_earning_ledgers.host_id')
-                ->get()
-                ->keyBy('host_id');
-
-            $giftRows = LiveRoomGiftEarningLedger::query()
-                ->join('hosts', 'hosts.id', '=', 'live_room_gift_earning_ledgers.host_id')
-                ->join('live_room_gifts', 'live_room_gifts.id', '=', 'live_room_gift_earning_ledgers.live_room_gift_id')
-                ->join('live_rooms', 'live_rooms.id', '=', 'live_room_gift_earning_ledgers.live_room_id')
-                ->leftJoin('live_room_pk_events', function ($join) {
-                    $join->on('live_room_pk_events.wallet_transaction_id', '=', 'live_room_gifts.transaction_id')
-                        ->where('live_room_pk_events.event_type', '=', 'gift');
-                })
-                ->selectRaw("
-                    live_room_gift_earning_ledgers.host_id as host_id,
-                    SUM(CASE WHEN live_room_pk_events.id IS NULL THEN 1 ELSE 0 END) as gift_events,
-                    COUNT(DISTINCT CASE WHEN live_room_pk_events.id IS NULL THEN live_room_gift_earning_ledgers.live_room_id END) as live_room_count,
-                    COUNT(DISTINCT CASE WHEN live_room_pk_events.id IS NULL THEN live_room_gift_earning_ledgers.sender_user_id END) as unique_gifters,
-                    SUM(CASE WHEN live_room_pk_events.id IS NULL THEN COALESCE(live_room_gifts.quantity, 0) ELSE 0 END) as gift_quantity,
-                    SUM(CASE WHEN live_room_pk_events.id IS NULL THEN live_room_gift_earning_ledgers.total_coins ELSE 0 END) as gift_gross,
-                    SUM(CASE WHEN live_room_pk_events.id IS NULL AND live_rooms.room_type = 'video' THEN live_room_gift_earning_ledgers.total_coins ELSE 0 END) as video_gift_gross,
-                    SUM(CASE WHEN live_room_pk_events.id IS NULL AND live_rooms.room_type = 'audio' THEN live_room_gift_earning_ledgers.total_coins ELSE 0 END) as audio_gift_gross,
-                    SUM(CASE WHEN live_room_pk_events.id IS NULL THEN live_room_gift_earning_ledgers.host_payout_coins ELSE 0 END) as ledger_host_share,
-                    SUM(CASE WHEN live_room_pk_events.id IS NULL THEN live_room_gift_earning_ledgers.agency_payout_coins ELSE 0 END) as ledger_agency_share,
-                    SUM(CASE WHEN live_room_pk_events.id IS NULL THEN live_room_gift_earning_ledgers.platform_revenue_coins ELSE 0 END) as platform_share
-                ")
-                ->where(function ($query) use ($agency) {
-                    $query->where('live_room_gift_earning_ledgers.agency_id', $agency->id)
-                        ->orWhere(function ($fallback) use ($agency) {
-                            $fallback->whereNull('live_room_gift_earning_ledgers.agency_id')
-                                ->where('hosts.agency_id', $agency->id);
-                        });
-                })
-                ->whereBetween('live_room_gift_earning_ledgers.created_at', [$periodStart, $periodEnd])
-                ->groupBy('live_room_gift_earning_ledgers.host_id')
-                ->get()
-                ->keyBy('host_id');
-
-            $pkRows = LiveRoomGiftEarningLedger::query()
-                ->join('hosts', 'hosts.id', '=', 'live_room_gift_earning_ledgers.host_id')
-                ->join('live_room_gifts', 'live_room_gifts.id', '=', 'live_room_gift_earning_ledgers.live_room_gift_id')
-                ->join('live_room_pk_events', function ($join) {
-                    $join->on('live_room_pk_events.wallet_transaction_id', '=', 'live_room_gifts.transaction_id')
-                        ->where('live_room_pk_events.event_type', '=', 'gift');
-                })
-                ->selectRaw('live_room_gift_earning_ledgers.host_id as host_id, COUNT(live_room_pk_events.id) as pk_event_count, SUM(live_room_gift_earning_ledgers.total_coins) as pk_gross')
-                ->where(function ($query) use ($agency) {
-                    $query->where('live_room_gift_earning_ledgers.agency_id', $agency->id)
-                        ->orWhere(function ($fallback) use ($agency) {
-                            $fallback->whereNull('live_room_gift_earning_ledgers.agency_id')
-                                ->where('hosts.agency_id', $agency->id);
-                        });
-                })
-                ->whereBetween('live_room_gift_earning_ledgers.created_at', [$periodStart, $periodEnd])
-                ->groupBy('live_room_gift_earning_ledgers.host_id')
-                ->get()
-                ->keyBy('host_id');
-
-            $historicalHostIds = collect()
-                ->merge(Host::query()->where('agency_id', $agency->id)->pluck('id'))
-                ->merge($callRows->keys())
-                ->merge($giftRows->keys())
-                ->merge($pkRows->keys())
-                ->merge(
-                    DB::table('live_rooms')
-                        ->join('hosts', 'hosts.id', '=', 'live_rooms.host_id')
-                        ->where('hosts.agency_id', $agency->id)
-                        ->whereNotNull('live_rooms.started_at')
-                        ->where('live_rooms.started_at', '<=', $periodEnd)
-                        ->whereRaw('COALESCE(live_rooms.ended_at, live_rooms.last_activity_at, live_rooms.started_at) >= ?', [$periodStart->toDateTimeString()])
-                        ->distinct()
-                        ->pluck('live_rooms.host_id')
-                )
-                ->filter()
-                ->map(fn ($id) => (int) $id)
-                ->unique()
-                ->values();
-
-            $hosts = Host::query()
-                ->with('user')
-                ->whereIn('id', $historicalHostIds)
-                ->orderBy('id')
-                ->get();
-
-            $roomRows = $this->buildRoomRows(
-                LiveRoom::query()
-                ->whereIn('host_id', $hosts->pluck('id'))
-                ->whereNotNull('started_at')
-                ->where('started_at', '<=', $periodEnd)
-                ->whereRaw('COALESCE(ended_at, last_activity_at, started_at) >= ?', [$periodStart->toDateTimeString()])
-                ->get(['host_id', 'room_type', 'started_at', 'ended_at', 'last_activity_at']),
-                $periodStart,
-                $periodEnd,
-            );
-
-            $generateZeroReports = (bool) config('agency_payouts.generate_zero_reports', true);
-
+            $aggregate = $this->aggregateAgencySettlementMetrics($agency, $periodStart, $periodEnd);
+            $hosts = $aggregate['hosts'];
+            $metrics = $aggregate['metrics'];
             $totals = [
                 'gross_earnings' => 0,
                 'platform_commission' => 0,
@@ -270,50 +400,40 @@ class AgencyWeeklyPayoutReportService
                 'agency_commission_inr' => 0.0,
                 'total_inr' => 0.0,
             ];
+            $generateZeroReports = (bool) config('agency_payouts.generate_zero_reports', true);
 
             $items = [];
 
             foreach ($hosts as $host) {
-                $call = $callRows->get($host->id);
-                $gift = $giftRows->get($host->id);
-                $pk = $pkRows->get($host->id);
-                $rooms = $roomRows->get($host->id);
-
-                $callGross = (int) ($call->call_gross ?? 0);
-                $giftGross = (int) ($gift->gift_gross ?? 0);
-                $pkGross = (int) ($pk->pk_gross ?? 0);
-                $callCount = (int) ($call->call_count ?? 0);
-                $completedCallCount = (int) ($call->completed_call_count ?? 0);
-                $billableMinutes = (int) ($call->billable_minutes ?? 0);
-                $videoCallMinutes = (int) ($call->video_call_minutes ?? 0);
-                $videoCallGross = (int) ($call->video_call_gross ?? 0);
-                $audioCallMinutes = (int) ($call->audio_call_minutes ?? 0);
-                $audioCallGross = (int) ($call->audio_call_gross ?? 0);
-                $giftEvents = (int) ($gift->gift_events ?? 0);
-                $giftQuantity = (int) ($gift->gift_quantity ?? 0);
-                $uniqueGifters = (int) ($gift->unique_gifters ?? 0);
-                $roomCount = (int) ($rooms->live_room_count ?? $gift->live_room_count ?? 0);
-                $audioRoomCount = (int) ($rooms->audio_room_count ?? 0);
-                $videoRoomCount = (int) ($rooms->video_room_count ?? 0);
-                $audioRoomMinutes = (int) ($rooms->audio_room_minutes ?? 0);
-                $videoRoomMinutes = (int) ($rooms->video_room_minutes ?? 0);
-                $videoGiftGross = (int) ($gift->video_gift_gross ?? 0);
-                $audioGiftGross = (int) ($gift->audio_gift_gross ?? 0);
-                $pkEventCount = (int) ($pk->pk_event_count ?? 0);
+                $metric = $metrics->get($host->id, []);
+                $callGross = (int) ($metric['call_gross'] ?? 0);
+                $giftGross = (int) ($metric['gift_gross'] ?? 0);
+                $pkGross = (int) ($metric['pk_gross'] ?? 0);
+                $callCount = (int) ($metric['call_count'] ?? 0);
+                $completedCallCount = (int) ($metric['completed_call_count'] ?? 0);
+                $billableMinutes = (int) ($metric['billable_minutes'] ?? 0);
+                $videoCallMinutes = (int) ($metric['video_call_minutes'] ?? 0);
+                $videoCallGross = (int) ($metric['video_call_gross'] ?? 0);
+                $audioCallMinutes = (int) ($metric['audio_call_minutes'] ?? 0);
+                $audioCallGross = (int) ($metric['audio_call_gross'] ?? 0);
+                $giftEvents = (int) ($metric['gift_events'] ?? 0);
+                $giftQuantity = (int) ($metric['gift_quantity'] ?? 0);
+                $uniqueGifters = (int) ($metric['unique_gifters'] ?? 0);
+                $roomCount = (int) ($metric['live_room_count'] ?? 0);
+                $audioRoomCount = (int) ($metric['audio_room_count'] ?? 0);
+                $videoRoomCount = (int) ($metric['video_room_count'] ?? 0);
+                $audioRoomMinutes = (int) ($metric['audio_room_minutes'] ?? 0);
+                $videoRoomMinutes = (int) ($metric['video_room_minutes'] ?? 0);
+                $videoGiftGross = (int) ($metric['video_gift_gross'] ?? 0);
+                $audioGiftGross = (int) ($metric['audio_gift_gross'] ?? 0);
+                $pkEventCount = (int) ($metric['pk_event_count'] ?? 0);
                 $videoCallCoins = $videoCallGross;
                 $audioCallCoins = $audioCallGross;
                 $pkGiftCoins = $pkGross;
-                $bonusCoins = 0;
-                $agencyCommissionCoins = 0;
-                $totalCoins = $this->calculateTotalCoins([
-                    'video_gift_coins' => $videoGiftGross,
-                    'audio_gift_coins' => $audioGiftGross,
-                    'pk_gift_coins' => $pkGiftCoins,
-                    'video_call_coins' => $videoCallCoins,
-                    'audio_call_coins' => $audioCallCoins,
-                    'bonus_coins' => $bonusCoins,
-                ]);
-                $totalCoinsToBePaid = $this->calculateTotalCoinsToBePaid($totalCoins, $agencyCommissionCoins);
+                $bonusCoins = (int) ($metric['bonus_coins'] ?? 0);
+                $agencyCommissionCoins = (int) ($metric['agency_commission_coins'] ?? 0);
+                $totalCoins = (int) ($metric['total_coins'] ?? 0);
+                $totalCoinsToBePaid = (int) ($metric['total_coins_to_be_paid'] ?? 0);
 
                 $items[] = [
                     'host_id' => $host->id,
