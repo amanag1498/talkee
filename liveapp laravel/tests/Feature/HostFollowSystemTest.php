@@ -4,9 +4,11 @@ namespace Tests\Feature;
 
 use App\Models\Host;
 use App\Models\HostFollower;
+use App\Models\HostAvailability;
 use App\Models\User;
 use App\Models\UserNotification;
 use App\Services\HostAvailabilityService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Role;
@@ -186,6 +188,42 @@ class HostFollowSystemTest extends TestCase
         $availability->updateSocketStatus($hostUser->id, 'online');
 
         $this->assertSame(1, UserNotification::query()->where('type', 'host_online')->count());
+    }
+
+    public function test_repeated_online_presence_within_heartbeat_window_skips_redundant_writes(): void
+    {
+        [$viewer, $host] = $this->viewerAndHost();
+        $hostUser = $host->user;
+
+        HostFollower::query()->create([
+            'host_id' => $host->id,
+            'user_id' => $viewer->id,
+        ]);
+
+        $availabilityService = app(HostAvailabilityService::class);
+        $availabilityService->toggleManualStatus($hostUser, 'online');
+        $availabilityService->updateSocketStatus($hostUser->id, 'online');
+
+        $availability = HostAvailability::query()->where('user_id', $hostUser->id)->firstOrFail();
+        $firstUpdatedAt = $availability->updated_at?->copy();
+        $firstLastSeenAt = $availability->last_seen_at?->copy();
+
+        Carbon::setTestNow($firstLastSeenAt?->copy()->addSeconds(5));
+        $availabilityService->updateSocketStatus($hostUser->id, 'online');
+
+        $availability->refresh();
+        $this->assertTrue($availability->updated_at?->equalTo($firstUpdatedAt));
+        $this->assertTrue($availability->last_seen_at?->equalTo($firstLastSeenAt));
+        $this->assertSame(1, UserNotification::query()->where('type', 'host_online')->count());
+
+        Carbon::setTestNow($firstLastSeenAt?->copy()->addSeconds(16));
+        $availabilityService->updateSocketStatus($hostUser->id, 'online');
+
+        $availability->refresh();
+        $this->assertTrue($availability->updated_at?->gt($firstUpdatedAt));
+        $this->assertTrue($availability->last_seen_at?->gt($firstLastSeenAt));
+
+        Carbon::setTestNow();
     }
 
     public function test_unfollowed_user_does_not_receive_host_status_notification(): void

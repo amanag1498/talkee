@@ -5,12 +5,16 @@ namespace App\Services;
 use App\Models\HostAvailability;
 use App\Models\User;
 use App\Models\Wallet;
+use Illuminate\Database\QueryException;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class HostAvailabilityService
 {
+    private const HEARTBEAT_WRITE_INTERVAL_SECONDS = 15;
+    private const LOCK_RETRY_ATTEMPTS = 3;
+
     public function __construct(
         private HostFollowService $follows,
         private HostNotificationService $notifications,
@@ -36,7 +40,7 @@ class HostAvailabilityService
             abort(403, 'Blocked hosts cannot go online.');
         }
 
-        return DB::transaction(function () use ($user, $manualStatus) {
+        [$before, $fresh] = $this->runWithLockRetry(function () use ($user, $manualStatus) {
             $availability = $this->ensureForUser($user);
             $before = $availability->replicate();
             $availability->update([
@@ -54,29 +58,42 @@ class HostAvailabilityService
                 'user_id' => $user->id,
                 'manual_status' => $manualStatus,
             ]);
-            $fresh = $availability->fresh();
-            $this->publishAvailability($fresh);
-            $this->notifications->handleAvailabilityTransition($user, $before, $fresh);
-            return $fresh;
+            return [$before, $availability->fresh()];
         });
+
+        $this->publishAvailability($fresh);
+        $this->notifications->handleAvailabilityTransition($user, $before, $fresh);
+
+        return $fresh;
     }
 
     public function updateSocketStatus(int $userId, string $socketStatus): HostAvailability
     {
-        return DB::transaction(function () use ($userId, $socketStatus) {
-            $user = User::query()->findOrFail($userId);
-            if ($socketStatus === 'online' && $this->isHostBlocked($user)) {
-                $socketStatus = 'offline';
-            }
+        $user = User::query()->findOrFail($userId);
+        if ($socketStatus === 'online' && $this->isHostBlocked($user)) {
+            $socketStatus = 'offline';
+        }
+
+        $shouldDisconnect = false;
+        [$before, $fresh, $changed] = $this->runWithLockRetry(function () use ($user, $userId, $socketStatus, &$shouldDisconnect) {
             $availability = $this->ensureForUser($user);
             $before = $availability->replicate();
+            $now = now();
+            $sameSocketStatus = $availability->socket_status === $socketStatus;
+            $heartbeatIsFresh = $availability->last_seen_at && $availability->last_seen_at->gte($now->copy()->subSeconds(self::HEARTBEAT_WRITE_INTERVAL_SECONDS));
+
+            if ($sameSocketStatus && $heartbeatIsFresh) {
+                return [$before, $availability->fresh(), false];
+            }
+
+            $shouldDisconnect = $socketStatus === 'offline' && $availability->socket_status !== 'offline';
 
             $availability->update([
                 'socket_status' => $socketStatus,
                 'call_status' => $socketStatus === 'offline' && $availability->call_status !== 'busy'
                     ? 'available'
                     : $availability->call_status,
-                'last_seen_at' => now(),
+                'last_seen_at' => $now,
             ]);
 
             Log::info('HOST_AVAILABILITY_SOCKET_STATUS', [
@@ -85,21 +102,27 @@ class HostAvailabilityService
                 'current_call_session_id' => $availability->current_call_session_id,
             ]);
 
-            if ($socketStatus === 'offline') {
-                app(CallSessionService::class)->handleDisconnect($userId);
-                $availability->refresh();
-            }
-
-            $fresh = $availability->fresh();
-            $this->publishAvailability($fresh);
-            $this->notifications->handleAvailabilityTransition($user, $before, $fresh);
-            return $fresh;
+            return [$before, $availability->fresh(), true];
         });
+
+        if (!$changed) {
+            return $fresh;
+        }
+
+        if ($shouldDisconnect) {
+            app(CallSessionService::class)->handleDisconnect($userId);
+            $fresh = $fresh->fresh();
+        }
+
+        $this->publishAvailability($fresh);
+        $this->notifications->handleAvailabilityTransition($user, $before, $fresh);
+
+        return $fresh;
     }
 
     public function setCallStatus(int $userId, string $callStatus, ?int $callSessionId = null): HostAvailability
     {
-        return DB::transaction(function () use ($userId, $callStatus, $callSessionId) {
+        [$user, $before, $fresh] = $this->runWithLockRetry(function () use ($userId, $callStatus, $callSessionId) {
             $user = User::query()->findOrFail($userId);
             $availability = $this->ensureForUser($user);
             $before = $availability->replicate();
@@ -115,11 +138,13 @@ class HostAvailabilityService
                 'call_status' => $callStatus,
                 'call_session_id' => $callSessionId,
             ]);
-            $fresh = $availability->fresh();
-            $this->publishAvailability($fresh);
-            $this->notifications->handleAvailabilityTransition($user, $before, $fresh);
-            return $fresh;
+            return [$user, $before, $availability->fresh()];
         });
+
+        $this->publishAvailability($fresh);
+        $this->notifications->handleAvailabilityTransition($user, $before, $fresh);
+
+        return $fresh;
     }
 
     public function visibleLiveUsersFor(User $viewer, int $page = 1, int $perPage = 50): LengthAwarePaginator
@@ -356,5 +381,36 @@ class HostAvailabilityService
         $host = $user->relationLoaded('host') ? $user->host : $user->host()->first();
 
         return (bool) ($user->is_blocked || $host?->is_blocked);
+    }
+
+    private function runWithLockRetry(callable $callback): mixed
+    {
+        $attempt = 0;
+
+        beginning:
+        try {
+            return DB::transaction($callback);
+        } catch (QueryException $e) {
+            if (!$this->isRetryableLockException($e) || $attempt >= self::LOCK_RETRY_ATTEMPTS - 1) {
+                throw $e;
+            }
+
+            $attempt++;
+            usleep(100000 * $attempt);
+            goto beginning;
+        }
+    }
+
+    private function isRetryableLockException(QueryException $e): bool
+    {
+        $message = strtolower($e->getMessage());
+        $sqlState = (string) ($e->errorInfo[0] ?? '');
+        $driverCode = (int) ($e->errorInfo[1] ?? 0);
+
+        return $sqlState === '40001'
+            || $driverCode === 1205
+            || $driverCode === 1213
+            || str_contains($message, 'lock wait timeout exceeded')
+            || str_contains($message, 'deadlock found');
     }
 }
