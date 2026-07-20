@@ -17,8 +17,8 @@ class RechargeAuditAdminController extends Controller
     public function index(Request $request): View
     {
         [$fromDate, $toDate] = $this->resolveDateRange(
-            $request->string('from')->toString(),
-            $request->string('to')->toString(),
+            $this->queryValue($request, 'from'),
+            $this->queryValue($request, 'to'),
         );
 
         $query = $this->filteredOrdersQuery($request, $fromDate, $toDate);
@@ -62,8 +62,8 @@ class RechargeAuditAdminController extends Controller
     public function downloadPdf(Request $request)
     {
         [$fromDate, $toDate] = $this->resolveDateRange(
-            $request->string('from')->toString(),
-            $request->string('to')->toString(),
+            $this->queryValue($request, 'from'),
+            $this->queryValue($request, 'to'),
         );
 
         $query = $this->filteredOrdersQuery($request, $fromDate, $toDate);
@@ -139,24 +139,23 @@ class RechargeAuditAdminController extends Controller
                 $toDate->copy()->endOfDay(),
             ]);
 
-        if ($request->filled('status')) {
-            $query->where('status', $request->string('status')->toString());
+        if (($status = $this->queryValue($request, 'status')) !== '') {
+            $query->where('status', $status);
         }
 
-        if ($request->filled('gateway')) {
-            $query->where('gateway', $request->string('gateway')->toString());
+        if (($gateway = $this->queryValue($request, 'gateway')) !== '') {
+            $query->where('gateway', $gateway);
         }
 
-        if ($request->filled('payment_method')) {
-            $method = strtolower(trim($request->string('payment_method')->toString()));
+        if (($paymentMethod = $this->queryValue($request, 'payment_method')) !== '') {
+            $method = strtolower(trim($paymentMethod));
             $query->whereRaw(
                 "LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(gateway_response, '$.payment.method')), '')) = ?",
                 [$method]
             );
         }
 
-        if ($request->filled('vpa')) {
-            $vpa = trim($request->string('vpa')->toString());
+        if (($vpa = trim($this->queryValue($request, 'vpa'))) !== '') {
             $query->where(function (Builder $builder) use ($vpa) {
                 $builder
                     ->whereRaw(
@@ -170,42 +169,37 @@ class RechargeAuditAdminController extends Controller
             });
         }
 
-        if ($request->filled('rrn')) {
-            $rrn = trim($request->string('rrn')->toString());
+        if (($rrn = trim($this->queryValue($request, 'rrn'))) !== '') {
             $query->whereRaw(
                 "JSON_UNQUOTE(JSON_EXTRACT(gateway_response, '$.payment.acquirer_data.rrn')) LIKE ?",
                 ["%{$rrn}%"]
             );
         }
 
-        if ($request->filled('contact')) {
-            $contact = trim($request->string('contact')->toString());
+        if (($contact = trim($this->queryValue($request, 'contact'))) !== '') {
             $query->whereRaw(
                 "JSON_UNQUOTE(JSON_EXTRACT(gateway_response, '$.payment.contact')) LIKE ?",
                 ["%{$contact}%"]
             );
         }
 
-        if ($request->filled('email')) {
-            $email = trim($request->string('email')->toString());
+        if (($email = trim($this->queryValue($request, 'email'))) !== '') {
             $query->whereRaw(
                 "JSON_UNQUOTE(JSON_EXTRACT(gateway_response, '$.payment.email')) LIKE ?",
                 ["%{$email}%"]
             );
         }
 
-        if ($request->filled('signature_verified')) {
-            $signatureVerified = $request->string('signature_verified')->toString();
-            if (in_array($signatureVerified, ['1', '0'], true)) {
-                $expected = $signatureVerified === '1' ? 'true' : 'false';
-                $query->whereRaw(
-                    "LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(gateway_response, '$.signature_verified')), 'false')) = ?",
-                    [$expected]
-                );
-            }
+        $signatureVerified = $this->queryValue($request, 'signature_verified');
+        if (in_array($signatureVerified, ['1', '0'], true)) {
+            $expected = $signatureVerified === '1' ? 'true' : 'false';
+            $query->whereRaw(
+                "LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(gateway_response, '$.signature_verified')), 'false')) = ?",
+                [$expected]
+            );
         }
 
-        if ($search = trim($request->string('q')->toString())) {
+        if ($search = trim($this->queryValue($request, 'q'))) {
             $query->where(function (Builder $builder) use ($search) {
                 $builder->where('order_id', 'like', "%{$search}%")
                     ->orWhere('gateway_order_id', 'like', "%{$search}%")
@@ -230,6 +224,21 @@ class RechargeAuditAdminController extends Controller
         }
 
         return $query;
+    }
+
+    private function queryValue(Request $request, string $key): string
+    {
+        $value = $request->query($key);
+
+        if (($value === null || $value === '') && $request->query->has('amp;'.$key)) {
+            $value = $request->query('amp;'.$key);
+        }
+
+        if (is_array($value)) {
+            return '';
+        }
+
+        return trim((string) ($value ?? ''));
     }
 
     private function resolveDateRange(?string $from, ?string $to): array
