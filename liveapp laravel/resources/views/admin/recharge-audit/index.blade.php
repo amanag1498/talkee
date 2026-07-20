@@ -11,11 +11,11 @@
       <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
         <div>
           <div class="admin-page-eyebrow"><i class="ti ti-file-invoice"></i> Recharge Ledger</div>
-          <h2 class="admin-page-title mt-3 mb-1">Monthly Recharge Audit</h2>
-          <p class="admin-page-subtitle mb-0">Track recharge order outcomes, gateway-level success rates, and downloadable month snapshots for finance review.</p>
+          <h2 class="admin-page-title mt-3 mb-1">Recharge Audit</h2>
+          <p class="admin-page-subtitle mb-0">Track recharge order outcomes, gateway-level success rates, and downloadable custom date-range snapshots for finance review.</p>
         </div>
         <div class="admin-page-actions">
-          <a href="{{ route('admin.recharge-audit.pdf', ['month' => $selectedMonthKey] + request()->only(['status', 'gateway', 'q', 'payment_method', 'vpa', 'rrn', 'contact', 'email', 'signature_verified'])) }}" class="btn btn-primary">
+          <a href="{{ route('admin.recharge-audit.pdf', request()->only(['from', 'to', 'status', 'gateway', 'q', 'payment_method', 'vpa', 'rrn', 'contact', 'email', 'signature_verified'])) }}" class="btn btn-primary">
             <i class="ti ti-file-download me-1"></i>Download PDF
           </a>
         </div>
@@ -23,8 +23,12 @@
 
       <form method="get" action="{{ route('admin.recharge-audit.index') }}" class="row g-2 align-items-end">
         <div class="col-md-3">
-          <label class="form-label">Month</label>
-          <input type="month" name="month" value="{{ request('month', $selectedMonthKey) }}" class="form-control">
+          <label class="form-label">From</label>
+          <input type="date" name="from" value="{{ request('from', $fromDate->format('Y-m-d')) }}" class="form-control">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">To</label>
+          <input type="date" name="to" value="{{ request('to', $toDate->format('Y-m-d')) }}" class="form-control">
         </div>
         <div class="col-md-3">
           <label class="form-label">Status</label>
@@ -87,7 +91,7 @@
         <div class="card-body">
           <div class="text-muted small">Orders</div>
           <div class="fs-2 fw-bold">{{ number_format((int) ($summary->total_orders ?? 0)) }}</div>
-          <div class="small text-muted mt-1">{{ $selectedMonth->format('F Y') }}</div>
+          <div class="small text-muted mt-1">{{ $selectedRangeLabel }}</div>
         </div>
       </div>
     </div>
@@ -138,27 +142,6 @@
     </div>
   </section>
 
-  <section class="card">
-    <div class="card-body">
-      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-        <div>
-          <h5 class="mb-1">Monthly Tabs</h5>
-          <p class="text-muted mb-0 small">Jump between the latest recharge months and export the selected month.</p>
-        </div>
-      </div>
-      <div class="d-flex flex-wrap gap-2">
-        @forelse($monthTabs as $tab)
-          <a href="{{ route('admin.recharge-audit.index', ['month' => $tab->month_key]) }}" class="btn {{ $selectedMonthKey === $tab->month_key ? 'btn-primary' : 'btn-light border' }}">
-            {{ \Carbon\Carbon::createFromFormat('Y-m', $tab->month_key)->format('M Y') }}
-            <span class="ms-1 small">{{ number_format((int) $tab->order_count) }}</span>
-          </a>
-        @empty
-          <span class="text-muted">No recharge history available yet.</span>
-        @endforelse
-      </div>
-    </div>
-  </section>
-
   <section class="row g-3">
     <div class="col-lg-4">
       <div class="card h-100">
@@ -184,7 +167,7 @@
                   <td>Rs {{ number_format((float) $gateway->rupees_total, 2) }}</td>
                 </tr>
               @empty
-                <tr><td colspan="4" class="text-center text-muted py-4">No recharge orders found for this month.</td></tr>
+                <tr><td colspan="4" class="text-center text-muted py-4">No recharge orders found for this date range.</td></tr>
               @endforelse
             </tbody>
           </table>
@@ -196,7 +179,7 @@
         <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
           <div>
             <h5 class="mb-1">Recharge Orders</h5>
-            <div class="small text-muted">Order-level audit for {{ $selectedMonth->format('F Y') }}</div>
+            <div class="small text-muted">Order-level audit for {{ $selectedRangeLabel }}</div>
           </div>
           <div class="small text-muted">Showing {{ $orders->firstItem() ?? 0 }}-{{ $orders->lastItem() ?? 0 }} of {{ $orders->total() }}</div>
         </div>
@@ -260,7 +243,7 @@
                   <td>{{ $order->created_at?->format('d M Y, h:i A') }}</td>
                 </tr>
               @empty
-                <tr><td colspan="9" class="text-center text-muted py-5">No recharge orders found for the selected month.</td></tr>
+                <tr><td colspan="9" class="text-center text-muted py-5">No recharge orders found for the selected date range.</td></tr>
               @endforelse
             </tbody>
           </table>

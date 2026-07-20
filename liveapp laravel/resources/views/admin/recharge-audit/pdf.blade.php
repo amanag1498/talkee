@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Recharge Audit {{ $selectedMonth->format('F Y') }}</title>
+  <title>Recharge Audit {{ $selectedRangeLabel }}</title>
   <style>
     body { font-family: DejaVu Sans, sans-serif; color: #111827; font-size: 12px; }
     .header { margin-bottom: 20px; }
@@ -23,7 +23,7 @@
 <body>
   <div class="header">
     <div class="title">Recharge Audit</div>
-    <p class="subtitle">{{ $selectedMonth->format('F Y') }} finance ledger snapshot</p>
+    <p class="subtitle">{{ $selectedRangeLabel }} finance ledger snapshot</p>
   </div>
 
   <table class="cards">
@@ -111,8 +111,10 @@
   </table>
 
   <div class="footer-note">
-    @if(!empty($filters['status']) || !empty($filters['gateway']) || !empty($filters['q']) || !empty($filters['payment_method']) || !empty($filters['vpa']) || !empty($filters['rrn']) || !empty($filters['contact']) || !empty($filters['email']) || !empty($filters['signature_verified']))
+    @if(!empty($filters['from']) || !empty($filters['to']) || !empty($filters['status']) || !empty($filters['gateway']) || !empty($filters['q']) || !empty($filters['payment_method']) || !empty($filters['vpa']) || !empty($filters['rrn']) || !empty($filters['contact']) || !empty($filters['email']) || !empty($filters['signature_verified']))
       Filtered export.
+      @if(!empty($filters['from'])) From: {{ $filters['from'] }}. @endif
+      @if(!empty($filters['to'])) To: {{ $filters['to'] }}. @endif
       @if(!empty($filters['status'])) Status: {{ $filters['status'] }}. @endif
       @if(!empty($filters['gateway'])) Gateway: {{ $filters['gateway'] }}. @endif
       @if(!empty($filters['q'])) Search: {{ $filters['q'] }}. @endif

@@ -10,29 +10,18 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 
 class RechargeAuditAdminController extends Controller
 {
     public function index(Request $request): View
     {
-        $selectedMonth = $this->resolveMonth($request->string('month')->toString());
-        $monthlyBase = PaymentOrder::query();
-        $monthKeyExpression = $this->monthKeyExpression();
+        [$fromDate, $toDate] = $this->resolveDateRange(
+            $request->string('from')->toString(),
+            $request->string('to')->toString(),
+        );
 
-        $monthTabs = (clone $monthlyBase)
-            ->selectRaw("{$monthKeyExpression} as month_key")
-            ->selectRaw('COUNT(*) as order_count')
-            ->selectRaw("SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count")
-            ->selectRaw('SUM(amount_rupees) as rupees_total')
-            ->selectRaw('SUM(total_coins) as coins_total')
-            ->groupBy('month_key')
-            ->orderByDesc('month_key')
-            ->limit(12)
-            ->get();
-
-        $query = $this->filteredOrdersQuery($request, $selectedMonth);
+        $query = $this->filteredOrdersQuery($request, $fromDate, $toDate);
         $orders = (clone $query)
             ->with(['user:id,name,email', 'rechargePlan:id,title'])
             ->latest('created_at')
@@ -64,16 +53,20 @@ class RechargeAuditAdminController extends Controller
             'orders' => $orders,
             'summary' => $summary,
             'gatewayBreakdown' => $gatewayBreakdown,
-            'monthTabs' => $monthTabs,
-            'selectedMonth' => $selectedMonth,
-            'selectedMonthKey' => $selectedMonth->format('Y-m'),
+            'fromDate' => $fromDate,
+            'toDate' => $toDate,
+            'selectedRangeLabel' => $this->formatRangeLabel($fromDate, $toDate),
         ]);
     }
 
-    public function downloadMonthlyPdf(Request $request, string $month)
+    public function downloadPdf(Request $request)
     {
-        $selectedMonth = $this->resolveMonth($month);
-        $query = $this->filteredOrdersQuery($request, $selectedMonth);
+        [$fromDate, $toDate] = $this->resolveDateRange(
+            $request->string('from')->toString(),
+            $request->string('to')->toString(),
+        );
+
+        $query = $this->filteredOrdersQuery($request, $fromDate, $toDate);
 
         $orders = (clone $query)
             ->with(['user:id,name,email', 'rechargePlan:id,title'])
@@ -95,9 +88,12 @@ class RechargeAuditAdminController extends Controller
         $data = [
             'orders' => $orders,
             'summary' => $summary,
-            'selectedMonth' => $selectedMonth,
-            'selectedMonthKey' => $selectedMonth->format('Y-m'),
+            'fromDate' => $fromDate,
+            'toDate' => $toDate,
+            'selectedRangeLabel' => $this->formatRangeLabel($fromDate, $toDate),
             'filters' => $request->only([
+                'from',
+                'to',
                 'status',
                 'gateway',
                 'q',
@@ -115,7 +111,11 @@ class RechargeAuditAdminController extends Controller
             $pdf->loadView('admin.recharge-audit.pdf', $data)
                 ->setPaper('a4', 'landscape');
 
-            $filename = "recharge-audit-{$selectedMonth->format('Y-m')}.pdf";
+            $filename = sprintf(
+                'recharge-audit-%s-to-%s.pdf',
+                $fromDate->format('Y-m-d'),
+                $toDate->format('Y-m-d')
+            );
 
             return response($pdf->output(), 200, [
                 'Content-Type' => 'application/pdf',
@@ -131,12 +131,12 @@ class RechargeAuditAdminController extends Controller
             ->header('X-Recharge-Audit-Fallback', 'print-view');
     }
 
-    private function filteredOrdersQuery(Request $request, Carbon $selectedMonth): Builder
+    private function filteredOrdersQuery(Request $request, Carbon $fromDate, Carbon $toDate): Builder
     {
         $query = PaymentOrder::query()
             ->whereBetween('created_at', [
-                $selectedMonth->copy()->startOfMonth(),
-                $selectedMonth->copy()->endOfMonth(),
+                $fromDate->copy()->startOfDay(),
+                $toDate->copy()->endOfDay(),
             ]);
 
         if ($request->filled('status')) {
@@ -232,13 +232,33 @@ class RechargeAuditAdminController extends Controller
         return $query;
     }
 
-    private function resolveMonth(?string $month): Carbon
+    private function resolveDateRange(?string $from, ?string $to): array
     {
-        if (is_string($month) && preg_match('/^\d{4}-\d{2}$/', $month) === 1) {
-            return Carbon::createFromFormat('Y-m', $month)->startOfMonth();
+        $defaultTo = now()->startOfDay();
+        $defaultFrom = now()->startOfMonth();
+
+        $fromDate = $this->resolveDate($from, $defaultFrom);
+        $toDate = $this->resolveDate($to, $defaultTo);
+
+        if ($fromDate->gt($toDate)) {
+            [$fromDate, $toDate] = [$toDate, $fromDate];
         }
 
-        return now()->startOfMonth();
+        return [$fromDate->startOfDay(), $toDate->startOfDay()];
+    }
+
+    private function resolveDate(?string $date, Carbon $fallback): Carbon
+    {
+        if (is_string($date) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1) {
+            return Carbon::createFromFormat('Y-m-d', $date)->startOfDay();
+        }
+
+        return $fallback->copy()->startOfDay();
+    }
+
+    private function formatRangeLabel(Carbon $fromDate, Carbon $toDate): string
+    {
+        return sprintf('%s to %s', $fromDate->format('d M Y'), $toDate->format('d M Y'));
     }
 
     private function withGstBreakdown(object $summary): object
@@ -251,15 +271,6 @@ class RechargeAuditAdminController extends Controller
         $summary->gst_total = $gstAmount;
 
         return $summary;
-    }
-
-    private function monthKeyExpression(): string
-    {
-        return match (DB::connection()->getDriverName()) {
-            'sqlite' => "strftime('%Y-%m', created_at)",
-            'pgsql' => "to_char(created_at, 'YYYY-MM')",
-            default => "DATE_FORMAT(created_at, '%Y-%m')",
-        };
     }
 
     private function appendGatewayMetadata(LengthAwarePaginator $orders): void
