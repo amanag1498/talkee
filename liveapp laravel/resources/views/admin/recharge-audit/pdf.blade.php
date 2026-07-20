@@ -123,7 +123,7 @@
       @if(!empty($filters['rrn'])) RRN: {{ $filters['rrn'] }}. @endif
       @if(!empty($filters['contact'])) Contact: {{ $filters['contact'] }}. @endif
       @if(!empty($filters['email'])) Email: {{ $filters['email'] }}. @endif
-      @if($filters['signature_verified'] !== null && $filters['signature_verified'] !== '') Signature: {{ $filters['signature_verified'] === '1' ? 'Verified' : 'Not verified' }}. @endif
+      @if(isset($filters['signature_verified']) && $filters['signature_verified'] !== '') Signature: {{ $filters['signature_verified'] === '1' ? 'Verified' : 'Not verified' }}. @endif
     @else
       Generated from Talkieo admin recharge audit.
     @endif
