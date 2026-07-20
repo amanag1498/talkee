@@ -25,6 +25,11 @@ class RechargeOrderApiTest extends TestCase
         }
 
         config(['services.mock_payments.enabled' => true]);
+        config([
+            'services.razorpay.key_id' => '',
+            'services.razorpay.key_secret' => '',
+            'services.razorpay.webhook_secret' => '',
+        ]);
         $this->seed(RechargePlanSeeder::class);
     }
 
@@ -178,6 +183,9 @@ class RechargeOrderApiTest extends TestCase
             ->assertJsonPath('data.checkout.method.upi', true);
 
         $this->assertNotEmpty($gateway->createdOrders);
+        $this->assertStringStartsWith('tko_', $gateway->createdOrders[0]['receipt']);
+        $this->assertSame('talkieo', $gateway->createdOrders[0]['notes']['app_code'] ?? null);
+        $this->assertSame('talkieo', $gateway->createdOrders[0]['notes']['app_slug'] ?? null);
     }
 
     public function test_razorpay_verify_success_credits_wallet_once(): void
@@ -284,6 +292,178 @@ class RechargeOrderApiTest extends TestCase
         $this->assertSame(550, Wallet::query()->where('user_id', $user->id)->value('balance'));
     }
 
+    public function test_razorpay_webhook_rejects_order_marked_for_another_app(): void
+    {
+        config(['services.mock_payments.enabled' => false]);
+        $gateway = $this->bindFakeRazorpayGateway([
+            'orders' => [
+                'order_test_123' => [
+                    'id' => 'order_test_123',
+                    'receipt' => 'gdl_test_receipt',
+                    'notes' => [
+                        'app_code' => 'gdlive',
+                        'app_slug' => 'gd_live',
+                        'app_name' => 'GD Live',
+                    ],
+                ],
+            ],
+        ]);
+
+        $user = User::factory()->create();
+        $user->assignRole('user');
+        Wallet::query()->updateOrCreate(['user_id' => $user->id], ['balance' => 50]);
+        Sanctum::actingAs($user);
+
+        $plan = RechargePlan::query()->firstOrFail();
+        $order = $this->postJson('/api/recharge/orders', [
+            'plan_id' => $plan->id,
+            'gateway' => 'razorpay',
+        ])->json('data');
+
+        $payload = [
+            'event' => 'payment.captured',
+            'payload' => [
+                'payment' => [
+                    'entity' => [
+                        'id' => 'pay_webhook_wrong_app_1',
+                        'order_id' => 'order_test_123',
+                        'amount' => 10000,
+                        'currency' => 'INR',
+                        'status' => 'captured',
+                    ],
+                ],
+                'order' => [
+                    'entity' => [
+                        'id' => 'order_test_123',
+                        'receipt' => 'gdl_test_receipt',
+                        'notes' => [
+                            'app_code' => 'gdlive',
+                            'app_slug' => 'gd_live',
+                            'app_name' => 'GD Live',
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $rawPayload = json_encode($payload, JSON_THROW_ON_ERROR);
+        $signature = $gateway->webhookSignature($rawPayload);
+
+        $this->postJson(
+            '/api/payments/razorpay/webhook',
+            $payload,
+            ['X-Razorpay-Signature' => $signature],
+        )->assertOk();
+
+        $this->assertDatabaseMissing('wallet_transactions', [
+            'category' => 'recharge',
+            'reference_type' => 'payment_order',
+            'transaction_id' => 'pay_webhook_wrong_app_1',
+        ]);
+        $this->assertDatabaseHas('payment_orders', [
+            'order_id' => $order['order_id'],
+            'status' => 'failed',
+            'gateway_payment_id' => 'pay_webhook_wrong_app_1',
+        ]);
+        $this->assertSame(50, Wallet::query()->where('user_id', $user->id)->value('balance'));
+    }
+
+    public function test_razorpay_webhook_ignores_unlisted_events(): void
+    {
+        config(['services.mock_payments.enabled' => false]);
+        $gateway = $this->bindFakeRazorpayGateway();
+
+        $payload = [
+            'event' => 'order.paid',
+            'payload' => [
+                'payment' => [
+                    'entity' => [
+                        'id' => 'pay_ignored_1',
+                        'order_id' => 'order_test_123',
+                        'amount' => 10000,
+                        'currency' => 'INR',
+                        'status' => 'captured',
+                    ],
+                ],
+            ],
+        ];
+
+        $rawPayload = json_encode($payload, JSON_THROW_ON_ERROR);
+        $signature = $gateway->webhookSignature($rawPayload);
+
+        $this->postJson(
+            '/api/payments/razorpay/webhook',
+            $payload,
+            ['X-Razorpay-Signature' => $signature],
+        )
+            ->assertOk()
+            ->assertJsonPath('data.processed', false)
+            ->assertJsonPath('data.reason', 'event_ignored');
+    }
+
+    public function test_razorpay_webhook_does_not_repeat_successful_recharge_credit(): void
+    {
+        config(['services.mock_payments.enabled' => false]);
+        $gateway = $this->bindFakeRazorpayGateway();
+
+        $user = User::factory()->create();
+        $user->assignRole('user');
+        Wallet::query()->updateOrCreate(['user_id' => $user->id], ['balance' => 50]);
+        Sanctum::actingAs($user);
+
+        $plan = RechargePlan::query()->firstOrFail();
+        $order = $this->postJson('/api/recharge/orders', [
+            'plan_id' => $plan->id,
+            'gateway' => 'razorpay',
+        ])->json('data');
+
+        $capturedPayload = [
+            'event' => 'payment.captured',
+            'payload' => [
+                'payment' => [
+                    'entity' => [
+                        'id' => 'pay_webhook_repeat_1',
+                        'order_id' => 'order_test_123',
+                        'amount' => 10000,
+                        'currency' => 'INR',
+                        'status' => 'captured',
+                    ],
+                ],
+                'order' => [
+                    'entity' => [
+                        'id' => 'order_test_123',
+                    ],
+                ],
+            ],
+        ];
+
+        $rawCapturedPayload = json_encode($capturedPayload, JSON_THROW_ON_ERROR);
+        $capturedSignature = $gateway->webhookSignature($rawCapturedPayload);
+
+        $this->postJson(
+            '/api/payments/razorpay/webhook',
+            $capturedPayload,
+            ['X-Razorpay-Signature' => $capturedSignature],
+        )->assertOk();
+
+        $this->postJson(
+            '/api/payments/razorpay/webhook',
+            $capturedPayload,
+            ['X-Razorpay-Signature' => $capturedSignature],
+        )
+            ->assertOk()
+            ->assertJsonPath('data.processed', true)
+            ->assertJsonPath('data.reason', 'already_success');
+
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->assertDatabaseHas('payment_orders', [
+            'order_id' => $order['order_id'],
+            'status' => 'success',
+            'gateway_payment_id' => 'pay_webhook_repeat_1',
+        ]);
+        $this->assertSame(550, Wallet::query()->where('user_id', $user->id)->value('balance'));
+    }
+
     public function test_razorpay_verify_returns_pending_when_capture_is_not_complete(): void
     {
         config(['services.mock_payments.enabled' => false]);
@@ -326,6 +506,56 @@ class RechargeOrderApiTest extends TestCase
         $this->assertDatabaseMissing('wallet_transactions', [
             'category' => 'recharge',
             'transaction_id' => 'pay_auth_1',
+        ]);
+    }
+
+    public function test_razorpay_verify_rejects_payment_marked_for_another_app(): void
+    {
+        config(['services.mock_payments.enabled' => false]);
+        $gateway = $this->bindFakeRazorpayGateway([
+            'orders' => [
+                'order_test_123' => [
+                    'id' => 'order_test_123',
+                    'receipt' => 'gdl_test_receipt',
+                    'notes' => [
+                        'app_code' => 'gdlive',
+                        'app_slug' => 'gd_live',
+                        'app_name' => 'GD Live',
+                    ],
+                ],
+            ],
+        ]);
+
+        $user = User::factory()->create();
+        $user->assignRole('user');
+        Wallet::query()->updateOrCreate(['user_id' => $user->id], ['balance' => 10]);
+        Sanctum::actingAs($user);
+
+        $plan = RechargePlan::query()->firstOrFail();
+        $orderId = $this->postJson('/api/recharge/orders', [
+            'plan_id' => $plan->id,
+            'gateway' => 'razorpay',
+        ])->json('data.order_id');
+
+        $signature = $gateway->paymentSignature('order_test_123', 'pay_wrong_app_1');
+
+        $this->postJson("/api/recharge/orders/{$orderId}/verify", [
+            'result' => 'success',
+            'gateway_payment_id' => 'pay_wrong_app_1',
+            'gateway_order_id' => 'order_test_123',
+            'gateway_signature' => $signature,
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Payment does not belong to Talkieo.');
+
+        $this->assertSame(10, Wallet::query()->where('user_id', $user->id)->value('balance'));
+        $this->assertDatabaseMissing('wallet_transactions', [
+            'category' => 'recharge',
+            'transaction_id' => 'pay_wrong_app_1',
+        ]);
+        $this->assertDatabaseHas('payment_orders', [
+            'order_id' => $orderId,
+            'status' => 'failed',
         ]);
     }
 
@@ -376,6 +606,19 @@ class RechargeOrderApiTest extends TestCase
                     'amount' => 10000,
                     'currency' => 'INR',
                     'status' => 'captured',
+                ];
+            }
+
+            public function fetchOrder(string $orderId): array
+            {
+                return $this->state['orders'][$orderId] ?? [
+                    'id' => $orderId,
+                    'receipt' => 'tko_test_receipt',
+                    'notes' => [
+                        'app_code' => 'talkieo',
+                        'app_slug' => 'talkieo',
+                        'app_name' => 'Talkieo',
+                    ],
                 ];
             }
 
