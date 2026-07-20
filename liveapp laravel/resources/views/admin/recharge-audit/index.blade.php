@@ -15,7 +15,7 @@
           <p class="admin-page-subtitle mb-0">Track recharge order outcomes, gateway-level success rates, and downloadable month snapshots for finance review.</p>
         </div>
         <div class="admin-page-actions">
-          <a href="{{ route('admin.recharge-audit.pdf', ['month' => $selectedMonthKey] + request()->only(['status', 'gateway', 'q'])) }}" class="btn btn-primary">
+          <a href="{{ route('admin.recharge-audit.pdf', ['month' => $selectedMonthKey] + request()->only(['status', 'gateway', 'q', 'payment_method', 'vpa', 'rrn', 'contact', 'email', 'signature_verified'])) }}" class="btn btn-primary">
             <i class="ti ti-file-download me-1"></i>Download PDF
           </a>
         </div>
@@ -43,8 +43,39 @@
           <label class="form-label">Search</label>
           <input type="text" name="q" value="{{ request('q') }}" class="form-control" placeholder="user, email, order id">
         </div>
-        <div class="col-md-1 d-grid">
-          <button class="btn btn-primary"><i class="ti ti-search"></i></button>
+        <div class="col-md-3">
+          <label class="form-label">Method</label>
+          <input type="text" name="payment_method" value="{{ request('payment_method') }}" class="form-control" placeholder="upi / card / netbanking">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">VPA</label>
+          <input type="text" name="vpa" value="{{ request('vpa') }}" class="form-control" placeholder="user@bank">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">RRN</label>
+          <input type="text" name="rrn" value="{{ request('rrn') }}" class="form-control" placeholder="Bank RRN">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Gateway Contact</label>
+          <input type="text" name="contact" value="{{ request('contact') }}" class="form-control" placeholder="+91...">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Gateway Email</label>
+          <input type="text" name="email" value="{{ request('email') }}" class="form-control" placeholder="payer email">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Signature</label>
+          <select name="signature_verified" class="form-select">
+            <option value="">Any</option>
+            <option value="1" @selected(request('signature_verified') === '1')>Verified</option>
+            <option value="0" @selected(request('signature_verified') === '0')>Not Verified</option>
+          </select>
+        </div>
+        <div class="col-md-2 d-grid">
+          <button class="btn btn-primary"><i class="ti ti-search me-1"></i>Apply</button>
+        </div>
+        <div class="col-md-2 d-grid">
+          <a href="{{ route('admin.recharge-audit.index') }}" class="btn btn-light border">Reset</a>
         </div>
       </form>
     </div>
@@ -178,6 +209,7 @@
                 <th>Plan</th>
                 <th>Status</th>
                 <th>Gateway</th>
+                <th>Payment Meta</th>
                 <th>Value</th>
                 <th>Coins</th>
                 <th>Created</th>
@@ -206,12 +238,29 @@
                     </span>
                   </td>
                   <td class="text-capitalize">{{ $order->gateway ?: 'manual' }}</td>
+                  <td class="small text-muted">
+                    @php($meta = $order->audit_meta ?? [])
+                    <div><span class="fw-semibold text-dark">Method:</span> {{ $meta['method'] ?? '—' }}</div>
+                    <div><span class="fw-semibold text-dark">RRN:</span> {{ $meta['rrn'] ?? '—' }}</div>
+                    <div><span class="fw-semibold text-dark">VPA:</span> {{ $meta['vpa'] ?? '—' }}</div>
+                    <div><span class="fw-semibold text-dark">Flow:</span> {{ $meta['upi_flow'] ?? '—' }}</div>
+                    <div><span class="fw-semibold text-dark">Payer Type:</span> {{ $meta['payer_account_type'] ?? '—' }}</div>
+                    <div><span class="fw-semibold text-dark">Contact:</span> {{ $meta['contact'] ?? '—' }}</div>
+                    <div><span class="fw-semibold text-dark">Gateway Email:</span> {{ $meta['email'] ?? '—' }}</div>
+                    <div><span class="fw-semibold text-dark">Gateway Status:</span> {{ $meta['payment_status'] ?? '—' }}</div>
+                    <div><span class="fw-semibold text-dark">Signature:</span> {{ array_key_exists('signature_verified', $meta) ? (($meta['signature_verified'] ?? false) ? 'Verified' : 'No') : '—' }}</div>
+                    <div><span class="fw-semibold text-dark">Fee:</span> {{ $meta['gateway_fee'] !== null ? 'Rs '.number_format(((float) $meta['gateway_fee']) / 100, 2) : '—' }}</div>
+                    <div><span class="fw-semibold text-dark">Tax:</span> {{ $meta['gateway_tax'] !== null ? 'Rs '.number_format(((float) $meta['gateway_tax']) / 100, 2) : '—' }}</div>
+                    @if(!empty($meta['error_code']) || !empty($meta['error_description']))
+                      <div><span class="fw-semibold text-dark">Gateway Error:</span> {{ $meta['error_code'] ?? '—' }}{{ !empty($meta['error_description']) ? ' · '.$meta['error_description'] : '' }}</div>
+                    @endif
+                  </td>
                   <td>Rs {{ number_format((float) $order->amount_rupees, 2) }}</td>
                   <td>{{ number_format((int) $order->total_coins) }}</td>
                   <td>{{ $order->created_at?->format('d M Y, h:i A') }}</td>
                 </tr>
               @empty
-                <tr><td colspan="8" class="text-center text-muted py-5">No recharge orders found for the selected month.</td></tr>
+                <tr><td colspan="9" class="text-center text-muted py-5">No recharge orders found for the selected month.</td></tr>
               @endforelse
             </tbody>
           </table>

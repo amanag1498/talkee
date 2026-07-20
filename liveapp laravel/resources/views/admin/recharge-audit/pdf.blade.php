@@ -60,6 +60,7 @@
       <tr>
         <th>Order</th>
         <th>User</th>
+        <th>Gateway Meta</th>
         <th>Gross Amount</th>
         <th>Taxable Amount</th>
         <th>GST (18%)</th>
@@ -83,6 +84,18 @@
             <div>{{ $order->user?->name ?? 'User #'.$order->user_id }}</div>
             <div class="muted">{{ $order->user?->email ?? '—' }}</div>
           </td>
+          <td>
+            @php($meta = $order->audit_meta ?? [])
+            <div>Method: {{ $meta['method'] ?? '—' }}</div>
+            <div>RRN: {{ $meta['rrn'] ?? '—' }}</div>
+            <div>VPA: {{ $meta['vpa'] ?? '—' }}</div>
+            <div>Flow: {{ $meta['upi_flow'] ?? '—' }}</div>
+            <div>Payer Type: {{ $meta['payer_account_type'] ?? '—' }}</div>
+            <div>Contact: {{ $meta['contact'] ?? '—' }}</div>
+            <div>Email: {{ $meta['email'] ?? '—' }}</div>
+            <div>Gateway Status: {{ $meta['payment_status'] ?? '—' }}</div>
+            <div>Signature: {{ array_key_exists('signature_verified', $meta) ? (($meta['signature_verified'] ?? false) ? 'Verified' : 'No') : '—' }}</div>
+          </td>
           <td>Rs {{ number_format($grossAmount, 2) }}</td>
           <td>Rs {{ number_format($taxableAmount, 2) }}</td>
           <td>Rs {{ number_format($gstAmount, 2) }}</td>
@@ -91,18 +104,24 @@
         </tr>
       @empty
         <tr>
-          <td colspan="7" class="muted">No recharge orders found for this period.</td>
+          <td colspan="8" class="muted">No recharge orders found for this period.</td>
         </tr>
       @endforelse
     </tbody>
   </table>
 
   <div class="footer-note">
-    @if(!empty($filters['status']) || !empty($filters['gateway']) || !empty($filters['q']))
+    @if(!empty($filters['status']) || !empty($filters['gateway']) || !empty($filters['q']) || !empty($filters['payment_method']) || !empty($filters['vpa']) || !empty($filters['rrn']) || !empty($filters['contact']) || !empty($filters['email']) || !empty($filters['signature_verified']))
       Filtered export.
       @if(!empty($filters['status'])) Status: {{ $filters['status'] }}. @endif
       @if(!empty($filters['gateway'])) Gateway: {{ $filters['gateway'] }}. @endif
       @if(!empty($filters['q'])) Search: {{ $filters['q'] }}. @endif
+      @if(!empty($filters['payment_method'])) Method: {{ $filters['payment_method'] }}. @endif
+      @if(!empty($filters['vpa'])) VPA: {{ $filters['vpa'] }}. @endif
+      @if(!empty($filters['rrn'])) RRN: {{ $filters['rrn'] }}. @endif
+      @if(!empty($filters['contact'])) Contact: {{ $filters['contact'] }}. @endif
+      @if(!empty($filters['email'])) Email: {{ $filters['email'] }}. @endif
+      @if($filters['signature_verified'] !== null && $filters['signature_verified'] !== '') Signature: {{ $filters['signature_verified'] === '1' ? 'Verified' : 'Not verified' }}. @endif
     @else
       Generated from Talkieo admin recharge audit.
     @endif
