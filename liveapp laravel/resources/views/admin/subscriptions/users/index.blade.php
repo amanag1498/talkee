@@ -12,16 +12,155 @@
   </a>
 </div>
 
+<div class="mb-2">
+  <h5 class="mb-1">Paid sales</h5>
+  <div class="text-muted small">Every subscription wallet debit is one sale. Renewals remain separate audit events.</div>
+</div>
+<div class="row g-3 mb-4">
+  <div class="col-md"><div class="card h-100"><div class="card-body"><div class="text-muted small">Subscriptions Sold</div><div class="h4 mb-0">{{ number_format($salesSummary['sold'] ?? 0) }}</div></div></div></div>
+  <div class="col-md"><div class="card h-100"><div class="card-body"><div class="text-muted small">Coins Collected</div><div class="h4 mb-0">{{ number_format($salesSummary['coins'] ?? 0) }}</div></div></div></div>
+  <div class="col-md"><div class="card h-100"><div class="card-body"><div class="text-muted small">Unique Buyers</div><div class="h4 mb-0">{{ number_format($salesSummary['buyers'] ?? 0) }}</div></div></div></div>
+  <div class="col-md"><div class="card h-100"><div class="card-body"><div class="text-muted small">Renewals</div><div class="h4 mb-0">{{ number_format($salesSummary['renewals'] ?? 0) }}</div></div></div></div>
+  <div class="col-md"><div class="card h-100"><div class="card-body"><div class="text-muted small">Renewal Rate</div><div class="h4 mb-0">{{ number_format($salesSummary['renewal_rate'] ?? 0, 1) }}%</div></div></div></div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div>
+      <h5 class="mb-1">Subscription Sales Audit</h5>
+      <div class="text-muted small">Immutable purchase history from wallet transactions. Renewing one entitlement creates another row here.</div>
+    </div>
+    <span class="badge bg-light text-dark border">{{ number_format($sales->total()) }} matching sales</span>
+  </div>
+  <div class="card-body border-bottom">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-lg-4">
+        <label class="form-label">Buyer or Transaction</label>
+        <input name="sale_q" value="{{ request('sale_q') }}" class="form-control" placeholder="Transaction ID, user, email, or plan">
+      </div>
+      <div class="col-lg-2">
+        <label class="form-label">Plan</label>
+        <select name="sale_plan_id" class="form-select">
+          <option value="">Any plan</option>
+          @foreach($plans as $plan)
+            <option value="{{ $plan->id }}" @selected((string) request('sale_plan_id') === (string) $plan->id)>{{ $plan->name }}</option>
+          @endforeach
+        </select>
+      </div>
+      <div class="col-lg-2">
+        <label class="form-label">Sale Type</label>
+        <select name="sale_kind" class="form-select">
+          <option value="">Purchase + renewal</option>
+          <option value="purchase" @selected(request('sale_kind') === 'purchase')>First purchase</option>
+          <option value="renewal" @selected(request('sale_kind') === 'renewal')>Renewal</option>
+        </select>
+      </div>
+      <div class="col-lg-2">
+        <label class="form-label">Sold From</label>
+        <input type="date" name="sale_from" value="{{ request('sale_from') }}" class="form-control">
+      </div>
+      <div class="col-lg-2">
+        <label class="form-label">Sold To</label>
+        <input type="date" name="sale_to" value="{{ request('sale_to') }}" class="form-control">
+      </div>
+      <div class="col-12 d-flex gap-2 mt-3">
+        <button class="btn btn-primary"><i class="ti ti-filter me-1"></i> Apply Sales Filters</button>
+        <a href="{{ route('admin.user-subscriptions.index') }}" class="btn btn-light border">Reset</a>
+      </div>
+    </form>
+  </div>
+
+  @if($salesByPlan->isNotEmpty())
+    <div class="card-body border-bottom">
+      <div class="row g-3">
+        @foreach($salesByPlan as $planSales)
+          <div class="col-md-6 col-xl-3">
+            <div class="border rounded p-3 h-100 bg-light">
+              <div class="fw-semibold">{{ $planSales['name'] }}</div>
+              <div class="d-flex gap-4 mt-2 small text-muted">
+                <span><strong class="d-block text-dark">{{ number_format($planSales['sold']) }}</strong>sold</span>
+                <span><strong class="d-block text-dark">{{ number_format($planSales['coins']) }}</strong>coins</span>
+                <span><strong class="d-block text-dark">{{ number_format($planSales['buyers']) }}</strong>buyers</span>
+              </div>
+            </div>
+          </div>
+        @endforeach
+      </div>
+    </div>
+  @endif
+
+  <div class="table-responsive">
+    <table class="table mb-0 align-middle">
+      <thead>
+        <tr><th>Sale</th><th>Buyer</th><th>Plan</th><th>Type</th><th class="text-end">Coins</th><th>Wallet</th><th>Audit</th></tr>
+      </thead>
+      <tbody>
+        @forelse($sales as $sale)
+          @php
+            $saleMeta = is_array($sale->meta ?? null) ? $sale->meta : [];
+            $buyer = $sale->wallet?->user;
+            $saleEvent = $saleMeta['event'] ?? 'SUBSCRIPTION_PURCHASE';
+            $saleSource = $saleMeta['source'] ?? (str_starts_with($saleEvent, 'ADMIN_') ? 'admin' : 'app');
+            $saleMetaId = 'sale-meta-' . $sale->id;
+          @endphp
+          <tr>
+            <td>
+              <div class="fw-semibold">Txn #{{ $sale->id }}</div>
+              <div class="small text-muted">{{ $sale->created_at?->format('d M Y, h:i A') ?? '—' }}</div>
+              @if(!empty($saleMeta['subscription_id']))<span class="badge bg-light text-dark border mt-1">Sub #{{ $saleMeta['subscription_id'] }}</span>@endif
+            </td>
+            <td>
+              <div class="fw-semibold">{{ $buyer?->name ?? 'Unknown user' }}</div>
+              <div class="small text-muted">{{ $buyer?->email ?? 'No email' }}</div>
+              @if($buyer)<a class="small" href="{{ route('admin.users.show', $buyer) }}">User #{{ $buyer->id }}</a>@endif
+            </td>
+            <td>
+              <div class="fw-semibold">{{ $saleMeta['plan_name'] ?? $sale->reference ?? 'Unknown plan' }}</div>
+              <div class="small text-muted">{{ $sale->reference ?? 'No reference' }}</div>
+              @if(isset($saleMeta['period_starts_at'], $saleMeta['period_ends_at']))
+                <div class="small text-muted mt-1">{{ \Carbon\Carbon::parse($saleMeta['period_starts_at'])->format('d M Y') }} to {{ \Carbon\Carbon::parse($saleMeta['period_ends_at'])->format('d M Y') }}</div>
+              @endif
+            </td>
+            <td>
+              <span class="badge bg-{{ $sale->audit_kind === 'renewal' ? 'warning text-dark' : 'success' }}">{{ ucfirst($sale->audit_kind) }}</span>
+              <div class="small text-muted mt-1">{{ ucfirst($saleSource) }}</div>
+            </td>
+            <td class="text-end"><div class="fw-bold">{{ number_format((int) $sale->coins) }}</div><div class="small text-muted">debited</div></td>
+            <td><div>{{ number_format((int) ($sale->balance_before ?? 0)) }} → {{ number_format((int) ($sale->balance_after ?? 0)) }}</div><div class="small text-muted">Wallet #{{ $sale->wallet_id }}</div></td>
+            <td>
+              <div class="small fw-semibold">{{ $saleEvent }}</div>
+              @if(!empty($saleMeta))
+                <button class="btn btn-sm btn-link px-0" type="button" data-bs-toggle="collapse" data-bs-target="#{{ $saleMetaId }}">Metadata</button>
+                <div class="collapse" id="{{ $saleMetaId }}"><pre class="small bg-light border rounded p-2 mb-0" style="white-space: pre-wrap; max-width: 320px;">{{ json_encode($saleMeta, JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES) }}</pre></div>
+              @endif
+            </td>
+          </tr>
+        @empty
+          <tr><td colspan="7" class="text-center text-muted py-4">No paid subscription sales matched these filters.</td></tr>
+        @endforelse
+      </tbody>
+    </table>
+  </div>
+  <div class="card-footer">{{ $sales->links() }}</div>
+</div>
+
+<div class="mb-2">
+  <h5 class="mb-1">Current entitlement state</h5>
+  <div class="text-muted small">These rows represent access windows, not the number of sales.</div>
+</div>
 <div class="row g-3 mb-3">
-  <div class="col-md-2"><div class="card"><div class="card-body"><div class="text-muted small">Active</div><div class="h4 mb-0">{{ number_format($summary['active'] ?? 0) }}</div></div></div></div>
-  <div class="col-md-2"><div class="card"><div class="card-body"><div class="text-muted small">Purchased</div><div class="h4 mb-0">{{ number_format($summary['purchased'] ?? 0) }}</div></div></div></div>
-  <div class="col-md-2"><div class="card"><div class="card-body"><div class="text-muted small">Signup Gifts</div><div class="h4 mb-0">{{ number_format($summary['gifted'] ?? 0) }}</div></div></div></div>
-  <div class="col-md-2"><div class="card"><div class="card-body"><div class="text-muted small">Admin Grants</div><div class="h4 mb-0">{{ number_format($summary['admin_grant'] ?? 0) }}</div></div></div></div>
-  <div class="col-md-2"><div class="card"><div class="card-body"><div class="text-muted small">Admin Charged</div><div class="h4 mb-0">{{ number_format($summary['admin_charged'] ?? 0) }}</div></div></div></div>
-  <div class="col-md-2"><div class="card"><div class="card-body"><div class="text-muted small">Cancelled</div><div class="h4 mb-0">{{ number_format($summary['cancelled'] ?? 0) }}</div></div></div></div>
+  <div class="col-md"><div class="card h-100"><div class="card-body"><div class="text-muted small">Active Access</div><div class="h4 mb-0">{{ number_format($summary['active'] ?? 0) }}</div></div></div></div>
+  <div class="col-md"><div class="card h-100"><div class="card-body"><div class="text-muted small">Expired Access</div><div class="h4 mb-0">{{ number_format($summary['expired'] ?? 0) }}</div></div></div></div>
+  <div class="col-md"><div class="card h-100"><div class="card-body"><div class="text-muted small">Cancelled</div><div class="h4 mb-0">{{ number_format($summary['cancelled'] ?? 0) }}</div></div></div></div>
+  <div class="col-md"><div class="card h-100"><div class="card-body"><div class="text-muted small">Complimentary Active</div><div class="h4 mb-0">{{ number_format($summary['complimentary_active'] ?? 0) }}</div></div></div></div>
+  <div class="col-md"><div class="card h-100"><div class="card-body"><div class="text-muted small">Expiring Soon</div><div class="h4 mb-0">{{ number_format($summary['expiring_soon'] ?? 0) }}</div></div></div></div>
 </div>
 
 <div class="card mb-3">
+  <div class="card-header">
+    <h5 class="mb-1">Subscription Entitlements</h5>
+    <div class="text-muted small">Renewals extend one access row and appear separately in the sales audit above.</div>
+  </div>
   <div class="card-body">
     <form method="get" class="row g-2 align-items-end">
       <div class="col-md-4">
