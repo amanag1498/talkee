@@ -319,6 +319,25 @@ class UserLevelSystemTest extends TestCase
         ]);
     }
 
+    public function test_recalculate_preserves_legacy_spend_and_adds_only_eligible_new_spend(): void
+    {
+        $user = $this->makeUserWithBalance(2500);
+        $user->forceFill([
+            'legacy_lifetime_spend_coins' => 5000,
+            'lifetime_spend_coins' => 5000,
+        ])->save();
+
+        WalletService::spend($user, 1200, 'gift', null, 'gift:new');
+        WalletService::spend($user, 1200, 'game_bet_debit', null, 'teen_patti_bet:new');
+
+        app(UserLevelService::class)->recalculate($user->fresh());
+        $user->refresh();
+
+        $this->assertSame(5000, (int) $user->legacy_lifetime_spend_coins);
+        $this->assertSame(6200, (int) $user->lifetime_spend_coins);
+        $this->assertSame(3, (int) $user->level?->level);
+    }
+
     public function test_profile_endpoint_includes_level_progress_fields(): void
     {
         $user = $this->makeUserWithBalance(6200);

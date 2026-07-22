@@ -31,6 +31,7 @@ class User extends Authenticatable
         'firebase_uid',
         'avatar_url',
         'level_id',
+        'legacy_lifetime_spend_coins',
         'lifetime_spend_coins',
         'provider',
         'email_verified_at',
@@ -49,6 +50,7 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'is_blocked'        => 'boolean',
+        'legacy_lifetime_spend_coins' => 'integer',
         'lifetime_spend_coins' => 'integer',
         'last_login_at' => 'datetime',
         'last_login_date' => 'date',

@@ -277,12 +277,14 @@ class UserLevelService
 
             $spendTransactions = $transactions->filter(fn (WalletTransaction $tx) => $this->isSpendTransaction($tx));
             $spendIds = $spendTransactions->pluck('id')->all();
-            $lifetimeSpend = (int) $spendTransactions->sum('coins');
+            $legacySpend = max(0, (int) ($user->legacy_lifetime_spend_coins ?? 0));
+            $lifetimeSpend = $legacySpend + (int) $spendTransactions->sum('coins');
             $newLevel = $this->levelForSpend($lifetimeSpend);
             $changed = ((int) $user->lifetime_spend_coins !== $lifetimeSpend) || ((int) ($user->level_id ?? 0) !== (int) ($newLevel?->id ?? 0));
 
             $report['users'][] = [
                 'user_id' => $user->id,
+                'legacy_lifetime_spend_coins' => $legacySpend,
                 'old_lifetime_spend_coins' => (int) $user->lifetime_spend_coins,
                 'new_lifetime_spend_coins' => $lifetimeSpend,
                 'old_level_id' => $user->level_id,
