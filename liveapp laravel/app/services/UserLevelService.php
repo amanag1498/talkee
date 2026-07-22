@@ -43,6 +43,7 @@ class UserLevelService
         'admin_credit',
         'gift_earning',
         'gift_agency_earning',
+        'game_bet_debit',
         'adjustment',
     ];
 
@@ -314,6 +315,7 @@ class UserLevelService
                 $this->syncSpendEvents($lockedUser, $spendTransactions, $spendIds);
 
                 if ($newLevel && $oldLevelId !== $newLevel->id) {
+                    $oldLevel = $oldLevelId ? UserLevel::query()->find($oldLevelId) : null;
                     UserLevelHistory::query()->create([
                         'user_id' => $lockedUser->id,
                         'old_level_id' => $oldLevelId,
@@ -322,12 +324,14 @@ class UserLevelService
                         'triggered_by_transaction_id' => $spendTransactions->last()?->id,
                     ]);
 
-                    $this->emitLevelUpRealtime(
-                        $lockedUser->fresh('level'),
-                        $newLevel,
-                        $oldLevelId ? UserLevel::query()->find($oldLevelId) : null,
-                        $spendTransactions->last(),
-                    );
+                    if (!$oldLevel || (int) $newLevel->level > (int) $oldLevel->level) {
+                        $this->emitLevelUpRealtime(
+                            $lockedUser->fresh('level'),
+                            $newLevel,
+                            $oldLevel,
+                            $spendTransactions->last(),
+                        );
+                    }
                 }
             });
         }

@@ -170,6 +170,29 @@ class UserLevelSystemTest extends TestCase
         ]);
     }
 
+    public function test_game_bets_do_not_increase_level_progress(): void
+    {
+        $user = $this->makeUserWithBalance(2000);
+
+        $transaction = WalletService::spend(
+            $user,
+            1200,
+            'game_bet_debit',
+            null,
+            'teen_patti_bet:test',
+            ['game' => 'teen_patti'],
+        );
+
+        $user->refresh();
+
+        $this->assertSame(800, (int) $user->wallet->fresh()->balance);
+        $this->assertSame(0, (int) $user->lifetime_spend_coins);
+        $this->assertSame(1, (int) $user->level?->level);
+        $this->assertDatabaseMissing('level_spend_events', [
+            'wallet_transaction_id' => $transaction->id,
+        ]);
+    }
+
     public function test_duplicate_processing_does_not_count_same_wallet_transaction_twice(): void
     {
         $user = $this->makeUserWithBalance(400);
@@ -250,6 +273,49 @@ class UserLevelSystemTest extends TestCase
             'user_id' => $user->id,
             'wallet_transaction_id' => DB::table('wallet_transactions')->where('reference', 'legacy:gift')->value('id'),
             'spend_coins' => 1200,
+        ]);
+    }
+
+    public function test_recalculate_removes_historical_game_bets_from_level_progress(): void
+    {
+        $user = $this->makeUserWithBalance(0);
+        $wallet = $user->wallet()->firstOrFail();
+        $levelTwo = UserLevel::query()->where('level', 2)->firstOrFail();
+
+        $transactionId = DB::table('wallet_transactions')->insertGetId([
+            'wallet_id' => $wallet->id,
+            'type' => 'debit',
+            'coins' => 1200,
+            'category' => 'game_bet_debit',
+            'reference' => 'greedy_bet:legacy',
+            'balance_before' => 1200,
+            'balance_after' => 0,
+            'created_at' => now()->subHour(),
+            'updated_at' => now()->subHour(),
+        ]);
+
+        DB::table('level_spend_events')->insert([
+            'user_id' => $user->id,
+            'wallet_transaction_id' => $transactionId,
+            'spend_coins' => 1200,
+            'created_at' => now()->subHour(),
+        ]);
+        $user->forceFill([
+            'lifetime_spend_coins' => 1200,
+            'level_id' => $levelTwo->id,
+        ])->save();
+
+        app(UserLevelService::class)->recalculate($user);
+        $user->refresh();
+
+        $this->assertSame(0, (int) $user->lifetime_spend_coins);
+        $this->assertSame(1, (int) $user->level?->level);
+        $this->assertDatabaseMissing('level_spend_events', [
+            'wallet_transaction_id' => $transactionId,
+        ]);
+        $this->assertDatabaseMissing('user_notifications', [
+            'user_id' => $user->id,
+            'type' => 'level_up',
         ]);
     }
 
