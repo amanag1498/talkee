@@ -50,7 +50,10 @@ return [
              *
              */
 
-            'credentials' => env('FIREBASE_CREDENTIALS', env('GOOGLE_APPLICATION_CREDENTIALS')),
+            'credentials' => env(
+                'FIREBASE_CREDENTIALS',
+                env('GOOGLE_APPLICATION_CREDENTIALS', storage_path('app/firebase-admin.json'))
+            ),
 
             /*
              * ------------------------------------------------------------------------
@@ -212,7 +215,7 @@ return [
                  * https://github.com/kreait/firebase-php/blob/6.x/src/Firebase/Http/HttpClientOptions.php
                  */
 
-                'timeout' => env('FIREBASE_HTTP_CLIENT_TIMEOUT'),
+                'timeout' => (float) env('FIREBASE_HTTP_CLIENT_TIMEOUT', 8),
 
                 'guzzle_middlewares' => [
                     // MyInvokableMiddleware::class,

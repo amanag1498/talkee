@@ -10,11 +10,13 @@ use App\Support\FirebaseAdminConfig;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
-use Kreait\Firebase\Factory;
+use Kreait\Firebase\Contract\Auth as FirebaseAuth;
 use App\Services\ThemeUnlockService;
 
 class FirebaseAuthApiController extends Controller
 {
+    private const FIREBASE_VERIFY_ATTEMPTS = 2;
+
     private function elapsedMs(float $startedAt): int
     {
         return (int) round((microtime(true) - $startedAt) * 1000);
@@ -44,6 +46,42 @@ class FirebaseAuthApiController extends Controller
         } catch (\Throwable $e) {
             return ['parse' => 'exception', 'message' => $e->getMessage()];
         }
+    }
+
+    private function verifyIdToken(FirebaseAuth $auth, string $idToken): mixed
+    {
+        for ($attempt = 1; $attempt <= self::FIREBASE_VERIFY_ATTEMPTS; $attempt++) {
+            try {
+                return $auth->verifyIdToken($idToken);
+            } catch (\Throwable $e) {
+                if (!$this->isTransientFirebaseFailure($e) || $attempt === self::FIREBASE_VERIFY_ATTEMPTS) {
+                    throw $e;
+                }
+
+                Log::warning('AUTH_API_FIREBASE_VERIFY_RETRY', [
+                    'attempt' => $attempt,
+                    'error_class' => $e::class,
+                    'error' => $e->getMessage(),
+                ]);
+                usleep(150_000);
+            }
+        }
+
+        throw new \RuntimeException('Firebase token verification failed.');
+    }
+
+    private function isTransientFirebaseFailure(\Throwable $error): bool
+    {
+        $message = strtolower($error->getMessage());
+
+        return str_contains($message, 'timed out')
+            || str_contains($message, 'timeout')
+            || str_contains($message, 'curl error 6')
+            || str_contains($message, 'curl error 7')
+            || str_contains($message, 'curl error 28')
+            || str_contains($message, 'could not resolve host')
+            || str_contains($message, 'connection refused')
+            || str_contains($message, 'connection reset');
     }
 
     public function login(Request $request)
@@ -126,7 +164,7 @@ class FirebaseAuthApiController extends Controller
                     'msg' => 'Firebase project id is missing from server configuration.',
                 ], 503);
             }
-            $auth = (new Factory())->withServiceAccount($serviceAccountPath)->withProjectId($projectId)->createAuth();
+            $auth = app(FirebaseAuth::class);
             Log::info('AUTH_API_FIREBASE_INIT_OK', ['project_id' => $projectId]);
         } catch (\Throwable $e) {
             OpsMetrics::increment(OpsMetrics::AUTH_FAILURES);
@@ -142,20 +180,25 @@ class FirebaseAuthApiController extends Controller
         // 2) Verify ID token (same)
         $stepAt = microtime(true);
         try {
-            $verified = $auth->verifyIdToken($request->idToken);
+            $verified = $this->verifyIdToken($auth, (string) $request->idToken);
             Log::info('AUTH_API_VERIFY_OK', ['token_meta' => $this->tokenMeta((string) $request->idToken)]);
         } catch (\Throwable $e) {
+            $isTransient = $this->isTransientFirebaseFailure($e);
             OpsMetrics::increment(OpsMetrics::AUTH_FAILURES);
             Log::warning('AUTH_API_FIREBASE_VERIFY_FAIL', [
                 'error' => $e->getMessage(),
+                'error_class' => $e::class,
+                'transient' => $isTransient,
                 'token_meta' => $this->tokenMeta((string) $request->idToken),
                 'configured_project_id' => $projectId ?? null,
             ]);
             return response()->json([
                 'ok' => false,
-                'code' => 'firebase_token_invalid',
-                'msg' => 'The Firebase ID token could not be verified. Please sign in again.',
-            ], 401);
+                'code' => $isTransient ? 'firebase_temporarily_unavailable' : 'firebase_token_invalid',
+                'msg' => $isTransient
+                    ? 'Login verification is temporarily unavailable. Please try again.'
+                    : 'The Firebase ID token could not be verified. Please sign in again.',
+            ], $isTransient ? 503 : 401);
         }
         $timings['firebase_verify_ms'] = $this->elapsedMs($stepAt);
 
