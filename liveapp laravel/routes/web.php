@@ -65,6 +65,9 @@ Route::get('/media/gift/{path}', [MediaController::class, 'gift'])
 Route::get('/media/entry-pack/{path}', [MediaController::class, 'entryPack'])
     ->where('path', '.*')
     ->name('media.entry-pack');
+Route::get('/media/banner/{path}', [MediaController::class, 'banner'])
+    ->where('path', '.*')
+    ->name('media.banner');
 Route::get('/media/profile-frame/{path}', [MediaController::class, 'profileFrame'])
     ->where('path', '.*')
     ->name('media.profile-frame');

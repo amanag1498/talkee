@@ -91,6 +91,10 @@ class BannerController extends Controller
 
         // Uploaded local banners are stored under /storage/... . Rebuild them
         // against the current app host even if an older absolute host was saved.
+        if (is_string($path) && Str::startsWith($path, '/storage/banners/')) {
+            return $hostRoot . '/media/banner/' . ltrim(Str::after($path, '/storage/'), '/');
+        }
+
         if (is_string($path) && Str::startsWith($path, '/storage/')) {
             return $hostRoot . $path;
         }

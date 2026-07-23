@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class Banner extends Model
 {
@@ -31,6 +33,29 @@ class Banner extends Model
         'starts_at' => 'datetime',
         'ends_at' => 'datetime',
     ];
+
+    public function getImageUrlAttribute($value): ?string
+    {
+        if (!$value) {
+            return null;
+        }
+
+        $path = parse_url($value, PHP_URL_PATH);
+
+        if (is_string($path) && Str::startsWith($path, '/storage/banners/')) {
+            return route('media.banner', ['path' => ltrim(Str::after($path, '/storage/'), '/')]);
+        }
+
+        if (Str::startsWith($value, 'banners/')) {
+            return route('media.banner', ['path' => ltrim($value, '/')]);
+        }
+
+        if (Str::startsWith($value, ['http://', 'https://'])) {
+            return $value;
+        }
+
+        return url(Str::startsWith($value, '/storage/') ? $value : Storage::url($value));
+    }
 
     public function scopeVisible(Builder $query): Builder
     {

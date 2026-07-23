@@ -175,7 +175,7 @@ class BannerAdminController extends Controller
 
     public function destroy(Banner $banner)
     {
-        $this->deleteLocalBannerImage($banner->image_url);
+        $this->deleteLocalBannerImage((string) $banner->getRawOriginal('image_url'));
         $banner->delete();
 
         return back()->with('ok', 'Banner deleted.');
@@ -216,7 +216,7 @@ class BannerAdminController extends Controller
     {
         if ($request->hasFile('image_file')) {
             if ($banner) {
-                $this->deleteLocalBannerImage($banner->image_url);
+                $this->deleteLocalBannerImage((string) $banner->getRawOriginal('image_url'));
             }
             $stored = $request->file('image_file')->store('banners', 'public');
             return Storage::url($stored);
@@ -226,7 +226,7 @@ class BannerAdminController extends Controller
             return (string) $data['image_url'];
         }
 
-        return (string) ($banner?->image_url ?? '');
+        return (string) ($banner?->getRawOriginal('image_url') ?? '');
     }
 
     private function normalizePreviewUrl(string $value, Request $request): string

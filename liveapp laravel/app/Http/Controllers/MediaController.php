@@ -50,6 +50,17 @@ class MediaController extends Controller
         ]);
     }
 
+    public function banner(string $path)
+    {
+        abort_unless(str_starts_with($path, 'banners/'), 404);
+        abort_unless(Storage::disk('public')->exists($path), 404);
+
+        return Storage::disk('public')->response($path, null, [
+            'Content-Type' => $this->mediaContentType($path),
+            'Cache-Control' => 'public, max-age=86400',
+        ]);
+    }
+
     private function mediaContentType(string $path): string
     {
         $lower = strtolower($path);
