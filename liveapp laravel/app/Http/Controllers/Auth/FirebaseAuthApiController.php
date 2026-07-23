@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
 use Kreait\Firebase\Contract\Auth as FirebaseAuth;
+use Kreait\Firebase\Factory;
 use App\Services\ThemeUnlockService;
 
 class FirebaseAuthApiController extends Controller
@@ -164,11 +165,33 @@ class FirebaseAuthApiController extends Controller
                     'msg' => 'Firebase project id is missing from server configuration.',
                 ], 503);
             }
-            $auth = app(FirebaseAuth::class);
+            try {
+                $auth = app(FirebaseAuth::class);
+            } catch (\Throwable $containerError) {
+                Log::warning('AUTH_API_FIREBASE_CONTAINER_INIT_FAIL', [
+                    'error_class' => $containerError::class,
+                    'error' => $containerError->getMessage(),
+                    'credential_path' => $serviceAccountPath,
+                    'project_id' => $projectId,
+                ]);
+
+                // Config cache can retain a stale FIREBASE_CREDENTIALS value.
+                // Rebuild Auth from the credential path validated above.
+                $auth = (new Factory())
+                    ->withServiceAccount($serviceAccountPath)
+                    ->withProjectId($projectId)
+                    ->createAuth();
+            }
             Log::info('AUTH_API_FIREBASE_INIT_OK', ['project_id' => $projectId]);
         } catch (\Throwable $e) {
             OpsMetrics::increment(OpsMetrics::AUTH_FAILURES);
-            Log::error('AUTH_API_FIREBASE_INIT_FAIL', ['error' => $e->getMessage()]);
+            Log::error('AUTH_API_FIREBASE_INIT_FAIL', [
+                'error_class' => $e::class,
+                'error' => $e->getMessage(),
+                'credential_path' => $serviceAccountPath ?? null,
+                'credential_readable' => isset($serviceAccountPath) && is_readable($serviceAccountPath),
+                'project_id' => $projectId ?? null,
+            ]);
             return response()->json([
                 'ok' => false,
                 'code' => 'firebase_init_failed',
