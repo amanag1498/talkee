@@ -12,6 +12,7 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
 use Kreait\Firebase\Contract\Auth as FirebaseAuth;
 use Kreait\Firebase\Factory;
+use App\Services\MetaAppEventRecorder;
 use App\Services\ThemeUnlockService;
 
 class FirebaseAuthApiController extends Controller
@@ -243,6 +244,7 @@ class FirebaseAuthApiController extends Controller
         // 3) Upsert local user (no full overwrite on existing)
         $stepAt = microtime(true);
         $user = User::where('firebase_uid', $uid)->orWhere('email', $email)->first();
+        $created = false;
 
         if (!$user) {
             $user = User::create([
@@ -255,6 +257,7 @@ class FirebaseAuthApiController extends Controller
                 'device_id'         => $deviceId,
                 'password'          => bcrypt(str()->random(32)),
             ]);
+            $created = true;
             Log::info('AUTH_API_USER_CREATED', ['user_id' => $user->id, 'firebase_uid' => $uid]);
         } else {
             $patch = [];
@@ -269,6 +272,13 @@ class FirebaseAuthApiController extends Controller
             ]);
         }
         $timings['user_upsert_ms'] = $this->elapsedMs($stepAt);
+
+        if ($created) {
+            app(MetaAppEventRecorder::class)->record('complete_registration', $user, [
+                'source' => 'server',
+                'properties' => ['login_provider' => 'google'],
+            ], $request);
+        }
 
         $stepAt = microtime(true);
         try {
@@ -343,6 +353,7 @@ class FirebaseAuthApiController extends Controller
         return response()->json([
             'ok'    => true,
             'token' => $token,
+            'is_new_user' => $created,
             'user'  => [
                 'id'             => $user->id,
                 'name'           => $user->name,

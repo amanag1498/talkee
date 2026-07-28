@@ -15,6 +15,12 @@ if (keystorePropertiesFile.exists()) {
     logger.warn("Release signing file not found: ${keystorePropertiesFile.path}")
 }
 
+val metaProperties = Properties()
+val metaPropertiesFile = rootProject.file("meta.properties")
+if (metaPropertiesFile.exists()) {
+    metaPropertiesFile.inputStream().use { metaProperties.load(it) }
+}
+
 android {
     namespace = "com.techybugs.talkee"
     compileSdk = 36
@@ -36,6 +42,8 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        resValue("string", "facebook_app_id", metaProperties.getProperty("META_APP_ID", ""))
+        resValue("string", "facebook_client_token", metaProperties.getProperty("META_CLIENT_TOKEN", ""))
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }

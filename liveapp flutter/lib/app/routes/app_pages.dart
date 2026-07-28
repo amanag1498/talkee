@@ -63,6 +63,7 @@ import '../../services/call_socket_service.dart';
 import '../../services/live_rooms_ws_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/live_eligibility_service.dart'; // 👈 add
+import '../../services/meta_attribution_service.dart';
 import '../../modules/wallet/services/wallet_api.dart';
 import '../../modules/wallet/services/razorpay_checkout_service.dart';
 import '../../modules/wallet/views/wallet_history_page.dart';
@@ -81,6 +82,15 @@ class AppPages {
     Get.put<StorageService>(storage, permanent: true);
     Get.put<ApiClient>(api, permanent: true);
     Get.put<AuthService>(authService, permanent: true);
+    final metaAttribution = Get.put<MetaAttributionService>(
+      MetaAttributionService(api),
+      permanent: true,
+    );
+    unawaited(
+      metaAttribution.initialize(
+        hasAuthenticatedSession: authService.isLoggedIn,
+      ),
+    );
     final appSettings = Get.put<AppSettingsService>(
       AppSettingsService(api),
       permanent: true,
@@ -137,10 +147,7 @@ class AppPages {
       () => TeenPattiSocketService(),
       fenix: true,
     );
-    Get.lazyPut<GreedySocketService>(
-      () => GreedySocketService(),
-      fenix: true,
-    );
+    Get.lazyPut<GreedySocketService>(() => GreedySocketService(), fenix: true);
     Get.lazyPut<ProfileController>(
       () => ProfileController(
         api: Get.find<ProfileApi>(),
@@ -248,27 +255,30 @@ class AppPages {
       ),
       GetPage(
         name: Routes.devLiveVideo,
-        page: () => VideoCallPage(
-          room: LiveRoomDevFixtures.videoRoom(),
-          live: Get.find<LiveService>(),
-          devMode: true,
-        ),
+        page:
+            () => VideoCallPage(
+              room: LiveRoomDevFixtures.videoRoom(),
+              live: Get.find<LiveService>(),
+              devMode: true,
+            ),
       ),
       GetPage(
         name: Routes.devLiveVideoPk,
-        page: () => VideoCallPage(
-          room: LiveRoomDevFixtures.videoPkRoom(),
-          live: Get.find<LiveService>(),
-          devMode: true,
-        ),
+        page:
+            () => VideoCallPage(
+              room: LiveRoomDevFixtures.videoPkRoom(),
+              live: Get.find<LiveService>(),
+              devMode: true,
+            ),
       ),
       GetPage(
         name: Routes.devLiveAudio,
-        page: () => AudioRoomPage(
-          room: LiveRoomDevFixtures.audioRoom(),
-          live: Get.find<LiveService>(),
-          devMode: true,
-        ),
+        page:
+            () => AudioRoomPage(
+              room: LiveRoomDevFixtures.audioRoom(),
+              live: Get.find<LiveService>(),
+              devMode: true,
+            ),
       ),
       GetPage(
         name: Routes.entryCatalog,

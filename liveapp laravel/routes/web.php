@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\HostEnrollRequestController as AdminHostEnrollReq
 use App\Http\Controllers\Me\ApplicationsController;
 use App\Http\Controllers\Admin\NotificationController as AdminNotificationController;
 use App\Http\Controllers\Admin\WalletAdminController;
+use App\Http\Controllers\Admin\WalletTransactionAdminController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\UserAdminController;
 use App\Http\Controllers\Admin\HostAdminController;
@@ -47,6 +48,7 @@ use App\Http\Controllers\Agency\PkBattleController as AgencyPkBattleController;
 use App\Http\Controllers\Agency\WalletController as AgencyWalletController;
 use App\Http\Controllers\Host\CallReportController as HostCallReportController;
 use App\Http\Controllers\Admin\AgencyPayoutReportController as AdminAgencyPayoutReportController;
+use App\Http\Controllers\Admin\MetaAppEventAdminController;
 use App\Http\Controllers\Agency\PayoutReportController as AgencyPayoutReportController;
 use App\Http\Controllers\Agency\ProfileController as AgencyProfileController;
 
@@ -178,6 +180,9 @@ Route::middleware(['auth','not_blocked','role:admin'])->prefix('admin')->name('a
   Route::post('notifications/read-all', [AdminNotificationController::class, 'readAll'])->name('notifications.read-all');
   Route::post('notifications/{id}/read', [AdminNotificationController::class, 'readOne'])->name('notifications.read-one');
     
+  Route::get('wallet-transactions', [WalletTransactionAdminController::class, 'index'])->name('wallet-transactions.index');
+  Route::get('wallet-transactions/export', [WalletTransactionAdminController::class, 'export'])->name('wallet-transactions.export');
+  Route::get('wallet-transactions/{walletTransaction}', [WalletTransactionAdminController::class, 'show'])->name('wallet-transactions.show');
   Route::get('wallets', [WalletAdminController::class,'index'])->name('wallets.index');
   Route::get('wallets/{user}', [WalletAdminController::class,'show'])->name('wallets.show');
   Route::post('wallets/{user}/purchase', [WalletAdminController::class,'purchase'])->name('wallets.purchase');
@@ -189,6 +194,7 @@ Route::middleware(['auth','not_blocked','role:admin'])->prefix('admin')->name('a
   Route::get('reports/hosts/{host}', [ReportsController::class,'hostShow'])->name('reports.hosts.show');
   Route::get('reports/hosts.csv', [ReportsController::class,'hostsCsv'])->name('reports.hosts.csv');
   Route::get('reports/levels', [ReportsController::class,'levels'])->name('reports.levels');
+  Route::get('meta-app-events', [MetaAppEventAdminController::class, 'index'])->name('meta-app-events.index');
   Route::get('reports/leaderboards', [AdminLeaderboardReportController::class, 'index'])->name('reports.leaderboards');
   Route::get('reports/leaderboards/export', [AdminLeaderboardReportController::class, 'export'])->name('reports.leaderboards.export');
   Route::resource('levels', UserLevelAdminController::class)->except(['show']);

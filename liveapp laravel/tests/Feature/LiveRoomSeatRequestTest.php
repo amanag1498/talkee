@@ -29,6 +29,9 @@ class LiveRoomSeatRequestTest extends TestCase
         Redis::shouldReceive('publish')->zeroOrMoreTimes()->andReturn(1);
         Redis::shouldReceive('smembers')->zeroOrMoreTimes()->andReturn([]);
         Redis::shouldReceive('get')->zeroOrMoreTimes()->andReturn(null);
+        Redis::shouldReceive('set')->zeroOrMoreTimes()->andReturn(true);
+        Redis::shouldReceive('sadd')->zeroOrMoreTimes()->andReturn(1);
+        Redis::shouldReceive('srem')->zeroOrMoreTimes()->andReturn(1);
 
         $this->app->instance(LiveKitRoomAdminService::class, new class extends LiveKitRoomAdminService {
             public bool $shouldFail = false;
@@ -206,7 +209,80 @@ class LiveRoomSeatRequestTest extends TestCase
         $this->assertDatabaseHas('live_room_participants', ['live_room_id' => $room->id, 'user_id' => $viewer->id, 'role' => 'viewer']);
     }
 
-    private function makeLiveRoom(string $status = 'live'): array
+    public function test_auto_approval_promotes_video_viewer_without_host_action(): void
+    {
+        config(['live_rooms.speaker_requests.auto_approve' => true]);
+        [, $room] = $this->makeLiveRoom(roomType: 'video');
+        $viewer = $this->makeViewerParticipant($room);
+
+        Sanctum::actingAs($viewer);
+
+        $response = $this->postJson("/api/live/rooms/{$room->room_id}/seat-requests")
+            ->assertOk()
+            ->assertJsonPath('snapshot.speaker_request_approval_mode', 'automatic')
+            ->assertJsonPath('snapshot.requests.0.status', 'accepted')
+            ->assertJsonPath('snapshot.requests.0.responded_by', null);
+
+        $requestId = (int) $response->json('request_id');
+        $this->assertDatabaseHas('live_room_seat_requests', [
+            'id' => $requestId,
+            'status' => 'accepted',
+            'responded_by' => null,
+        ]);
+        $this->assertDatabaseHas('live_room_participants', [
+            'live_room_id' => $room->id,
+            'user_id' => $viewer->id,
+            'role' => 'speaker',
+        ]);
+
+        $fake = $this->app->make(LiveKitRoomAdminService::class);
+        $this->assertSame(['camera', 'microphone'], $fake->calls[0]['publishSources']);
+    }
+
+    public function test_auto_approval_promotes_audio_listener_with_microphone_only(): void
+    {
+        config(['live_rooms.speaker_requests.auto_approve' => true]);
+        [, $room] = $this->makeLiveRoom(roomType: 'audio');
+        $listener = $this->makeViewerParticipant($room, role: 'listener');
+
+        Sanctum::actingAs($listener);
+
+        $this->postJson("/api/live/rooms/{$room->room_id}/seat-requests")
+            ->assertOk()
+            ->assertJsonPath('snapshot.speaker_request_approval_mode', 'automatic')
+            ->assertJsonPath('snapshot.requests.0.status', 'accepted');
+
+        $this->assertDatabaseHas('live_room_participants', [
+            'live_room_id' => $room->id,
+            'user_id' => $listener->id,
+            'role' => 'speaker',
+        ]);
+
+        $fake = $this->app->make(LiveKitRoomAdminService::class);
+        $this->assertSame(['microphone'], $fake->calls[0]['publishSources']);
+    }
+
+    public function test_host_approval_remains_the_default_policy(): void
+    {
+        config(['live_rooms.speaker_requests.auto_approve' => false]);
+        [, $room] = $this->makeLiveRoom();
+        $viewer = $this->makeViewerParticipant($room);
+
+        Sanctum::actingAs($viewer);
+
+        $this->postJson("/api/live/rooms/{$room->room_id}/seat-requests")
+            ->assertOk()
+            ->assertJsonPath('snapshot.speaker_request_approval_mode', 'host')
+            ->assertJsonPath('snapshot.requests.0.status', 'pending');
+
+        $this->assertDatabaseHas('live_room_participants', [
+            'live_room_id' => $room->id,
+            'user_id' => $viewer->id,
+            'role' => 'viewer',
+        ]);
+    }
+
+    private function makeLiveRoom(string $status = 'live', string $roomType = 'video'): array
     {
         $hostUser = User::factory()->create();
         $hostUser->assignRole('host');
@@ -220,6 +296,7 @@ class LiveRoomSeatRequestTest extends TestCase
             'host_id' => $host->id,
             'room_id' => 'room-'.$host->id.'-'.$status,
             'title' => 'Live Room',
+            'room_type' => $roomType,
             'status' => $status,
             'started_at' => now()->subMinutes(5),
             'last_activity_at' => now()->subMinute(),

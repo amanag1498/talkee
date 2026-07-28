@@ -438,6 +438,12 @@
               </a>
             </li>
             <li class="pc-item">
+              <a href="{{ route('admin.wallet-transactions.index') }}" class="pc-link {{ request()->routeIs('admin.wallet-transactions.*') ? 'active' : '' }}">
+                <span class="pc-micon"><i class="ti ti-history"></i></span>
+                <span class="pc-mtext">Transaction Ledger</span>
+              </a>
+            </li>
+            <li class="pc-item">
               <a href="{{ route('admin.subscription-plans.index') }}" class="pc-link {{ request()->routeIs('admin.subscription-plans.*') ? 'active' : '' }}">
                 <span class="pc-micon"><i class="ti ti-crown"></i></span>
                 <span class="pc-mtext">Subscription Plans</span>
@@ -453,6 +459,12 @@
               <a href="{{ route('admin.recharge-audit.index') }}" class="pc-link {{ request()->routeIs('admin.recharge-audit.*') ? 'active' : '' }}">
                 <span class="pc-micon"><i class="ti ti-file-invoice"></i></span>
                 <span class="pc-mtext">Recharge Audit</span>
+              </a>
+            </li>
+            <li class="pc-item">
+              <a href="{{ route('admin.meta-app-events.index') }}" class="pc-link {{ request()->routeIs('admin.meta-app-events.*') ? 'active' : '' }}">
+                <span class="pc-micon"><i class="ti ti-brand-meta"></i></span>
+                <span class="pc-mtext">Meta App Events</span>
               </a>
             </li>
             <li class="pc-item">
@@ -783,7 +795,9 @@
               request()->routeIs('admin.hosts.*') => 'Manage host identities, profile quality, agency linkage, and account readiness.',
               request()->routeIs('admin.agencies.*') => 'Oversee agencies, owner assignments, payouts, and operational standing.',
               request()->routeIs('admin.wallets.*') => 'Inspect balances, transaction history, and coin movement across the platform.',
+              request()->routeIs('admin.wallet-transactions.*') => 'Audit every wallet credit and debit, verify balance integrity, and trace each movement to its source.',
               request()->routeIs('admin.recharge-audit.*') => 'Audit recharge orders month by month, inspect gateway outcomes, and export a printable monthly recharge report.',
+              request()->routeIs('admin.meta-app-events.*') => 'Verify Meta SDK event delivery, consent signals, registration, and server-confirmed purchase auditing.',
               request()->routeIs('admin.live-rooms.*') => 'Audit live room operations, engagement state, and stream-side administration.',
               request()->routeIs('admin.calls.*') => 'Monitor call volume, billing outcomes, earnings distribution, and completion quality.',
               request()->routeIs('admin.presence.*') => 'Watch realtime presence signals and system availability as they move across the network.',

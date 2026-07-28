@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\MetaAppEventRecorder;
 use App\Services\RechargeOrderService;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
@@ -63,7 +64,7 @@ class RechargeOrderController extends Controller
         ], 201);
     }
 
-    public function verify(Request $request, string $orderId)
+    public function verify(Request $request, string $orderId, MetaAppEventRecorder $metaEvents)
     {
         $data = $request->validate([
             'result' => 'nullable|string|in:success,failed,cancelled',
@@ -83,6 +84,9 @@ class RechargeOrderController extends Controller
         }
 
         $status = $result['order']->status;
+        if ($status === 'success') {
+            $metaEvents->recordVerifiedPurchase($result['order'], $request);
+        }
         $httpStatus = $status === 'success'
             ? 200
             : (in_array($status, ['failed', 'cancelled'], true) ? 200 : 202);

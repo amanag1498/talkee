@@ -25,6 +25,7 @@ git pull origin "$BRANCH"
 
 echo "==> Clearing and rebuilding Laravel caches"
 "$PHP_BIN" artisan optimize:clear
+"$PHP_BIN" artisan migrate --force
 "$PHP_BIN" artisan config:cache
 
 echo "==> Restarting services"

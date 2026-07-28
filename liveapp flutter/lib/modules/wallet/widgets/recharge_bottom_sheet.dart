@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import '../../../app/theme/brand.dart';
 import '../../../app/widgets/haptics.dart';
 import '../../../services/auth_service.dart';
+import '../../../services/meta_attribution_service.dart';
 import '../../../services/app_settings_service.dart';
 import '../models/wallet_summary_dto.dart';
 import '../services/razorpay_checkout_service.dart';
@@ -159,6 +160,12 @@ class _RechargeBottomSheetState extends State<RechargeBottomSheet> {
             gatewaySignature: checkoutResult.signature,
             gatewayResponse: checkoutResult.raw,
           );
+          if (Get.isRegistered<MetaAttributionService>()) {
+            await Get.find<MetaAttributionService>().logVerifiedPurchase(
+              amountInr: order.amountRupees.toDouble(),
+              orderId: order.orderId,
+            );
+          }
           if (!mounted) return;
           setState(() {
             _summary = updated;
@@ -895,9 +902,7 @@ class _PrimaryGlassButton extends StatelessWidget {
           child: Ink(
             padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 14),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: tokens.primaryButtonGradient,
-              ),
+              gradient: LinearGradient(colors: tokens.primaryButtonGradient),
               borderRadius: BorderRadius.circular(18),
             ),
             child: DefaultTextStyle.merge(

@@ -277,6 +277,8 @@ class LiveRoomController extends Controller
                 Log::info('LIVE_ROOM_START_EXISTING_UPDATED', ['room_id' => $room->room_id, 'updates' => array_keys($updates)]);
             }
 
+            $this->endSupersededHostRooms($host, $room, $user);
+
             // ensure host participant open row exists
             $this->ensureHostParticipant($request, $room, $user->id);
             Log::info('LIVE_ROOM_START_EXISTING_HOST_PARTICIPANT_OK', ['room_id' => $room->room_id, 'user_id' => $user->id]);
@@ -398,6 +400,9 @@ class LiveRoomController extends Controller
 
         // publish after commit on the latest persisted state
         $room = LiveRoom::query()->findOrFail($room->id);
+        if ($room->status === 'live') {
+            $this->endSupersededHostRooms($host, $room, $user);
+        }
         LiveRoomBroadcaster::broadcast($room, $startNow ? 'live' : 'created');
         Log::info('LIVE_ROOM_CREATE_BROADCAST', ['room_id' => $room->room_id, 'event' => $startNow ? 'live' : 'created']);
 
@@ -491,6 +496,28 @@ class LiveRoomController extends Controller
             ]);
             Log::info('LIVE_ROOM_HOST_PARTICIPANT_CREATED', ['room_id' => $room->room_id, 'user_id' => $userId]);
         }
+    }
+
+    protected function endSupersededHostRooms(Host $host, LiveRoom $activeRoom, User $actor): void
+    {
+        LiveRoom::query()
+            ->where('host_id', $host->id)
+            ->where('id', '!=', $activeRoom->id)
+            ->where('status', 'live')
+            ->whereNull('ended_at')
+            ->orderBy('id')
+            ->get()
+            ->each(function (LiveRoom $room) use ($actor, $activeRoom) {
+                $endedRoom = $this->seats->endRoom($room, 'host_restarted_room', $actor);
+                $this->pk->endForRoomTermination($endedRoom, 'room_restarted');
+
+                Log::info('LIVE_ROOM_SUPERSEDED_ENDED', [
+                    'superseded_room_id' => $endedRoom->room_id,
+                    'replacement_room_id' => $activeRoom->room_id,
+                    'host_id' => $endedRoom->host_id,
+                    'actor_user_id' => $actor->id,
+                ]);
+            });
     }
 
     protected function roomPayload(LiveRoom $room): array

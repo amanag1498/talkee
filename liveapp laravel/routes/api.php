@@ -1,7 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\{PlanController, SubscriptionController, LiveRoomController, LiveRoomSeatRequestController, LiveRoomGiftController, ProfileController, ApplicationApiController, WalletApiController, RechargePlanController, RechargeOrderController, NotificationApiController, PushTokenController, LiveRoomIngestController, OpsController, BannerController, BannerTrackingController, LiveUsersController, CallController, CallReportApiController, LevelController, HostFollowController, EntryPackController, LiveRoomPkController, ThemeController, HostModerationController, UserReportController, UnblockRequestController, AdminModerationController, WsModerationController, DashboardLeaderboardController, RazorpayWebhookController};
+use App\Http\Controllers\Api\{PlanController, SubscriptionController, LiveRoomController, LiveRoomSeatRequestController, LiveRoomGiftController, ProfileController, ApplicationApiController, WalletApiController, RechargePlanController, RechargeOrderController, NotificationApiController, PushTokenController, LiveRoomIngestController, OpsController, BannerController, BannerTrackingController, LiveUsersController, CallController, CallReportApiController, LevelController, HostFollowController, EntryPackController, LiveRoomPkController, ThemeController, HostModerationController, UserReportController, UnblockRequestController, AdminModerationController, WsModerationController, DashboardLeaderboardController, RazorpayWebhookController, MetaAppEventController};
 use App\Http\Controllers\Api\TeenPattiController;
 use App\Http\Controllers\Api\GreedyGameController;
 use App\Http\Controllers\Auth\FirebaseAuthApiController;
@@ -62,6 +62,8 @@ Route::middleware(['auth:sanctum','throttle:240,1'])->group(function () {
     Route::post('/notifications/read-all', [NotificationApiController::class, 'markAllRead']);
     Route::post('/push/register', [PushTokenController::class, 'register']);
     Route::post('/push/unregister', [PushTokenController::class, 'unregister']);
+    Route::post('/marketing/meta-events', [MetaAppEventController::class, 'store'])
+        ->middleware('throttle:60,1');
 
 
     Route::get('/plans', [PlanController::class,'index'])->middleware('feature_enabled:subscriptions_enabled');

@@ -78,6 +78,13 @@ class RechargeOrderApiTest extends TestCase
             'balance_before' => 100,
             'balance_after' => 600,
         ]);
+        $this->assertDatabaseHas('meta_app_events', [
+            'user_id' => $user->id,
+            'event_name' => 'purchase',
+            'source' => 'server',
+            'value' => $plan->amount_rupees,
+            'currency' => 'INR',
+        ]);
     }
 
     public function test_verify_is_idempotent_and_does_not_double_credit(): void

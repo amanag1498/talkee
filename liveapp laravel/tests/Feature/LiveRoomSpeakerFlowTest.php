@@ -28,6 +28,9 @@ class LiveRoomSpeakerFlowTest extends TestCase
         }
 
         Redis::shouldReceive('publish')->zeroOrMoreTimes()->andReturn(1);
+        Redis::shouldReceive('set')->zeroOrMoreTimes()->andReturn(true);
+        Redis::shouldReceive('sadd')->zeroOrMoreTimes()->andReturn(1);
+        Redis::shouldReceive('srem')->zeroOrMoreTimes()->andReturn(1);
     }
 
     public function test_duplicate_speaker_request_returns_existing_pending_request(): void

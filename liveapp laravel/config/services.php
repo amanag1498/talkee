@@ -47,6 +47,13 @@ return [
         'base_url' => env('RAZORPAY_BASE_URL', 'https://api.razorpay.com/v1'),
     ],
 
+    'meta' => [
+        'app_id' => env('META_APP_ID', ''),
+        'client_token' => env('META_CLIENT_TOKEN', ''),
+        'ad_account_id' => env('META_AD_ACCOUNT_ID', ''),
+        'business_id' => env('META_BUSINESS_ID', ''),
+    ],
+
     'livekit' => [
         'ws_url' => env('LIVEKIT_WS_URL', 'ws://localhost:7880'),
         'http_url' => env('LIVEKIT_HTTP_URL', ''),

@@ -141,6 +141,11 @@ class SettingsController extends Controller
     {
         $rules = [];
         foreach (AppSettingsService::LIVE_ROOM_DEFINITIONS as $key => $definition) {
+            if (($definition['type'] ?? 'integer') === 'boolean') {
+                $rules[$key] = 'required|boolean';
+                continue;
+            }
+
             $parts = ['required', 'integer'];
             if (array_key_exists('min', $definition)) {
                 $parts[] = 'min:' . $definition['min'];
