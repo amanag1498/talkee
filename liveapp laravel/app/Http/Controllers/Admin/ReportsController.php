@@ -53,7 +53,7 @@ class ReportsController extends Controller
                 SUM(live_room_gift_earning_ledgers.agency_payout_coins) as agency_payable,
                 COUNT(*) as gift_events
             ')
-            ->groupBy('host_id', 'd')
+            ->groupBy('live_room_gift_earning_ledgers.host_id', 'd')
             ->get()
             ->groupBy('d');
 
@@ -72,7 +72,7 @@ class ReportsController extends Controller
                 SUM(live_room_gift_earning_ledgers.agency_payout_coins) as agency_payable,
                 COUNT(live_room_pk_events.id) as pk_events
             ')
-            ->groupBy('host_id', 'd')
+            ->groupBy('live_room_gift_earning_ledgers.host_id', 'd')
             ->get()
             ->groupBy('d');
 
@@ -87,7 +87,7 @@ class ReportsController extends Controller
                 SUM(call_earning_ledgers.agency_earning) as agency_payable,
                 COUNT(*) as call_count
             ')
-            ->groupBy('host_id', 'd')
+            ->groupBy('call_earning_ledgers.host_id', 'd')
             ->get()
             ->groupBy('d');
 
@@ -98,7 +98,7 @@ class ReportsController extends Controller
                          COUNT(*) as participants_total,
                          COUNT(DISTINCT COALESCE(CAST(user_id AS CHAR), CONCAT("sess:", session_id))) as participants_unique')
             ->join('live_rooms', 'live_rooms.id', '=', 'live_room_participants.live_room_id')
-            ->groupBy('host_id', 'd')
+            ->groupBy('live_rooms.host_id', 'd')
             ->get()
             ->groupBy('d');
 
@@ -183,6 +183,7 @@ class ReportsController extends Controller
                 $days->push([
                     'date' => $key,
                     'host_id' => $hid,
+                    'host_user_id' => $host->user_id,
                     'rooms' => (int) ($duration->rooms ?? 0),
                     'duration_seconds' => (int) ($duration->duration_seconds ?? 0),
                     'duration_min' => (int) floor(((int) ($duration->duration_seconds ?? 0)) / 60),
@@ -223,6 +224,7 @@ class ReportsController extends Controller
                         return [
                             'week_start' => $weekStart,
                             'host_id' => $group->first()['host_id'],
+                            'host_user_id' => $group->first()['host_user_id'],
                             'rooms' => (int) $roomMetrics['count'],
                             'duration_min' => (int) $roomMetrics['minutes'],
                             'participants_total' => (int) $group->sum('participants_total'),
@@ -273,8 +275,8 @@ class ReportsController extends Controller
         return response()->stream(function () use ($rows, $data) {
             $out = fopen('php://output', 'w');
             fputcsv($out, $data['range'] === 'weekly'
-                ? ['week_start', 'host_id', 'rooms', 'duration_min', 'participants_total', 'participants_unique', 'call_coins', 'call_count', 'gift_coins', 'gift_events', 'pk_coins', 'pk_events', 'gross_coins', 'host_payout_percentage', 'host_weekly_bonus', 'host_payable', 'agency_payout_percentage', 'agency_payable']
-                : ['date', 'host_id', 'rooms', 'duration_min', 'participants_total', 'participants_unique', 'call_coins', 'call_count', 'gift_coins', 'gift_events', 'pk_coins', 'pk_events', 'gross_coins', 'host_payout_percentage', 'host_payable', 'agency_payout_percentage', 'agency_payable']
+                ? ['week_start', 'host_id', 'host_user_id', 'rooms', 'duration_min', 'participants_total', 'participants_unique', 'call_coins', 'call_count', 'gift_coins', 'gift_events', 'pk_coins', 'pk_events', 'gross_coins', 'host_payout_percentage', 'host_weekly_bonus', 'host_payable', 'agency_payout_percentage', 'agency_payable']
+                : ['date', 'host_id', 'host_user_id', 'rooms', 'duration_min', 'participants_total', 'participants_unique', 'call_coins', 'call_count', 'gift_coins', 'gift_events', 'pk_coins', 'pk_events', 'gross_coins', 'host_payout_percentage', 'host_payable', 'agency_payout_percentage', 'agency_payable']
             );
 
             foreach ($rows as $row) {
@@ -282,6 +284,7 @@ class ReportsController extends Controller
                     fputcsv($out, [
                         $row['week_start'],
                         $row['host_id'],
+                        $row['host_user_id'],
                         $row['rooms'],
                         $row['duration_min'],
                         $row['participants_total'],
@@ -303,6 +306,7 @@ class ReportsController extends Controller
                     fputcsv($out, [
                         $row['date'],
                         $row['host_id'],
+                        $row['host_user_id'],
                         $row['rooms'],
                         $row['duration_min'],
                         $row['participants_total'],

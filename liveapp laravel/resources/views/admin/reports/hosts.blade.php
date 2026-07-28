@@ -9,7 +9,7 @@
       <select name="host_id" class="form-select">
         <option value="">All hosts</option>
         @foreach($hosts as $h)
-          <option value="{{ $h->id }}" @selected($hostId==$h->id)>{{ $h->user?->name }} (ID: {{ $h->id }})</option>
+          <option value="{{ $h->id }}" @selected($hostId==$h->id)>{{ $h->user?->name ?? $h->stage_name ?? 'Unknown host' }} (User ID {{ $h->user_id ?? '—' }})</option>
         @endforeach
       </select>
       <select name="range" class="form-select">
@@ -64,7 +64,7 @@
             <a href="{{ route('admin.reports.hosts.show', ['host' => $r['host_id'], 'from' => $from->format('Y-m-d'), 'to' => $to->format('Y-m-d')]) }}" class="fw-semibold text-decoration-none">
               {{ $reportHost?->user?->name ?? 'Host #'.$r['host_id'] }}
             </a>
-            <div class="text-muted small">{{ $reportHost?->agency?->name ?? 'Independent' }}</div>
+            <div class="text-muted small">User ID: {{ $reportHost?->user_id ?? '—' }} · {{ $reportHost?->agency?->name ?? 'Independent' }}</div>
           </td>
           <td>{{ $r['rooms'] }}</td>
           <td>{{ $r['duration_min'] }}</td>

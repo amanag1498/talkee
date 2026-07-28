@@ -16,7 +16,7 @@
         <span class="admin-page-eyebrow"><i class="ti ti-microphone-2"></i>Host Detail</span>
         <h1 class="admin-page-title">{{ $host->user?->name ?? $host->stage_name ?? ('Host #'.$host->id) }}</h1>
         <p class="admin-page-subtitle">
-          Agency: {{ $host->agency?->name ?? 'Independent' }} · Stage Name: {{ $host->stage_name ?: '—' }} ·
+          User ID: {{ $host->user_id ?? '—' }} · Agency: {{ $host->agency?->name ?? 'Independent' }} · Stage Name: {{ $host->stage_name ?: '—' }} ·
           Followers: {{ number_format($summary['followers']) }}
         </p>
       </div>

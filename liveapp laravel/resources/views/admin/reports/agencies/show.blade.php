@@ -116,7 +116,7 @@
                     {{ $row['host']->user?->name ?? $row['host']->stage_name }}
                   </a>
                 </div>
-                <div class="text-muted small">{{ $row['host']->stage_name }}</div>
+                <div class="text-muted small">User ID: {{ $row['host']->user_id ?? '—' }} · {{ $row['host']->stage_name }}</div>
               </td>
               <td>{{ number_format($row['host']->followers_count ?? 0) }}</td>
               <td>{{ number_format($row['calls']) }}</td>
@@ -194,7 +194,10 @@
                 <tr>
                   <td>#{{ $call->id }}</td>
                   <td>{{ $call->caller?->name }}</td>
-                  <td>{{ $call->host?->user?->name }}</td>
+                  <td>
+                    <div>{{ $call->host?->user?->name }}</div>
+                    <div class="text-muted small">User ID: {{ $call->host?->user_id ?? '—' }}</div>
+                  </td>
                   <td>{{ ucfirst($call->type) }}</td>
                   <td>{{ ucfirst($call->status) }}</td>
                   <td>{{ number_format((int) $call->total_coins_charged) }}</td>

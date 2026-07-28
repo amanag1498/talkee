@@ -307,7 +307,7 @@
             <select name="host_id" class="form-select">
               <option value="">All hosts</option>
               @foreach($filters['hosts'] as $host)
-                <option value="{{ $host->id }}" @selected((int) request('host_id') === (int) $host->id)>{{ $host->user?->name ?? ('Host #' . $host->id) }}</option>
+                <option value="{{ $host->id }}" @selected((int) request('host_id') === (int) $host->id)>{{ $host->user?->name ?? $host->stage_name ?? ('Host #' . $host->id) }} (User ID {{ $host->user_id ?? '—' }})</option>
               @endforeach
             </select>
           </div>
@@ -369,7 +369,10 @@
         <tbody>
           @forelse($earnings['hosts'] as $row)
             <tr>
-              <td>{{ $row->host?->user?->name ?? ('Host #' . $row->host_id) }}</td>
+              <td>
+                <div>{{ $row->host?->user?->name ?? ('Host #' . $row->host_id) }}</div>
+                <div class="small text-muted">User ID: {{ $row->host?->user_id ?? '—' }}</div>
+              </td>
               <td>{{ number_format($row->total_coins) }}</td>
               <td>{{ number_format($row->billable_minutes) }}</td>
               <td>{{ number_format($row->duration_seconds) }}</td>
@@ -433,7 +436,10 @@
               <td>{{ $call->id }}</td>
               <td>{{ $call->caller?->name ?? '—' }}</td>
               <td>{{ $call->receiver?->name ?? '—' }}</td>
-              <td>{{ $call->host?->user?->name ?? '—' }}</td>
+              <td>
+                <div>{{ $call->host?->user?->name ?? $call->host?->stage_name ?? '—' }}</div>
+                <div class="small text-muted">User ID: {{ $call->host?->user_id ?? '—' }}</div>
+              </td>
               <td>{{ $call->agency?->name ?? '—' }}</td>
               <td><span class="call-badge-soft {{ strtolower($call->type) }}">{{ ucfirst($call->type) }}</span></td>
               <td><span class="call-badge-soft {{ strtolower($call->status) }}">{{ ucfirst(str_replace('_', ' ', $call->status)) }}</span></td>

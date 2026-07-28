@@ -79,7 +79,7 @@
     <tbody>
       @foreach($report->items as $item)
         <tr>
-          <td>{{ $item->host?->user?->name ?? $item->host?->stage_name ?? '—' }}</td>
+          <td>{{ $item->host?->user?->name ?? $item->host?->stage_name ?? '—' }}<br><small>User ID: {{ $item->host?->user_id ?? '—' }}</small></td>
           <td>{{ number_format($item->video_room_minutes) }}</td>
           <td>{{ number_format($item->audio_room_minutes) }}</td>
           <td>{{ number_format($item->video_gift_coins) }}</td>

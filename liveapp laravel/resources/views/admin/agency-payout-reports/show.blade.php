@@ -329,7 +329,7 @@
               <td class="payout-grid-sticky-left">
                 <div class="payout-grid-row-host">
                   <strong>{{ $item->host?->user?->name ?? $item->host?->stage_name ?? '—' }}</strong>
-                  <span>{{ $item->host?->stage_name ?? '—' }}</span>
+                  <span>User ID: {{ $item->host?->user_id ?? '—' }} · {{ $item->host?->stage_name ?? '—' }}</span>
                 </div>
               </td>
               <td><input type="number" min="0" name="video_room_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input calc-field" value="{{ $item->video_room_minutes }}" @disabled($locked)></td>

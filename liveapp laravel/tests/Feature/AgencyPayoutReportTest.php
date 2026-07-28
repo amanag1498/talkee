@@ -239,7 +239,7 @@ class AgencyPayoutReportTest extends TestCase
 
     public function test_admin_and_agency_views_are_scoped(): void
     {
-        [$agency, $owner] = $this->seedAgencyFixture();
+        [$agency, $owner, $host] = $this->seedAgencyFixture();
         $otherOwner = User::factory()->create();
         $otherOwner->assignRole('agency');
         Agency::query()->create([
@@ -262,7 +262,8 @@ class AgencyPayoutReportTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.agency-payout-reports.show', $report))
             ->assertOk()
-            ->assertSee('Host Settlement Grid');
+            ->assertSee('Host Settlement Grid')
+            ->assertSee("User ID: {$host->user_id}");
 
         $this->actingAs($owner)
             ->get(route('agency.payout-reports.index'))

@@ -143,7 +143,21 @@ class AgencyReportingTest extends TestCase
             ->assertSee('Agency Detail')
             ->assertSee('Orbit Agency')
             ->assertSee('Host Nova')
+            ->assertSee("User ID: {$hostUser->id}")
             ->assertSee('Recent Live Rooms');
+
+        $this->actingAs($admin)
+            ->get(route('admin.calls.index'))
+            ->assertOk()
+            ->assertSee("User ID: {$hostUser->id}");
+
+        $callCsv = $this->actingAs($admin)
+            ->get(route('admin.calls.export'))
+            ->assertOk()
+            ->streamedContent();
+
+        $this->assertStringContainsString('host_user_id', $callCsv);
+        $this->assertStringContainsString((string) $hostUser->id, $callCsv);
     }
 
     public function test_admin_can_view_host_report_detail(): void
@@ -192,10 +206,24 @@ class AgencyReportingTest extends TestCase
         ]);
 
         $this->actingAs($admin)
+            ->get(route('admin.reports.hosts'))
+            ->assertOk()
+            ->assertSee("User ID {$hostUser->id}");
+
+        $hostCsv = $this->actingAs($admin)
+            ->get(route('admin.reports.hosts.csv'))
+            ->assertOk()
+            ->streamedContent();
+
+        $this->assertStringContainsString('host_user_id', $hostCsv);
+        $this->assertStringContainsString((string) $hostUser->id, $hostCsv);
+
+        $this->actingAs($admin)
             ->get(route('admin.reports.hosts.show', $host))
             ->assertOk()
             ->assertSee('Host Detail')
             ->assertSee('Host Nova')
+            ->assertSee("User ID: {$hostUser->id}")
             ->assertSee('Recent Calls')
             ->assertSee('Recent Live Rooms');
     }

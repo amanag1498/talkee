@@ -39,13 +39,14 @@ class CallReportController extends Controller
 
         return response()->streamDownload(function () use ($rows) {
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['id', 'caller', 'receiver', 'host', 'agency', 'type', 'status', 'end_reason', 'coin_rate_per_minute', 'duration_seconds', 'billable_minutes', 'coins_charged', 'host_earning', 'agency_earning', 'platform_earning', 'created_at']);
+            fputcsv($out, ['id', 'caller', 'receiver', 'host', 'host_user_id', 'agency', 'type', 'status', 'end_reason', 'coin_rate_per_minute', 'duration_seconds', 'billable_minutes', 'coins_charged', 'host_earning', 'agency_earning', 'platform_earning', 'created_at']);
             foreach ($rows as $call) {
                 fputcsv($out, [
                     $call->id,
                     $call->caller?->name,
                     $call->receiver?->name,
                     $call->host?->user?->name,
+                    $call->host?->user_id,
                     $call->agency?->name,
                     $call->type,
                     $call->status,
