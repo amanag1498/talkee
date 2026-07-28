@@ -240,11 +240,17 @@ class AppSettingsService
             'max' => 100,
             'hint' => 'Default speaker cap for audio rooms. Must stay lower than audio max participants.',
         ],
-        'live_rooms.speaker_requests.auto_approve' => [
-            'label' => 'Automatically Approve Speaker Requests',
+        'live_rooms.speaker_requests.video_auto_approve' => [
+            'label' => 'Automatically Approve Video Speaker Requests',
             'type' => 'boolean',
             'default' => false,
-            'hint' => 'When enabled, eligible listeners and viewers become speakers immediately. When disabled, the room host must approve each request.',
+            'hint' => 'When enabled, eligible video-room viewers become speakers immediately. When disabled, the video-room host must approve each request.',
+        ],
+        'live_rooms.speaker_requests.audio_auto_approve' => [
+            'label' => 'Automatically Approve Audio Speaker Requests',
+            'type' => 'boolean',
+            'default' => false,
+            'hint' => 'When enabled, eligible audio-room listeners become speakers immediately. When disabled, the audio-room host must approve each request.',
         ],
         'live_rooms.pk.default_duration_seconds' => [
             'label' => 'PK Battle Duration Seconds',

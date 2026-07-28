@@ -209,9 +209,12 @@ class LiveRoomSeatRequestTest extends TestCase
         $this->assertDatabaseHas('live_room_participants', ['live_room_id' => $room->id, 'user_id' => $viewer->id, 'role' => 'viewer']);
     }
 
-    public function test_auto_approval_promotes_video_viewer_without_host_action(): void
+    public function test_video_auto_approval_promotes_video_viewer_without_enabling_audio_auto_approval(): void
     {
-        config(['live_rooms.speaker_requests.auto_approve' => true]);
+        config([
+            'live_rooms.speaker_requests.video_auto_approve' => true,
+            'live_rooms.speaker_requests.audio_auto_approve' => false,
+        ]);
         [, $room] = $this->makeLiveRoom(roomType: 'video');
         $viewer = $this->makeViewerParticipant($room);
 
@@ -237,11 +240,29 @@ class LiveRoomSeatRequestTest extends TestCase
 
         $fake = $this->app->make(LiveKitRoomAdminService::class);
         $this->assertSame(['camera', 'microphone'], $fake->calls[0]['publishSources']);
+
+        [, $audioRoom] = $this->makeLiveRoom(roomType: 'audio');
+        $listener = $this->makeViewerParticipant($audioRoom, role: 'listener', suffix: 'audio-listener');
+        Sanctum::actingAs($listener);
+
+        $this->postJson("/api/live/rooms/{$audioRoom->room_id}/seat-requests")
+            ->assertOk()
+            ->assertJsonPath('snapshot.speaker_request_approval_mode', 'host')
+            ->assertJsonPath('snapshot.requests.0.status', 'pending');
+
+        $this->assertDatabaseHas('live_room_participants', [
+            'live_room_id' => $audioRoom->id,
+            'user_id' => $listener->id,
+            'role' => 'listener',
+        ]);
     }
 
     public function test_auto_approval_promotes_audio_listener_with_microphone_only(): void
     {
-        config(['live_rooms.speaker_requests.auto_approve' => true]);
+        config([
+            'live_rooms.speaker_requests.video_auto_approve' => false,
+            'live_rooms.speaker_requests.audio_auto_approve' => true,
+        ]);
         [, $room] = $this->makeLiveRoom(roomType: 'audio');
         $listener = $this->makeViewerParticipant($room, role: 'listener');
 
@@ -264,7 +285,10 @@ class LiveRoomSeatRequestTest extends TestCase
 
     public function test_host_approval_remains_the_default_policy(): void
     {
-        config(['live_rooms.speaker_requests.auto_approve' => false]);
+        config([
+            'live_rooms.speaker_requests.video_auto_approve' => false,
+            'live_rooms.speaker_requests.audio_auto_approve' => false,
+        ]);
         [, $room] = $this->makeLiveRoom();
         $viewer = $this->makeViewerParticipant($room);
 

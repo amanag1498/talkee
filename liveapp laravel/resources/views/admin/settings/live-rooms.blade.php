@@ -10,8 +10,8 @@
           <span class="admin-page-eyebrow"><i class="ti ti-settings"></i> Global Live Room Limits</span>
           <h1 class="admin-page-title">Live Room Settings</h1>
           <p class="admin-page-subtitle">
-            Capacity values define defaults for new audio and video rooms. The speaker-request approval policy applies
-            immediately to requests in every live room.
+            Capacity values define defaults for new audio and video rooms. Each room type has its own speaker-request
+            approval policy, applied immediately to new requests.
           </p>
         </div>
       </div>
@@ -61,7 +61,7 @@
             <div class="border rounded-3 p-3 h-100">
               <h6 class="mb-2">Speaker Request Approval</h6>
               <p class="text-muted small">
-                Choose whether eligible viewers and listeners join the speaker stage immediately or wait for the room host.
+                Configure video viewers and audio listeners independently. Each toggle affects only its matching room type.
               </p>
               @foreach ($definitions as $key => $definition)
                 @continue(!str_starts_with($key, 'live_rooms.speaker_requests.'))
@@ -86,7 +86,7 @@
                 </div>
                 <small class="text-muted d-block mt-2">{{ $definition['hint'] }}</small>
                 <div class="alert alert-light border mt-3 mb-0 py-2 small">
-                  <strong>Off:</strong> host approval is required. <strong>On:</strong> valid requests are promoted automatically, subject to room capacity and PK/lock restrictions.
+                  <strong>Off:</strong> the matching room host must approve. <strong>On:</strong> valid requests for that room type are promoted automatically, subject to capacity and PK/lock restrictions.
                 </div>
               @endforeach
             </div>
@@ -124,7 +124,7 @@
 
       <div class="card-footer d-flex justify-content-between align-items-center">
         <div class="text-muted small">
-          Hosts can still choose lower room capacities. The approval toggle is enforced globally by the backend.
+          Hosts can still choose lower room capacities. Both approval policies are enforced independently by the backend.
         </div>
         <button class="btn btn-primary">
           <i class="ti ti-device-floppy me-1"></i> Save Live Room Settings
