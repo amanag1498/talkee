@@ -61,6 +61,7 @@ class RechargeOrderApiTest extends TestCase
         Sanctum::actingAs($user);
 
         $plan = RechargePlan::query()->firstOrFail();
+        $plan->update(['agency_bonus_coins' => 777]);
         $orderId = $this->postJson('/api/recharge/orders', ['plan_id' => $plan->id])->json('data.order_id');
 
         $response = $this->postJson("/api/recharge/orders/{$orderId}/verify", [

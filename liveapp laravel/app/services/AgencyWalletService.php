@@ -124,9 +124,16 @@ class AgencyWalletService
 
             $baseCoins = (int) $plan->coins;
             $bonusCoins = (int) $plan->bonus_coins;
-            $totalCoins = (int) $plan->total_coins;
+            $agencyBonusCoins = (int) $plan->agency_bonus_coins;
+            $planTotalCoins = (int) $plan->total_coins;
+            $totalCoins = $planTotalCoins + $agencyBonusCoins;
 
-            if ($baseCoins <= 0 || $bonusCoins < 0 || $totalCoins !== $baseCoins + $bonusCoins) {
+            if (
+                $baseCoins <= 0
+                || $bonusCoins < 0
+                || $agencyBonusCoins < 0
+                || $planTotalCoins !== $baseCoins + $bonusCoins
+            ) {
                 throw new InvalidArgumentException('Recharge plan coin values are invalid.');
             }
 
@@ -173,6 +180,8 @@ class AgencyWalletService
                     'recharge_plan_title' => $plan->title,
                     'base_coins' => $baseCoins,
                     'bonus_coins' => $bonusCoins,
+                    'agency_bonus_coins' => $agencyBonusCoins,
+                    'plan_total_coins' => $planTotalCoins,
                     'total_coins' => $totalCoins,
                     'credited_by_admin_user_id' => $admin?->id,
                     'credited_by_admin_name' => $admin?->name,
@@ -200,6 +209,7 @@ class AgencyWalletService
                 'coins' => $baseCoins,
                 'recharge_plan_id' => $plan->id,
                 'bonus_coins' => $bonusCoins,
+                'agency_bonus_coins' => $agencyBonusCoins,
                 'total_coins' => $totalCoins,
                 'note' => $note,
                 'meta' => [
@@ -224,6 +234,8 @@ class AgencyWalletService
                     'agency_name' => $agency->name,
                     'base_coins' => $baseCoins,
                     'bonus_coins' => $bonusCoins,
+                    'agency_bonus_coins' => $agencyBonusCoins,
+                    'plan_total_coins' => $planTotalCoins,
                     'total_coins' => $totalCoins,
                     'recharge_plan_id' => $plan->id,
                     'transfer_id' => $transfer->id,

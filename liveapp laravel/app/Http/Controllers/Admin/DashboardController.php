@@ -32,6 +32,9 @@ class DashboardController extends Controller
             'agencyBonusCoinsIssued' => (int) AgencyCoinTransfer::query()
                 ->where('direction', 'agency_to_user')
                 ->sum('bonus_coins'),
+            'agencyExtraBonusCoinsIssued' => (int) AgencyCoinTransfer::query()
+                ->where('direction', 'agency_to_user')
+                ->sum('agency_bonus_coins'),
         ];
         $stats['coinSupply'] = $stats['userCoinSupply'] + $stats['agencyCoinSupply'];
 

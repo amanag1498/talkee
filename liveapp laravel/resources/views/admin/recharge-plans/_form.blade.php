@@ -28,20 +28,26 @@
       </div>
     </div>
 
-    <div class="col-md-4">
+    <div class="col-md-3">
       <label class="form-label">Base Coins</label>
       <input type="number" min="1" name="coins" class="form-control @error('coins') is-invalid @enderror" value="{{ old('coins', $plan->coins) }}" required>
       @error('coins')<div class="invalid-feedback">{{ $message }}</div>@enderror
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
       <label class="form-label">Bonus Coins</label>
       <input type="number" min="0" name="bonus_coins" class="form-control @error('bonus_coins') is-invalid @enderror" value="{{ old('bonus_coins', $plan->bonus_coins) }}">
       @error('bonus_coins')<div class="invalid-feedback">{{ $message }}</div>@enderror
     </div>
-    <div class="col-md-4">
-      <label class="form-label">Computed Total</label>
+    <div class="col-md-3">
+      <label class="form-label">Agency Extra Bonus</label>
+      <input type="number" min="0" name="agency_bonus_coins" class="form-control @error('agency_bonus_coins') is-invalid @enderror" value="{{ old('agency_bonus_coins', $plan->agency_bonus_coins ?? 0) }}">
+      @error('agency_bonus_coins')<div class="invalid-feedback">{{ $message }}</div>@enderror
+      <small class="text-muted">Added only when an agency recharges a user.</small>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">App Recharge Total</label>
       <input type="text" class="form-control" value="{{ number_format((int) ($plan->total_coins ?? (($plan->coins ?? 0) + ($plan->bonus_coins ?? 0)))) }}" disabled>
-      <small class="text-muted">Saved automatically as base + bonus.</small>
+      <small class="text-muted">Normal total stays base + bonus. Agency user total: {{ number_format((int) ($plan->total_coins ?? (($plan->coins ?? 0) + ($plan->bonus_coins ?? 0))) + (int) ($plan->agency_bonus_coins ?? 0)) }}.</small>
     </div>
   </div>
   <div class="card-footer d-flex justify-content-end gap-2">

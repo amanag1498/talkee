@@ -29,7 +29,7 @@ class AgencyWalletAdminController extends Controller
             'walletAudits' => $this->wallets->recentAudits($agency),
             'canLoadWallet' => true,
             'canCreditUsers' => true,
-            'rechargePlans' => $this->rechargePlans->activePlans(),
+            'rechargePlans' => $this->rechargePlans->activeAgencyPlans(),
             'walletRoute' => route('admin.agencies.wallet.show', $agency),
         ]);
     }
@@ -37,7 +37,7 @@ class AgencyWalletAdminController extends Controller
     public function load(Request $request, Agency $agency)
     {
         $data = $request->validate([
-            'recharge_plan_id' => ['required', 'integer', 'exists:recharge_plans,id'],
+            'coins' => ['required', 'integer', 'min:1'],
             'reference' => ['nullable', 'string', 'max:255'],
             'note' => ['nullable', 'string', 'max:1000'],
         ]);
@@ -45,7 +45,7 @@ class AgencyWalletAdminController extends Controller
         try {
             $this->wallets->adminLoad(
                 $agency,
-                (int) $data['recharge_plan_id'],
+                (int) $data['coins'],
                 $request->user(),
                 $data['note'] ?? null,
                 $data['reference'] ?? null,
@@ -63,7 +63,7 @@ class AgencyWalletAdminController extends Controller
     {
         $data = $request->validate([
             'target_user_id' => ['required', 'integer', 'exists:users,id'],
-            'coins' => ['required', 'integer', 'min:1'],
+            'recharge_plan_id' => ['required', 'integer', 'exists:recharge_plans,id'],
             'reference' => ['nullable', 'string', 'max:255'],
             'note' => ['nullable', 'string', 'max:1000'],
         ]);
@@ -74,7 +74,7 @@ class AgencyWalletAdminController extends Controller
             $this->wallets->transferToUser(
                 $agency,
                 $targetUser,
-                (int) $data['coins'],
+                (int) $data['recharge_plan_id'],
                 $request->user(),
                 null,
                 $data['note'] ?? null,
@@ -106,6 +106,7 @@ class AgencyWalletAdminController extends Controller
             'total_loaded' => (int) (clone $query)->where('direction', 'admin_to_agency')->sum('coins'),
             'total_distributed' => (int) (clone $query)->where('direction', 'agency_to_user')->sum('coins'),
             'total_bonus_credited' => (int) (clone $query)->where('direction', 'agency_to_user')->sum('bonus_coins'),
+            'total_agency_bonus_credited' => (int) (clone $query)->where('direction', 'agency_to_user')->sum('agency_bonus_coins'),
         ];
 
         return view('admin.reports.agency-wallets.index', [

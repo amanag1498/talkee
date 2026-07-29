@@ -22,6 +22,7 @@ class RechargePlanApiTest extends TestCase
             ->assertJsonPath('data.4.total_coins', 13000);
 
         $this->assertCount(5, $response->json('data'));
+        $response->assertJsonMissingPath('data.0.agency_bonus_coins');
     }
 
     public function test_recharge_plan_seeder_is_idempotent(): void

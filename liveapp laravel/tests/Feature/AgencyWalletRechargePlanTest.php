@@ -29,7 +29,7 @@ class AgencyWalletRechargePlanTest extends TestCase
     public function test_agency_can_only_choose_an_active_recharge_plan(): void
     {
         [$owner, $agency] = $this->agencyWithBalance(1_000);
-        $activePlan = $this->plan('Agency Starter', 500, 100, true);
+        $activePlan = $this->plan('Agency Starter', 500, 100, true, 30);
         $inactivePlan = $this->plan('Retired Pack', 250, 50, false);
 
         $response = $this->actingAs($owner)->get(route('agency.wallet.show'));
@@ -40,6 +40,7 @@ class AgencyWalletRechargePlanTest extends TestCase
             ->assertSee($activePlan->title)
             ->assertDontSee($inactivePlan->title)
             ->assertDontSee('Bonus Coins')
+            ->assertDontSee('Agency Extra Bonus')
             ->assertDontSee('User Received');
     }
 
@@ -47,7 +48,7 @@ class AgencyWalletRechargePlanTest extends TestCase
     {
         [$owner, $agency] = $this->agencyWithBalance(500);
         $target = User::factory()->create();
-        $plan = $this->plan('Agency Boost', 500, 100);
+        $plan = $this->plan('Agency Boost', 500, 100, true, 50);
 
         $this->actingAs($owner)
             ->post(route('agency.wallet.credit-user'), [
@@ -60,13 +61,14 @@ class AgencyWalletRechargePlanTest extends TestCase
             ->assertSessionHas('ok');
 
         $this->assertSame(0, (int) AgencyWallet::query()->where('agency_id', $agency->id)->value('balance'));
-        $this->assertSame(600, (int) Wallet::query()->where('user_id', $target->id)->value('balance'));
+        $this->assertSame(650, (int) Wallet::query()->where('user_id', $target->id)->value('balance'));
 
         $transfer = AgencyCoinTransfer::query()->firstOrFail();
         $this->assertSame($plan->id, $transfer->recharge_plan_id);
         $this->assertSame(500, $transfer->coins);
         $this->assertSame(100, $transfer->bonus_coins);
-        $this->assertSame(600, $transfer->total_coins);
+        $this->assertSame(50, $transfer->agency_bonus_coins);
+        $this->assertSame(650, $transfer->total_coins);
 
         $agencyTransaction = $transfer->agencyWalletTransaction()->firstOrFail();
         $this->assertSame(500, (int) $agencyTransaction->coins);
@@ -74,11 +76,13 @@ class AgencyWalletRechargePlanTest extends TestCase
         $this->assertSame(0, (int) $agencyTransaction->balance_after);
 
         $userTransaction = WalletTransaction::query()->findOrFail($transfer->user_wallet_transaction_id);
-        $this->assertSame(600, (int) $userTransaction->coins);
+        $this->assertSame(650, (int) $userTransaction->coins);
         $this->assertSame('agency_credit', $userTransaction->category);
         $this->assertSame(500, (int) $userTransaction->meta['base_coins']);
         $this->assertSame(100, (int) $userTransaction->meta['bonus_coins']);
-        $this->assertSame(600, (int) $userTransaction->meta['total_coins']);
+        $this->assertSame(50, (int) $userTransaction->meta['agency_bonus_coins']);
+        $this->assertSame(600, (int) $userTransaction->meta['plan_total_coins']);
+        $this->assertSame(650, (int) $userTransaction->meta['total_coins']);
     }
 
     public function test_arbitrary_coin_amounts_and_inactive_plans_are_rejected(): void
@@ -106,11 +110,37 @@ class AgencyWalletRechargePlanTest extends TestCase
         $this->assertDatabaseCount('agency_coin_transfers', 0);
     }
 
+    public function test_admin_agency_credit_requires_a_plan_and_applies_the_agency_bonus(): void
+    {
+        [, $agency] = $this->agencyWithBalance(500);
+        $target = User::factory()->create();
+        $plan = $this->plan('Admin Agency Pack', 500, 100, true, 50);
+        $admin = User::factory()->create();
+        $admin->assignRole('admin');
+
+        $this->actingAs($admin)
+            ->post(route('admin.agencies.wallet.credit-user', $agency), [
+                'target_user_id' => $target->id,
+                'coins' => 1,
+            ])
+            ->assertSessionHasErrors('recharge_plan_id');
+
+        $this->actingAs($admin)
+            ->post(route('admin.agencies.wallet.credit-user', $agency), [
+                'target_user_id' => $target->id,
+                'recharge_plan_id' => $plan->id,
+            ])
+            ->assertSessionHas('ok');
+
+        $this->assertSame(0, (int) AgencyWallet::query()->where('agency_id', $agency->id)->value('balance'));
+        $this->assertSame(650, (int) Wallet::query()->where('user_id', $target->id)->value('balance'));
+    }
+
     public function test_bonus_total_is_aggregated_on_the_admin_dashboard_only(): void
     {
         [$owner, $agency] = $this->agencyWithBalance(1_000);
         $target = User::factory()->create();
-        $plan = $this->plan('Dashboard Pack', 400, 75);
+        $plan = $this->plan('Dashboard Pack', 400, 75, true, 25);
 
         $this->actingAs($owner)->post(route('agency.wallet.credit-user'), [
             'target_user_id' => $target->id,
@@ -121,6 +151,7 @@ class AgencyWalletRechargePlanTest extends TestCase
             ->get(route('agency.wallet.show'))
             ->assertOk()
             ->assertDontSee('Agency Recharge Bonuses')
+            ->assertDontSee('Extra Agency Bonuses')
             ->assertDontSee('Bonus Coins');
 
         $admin = User::factory()->create();
@@ -130,18 +161,21 @@ class AgencyWalletRechargePlanTest extends TestCase
             ->get(route('admin.agencies.wallet.show', $agency))
             ->assertOk()
             ->assertSee('Bonus Coins')
+            ->assertSee('Agency Extra Bonus')
             ->assertSee('User Received');
 
         $report = $this->actingAs($admin)->get(route('admin.reports.agency-wallets.index'));
         $report->assertOk()
             ->assertSee('Bonus Coins Credited');
         $this->assertSame(75, (int) $report->viewData('summary')['total_bonus_credited']);
+        $this->assertSame(25, (int) $report->viewData('summary')['total_agency_bonus_credited']);
 
         $response = $this->actingAs($admin)->get(route('admin.dashboard'));
 
         $response->assertOk()
             ->assertSee('Agency Recharge Bonuses');
         $this->assertSame(75, (int) $response->viewData('stats')['agencyBonusCoinsIssued']);
+        $this->assertSame(25, (int) $response->viewData('stats')['agencyExtraBonusCoinsIssued']);
     }
 
     private function agencyWithBalance(int $balance): array
@@ -165,12 +199,14 @@ class AgencyWalletRechargePlanTest extends TestCase
         int $baseCoins,
         int $bonusCoins,
         bool $active = true,
+        int $agencyBonusCoins = 0,
     ): RechargePlan {
         return RechargePlan::query()->create([
             'title' => $title,
             'amount_rupees' => $baseCoins / 10,
             'coins' => $baseCoins,
             'bonus_coins' => $bonusCoins,
+            'agency_bonus_coins' => $agencyBonusCoins,
             'total_coins' => $baseCoins + $bonusCoins,
             'is_active' => $active,
             'sort_order' => 1,

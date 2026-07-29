@@ -83,7 +83,7 @@
                 @foreach($rechargePlans ?? [] as $plan)
                   <option value="{{ $plan['id'] }}" @selected(old('recharge_plan_id') == $plan['id'])>
                     @if(request()->routeIs('admin.*'))
-                      {{ $plan['title'] }} — {{ number_format($plan['coins']) }} base + {{ number_format($plan['bonus_coins']) }} bonus = {{ number_format($plan['total_coins']) }}
+                      {{ $plan['title'] }} — {{ number_format($plan['coins']) }} base + {{ number_format($plan['bonus_coins']) }} plan bonus + {{ number_format($plan['agency_bonus_coins']) }} agency bonus = {{ number_format($plan['agency_total_coins']) }}
                     @else
                       {{ $plan['title'] }} — {{ number_format($plan['coins']) }} coins
                     @endif
@@ -176,6 +176,7 @@
                 <th>Base Coins</th>
                 @if(request()->routeIs('admin.*'))
                   <th>Bonus Coins</th>
+                  <th>Agency Extra Bonus</th>
                   <th>User Received</th>
                 @endif
                 <th>User</th>
@@ -192,6 +193,7 @@
                   <td>{{ number_format($transfer->coins) }}</td>
                   @if(request()->routeIs('admin.*'))
                     <td>{{ $transfer->direction === 'agency_to_user' ? number_format($transfer->bonus_coins) : '—' }}</td>
+                    <td>{{ $transfer->direction === 'agency_to_user' ? number_format($transfer->agency_bonus_coins) : '—' }}</td>
                     <td>{{ $transfer->direction === 'agency_to_user' ? number_format($transfer->total_coins) : '—' }}</td>
                   @endif
                   <td>
@@ -222,7 +224,7 @@
                   <td>{{ optional($transfer->created_at)->format('d M Y, h:i A') }}</td>
                 </tr>
               @empty
-                <tr><td colspan="{{ request()->routeIs('admin.*') ? 9 : 7 }}" class="text-center text-muted py-4">No agency wallet transfers yet.</td></tr>
+                <tr><td colspan="{{ request()->routeIs('admin.*') ? 10 : 7 }}" class="text-center text-muted py-4">No agency wallet transfers yet.</td></tr>
               @endforelse
             </tbody>
           </table>

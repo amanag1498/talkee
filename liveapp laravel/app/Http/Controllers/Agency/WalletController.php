@@ -29,7 +29,7 @@ class WalletController extends Controller
             'walletAudits' => collect(),
             'canLoadWallet' => false,
             'canCreditUsers' => true,
-            'rechargePlans' => $this->rechargePlans->activePlans(),
+            'rechargePlans' => $this->rechargePlans->activeAgencyPlans(),
             'walletRoute' => route('agency.wallet.show'),
         ]);
     }

@@ -36,6 +36,8 @@
             <th>Coins</th>
             <th>Bonus</th>
             <th>Total</th>
+            <th>Agency Bonus</th>
+            <th>Agency Total</th>
             <th>Status</th>
             <th>Sort</th>
             <th class="text-end">Actions</th>
@@ -49,6 +51,8 @@
               <td>{{ number_format($plan->coins) }}</td>
               <td>{{ number_format($plan->bonus_coins) }}</td>
               <td>{{ number_format($plan->total_coins) }}</td>
+              <td>{{ number_format($plan->agency_bonus_coins) }}</td>
+              <td>{{ number_format($plan->total_coins + $plan->agency_bonus_coins) }}</td>
               <td>
                 <span class="badge {{ $plan->is_active ? 'bg-success' : 'bg-secondary' }}">
                   {{ $plan->is_active ? 'Active' : 'Inactive' }}
@@ -67,7 +71,7 @@
               </td>
             </tr>
           @empty
-            <tr><td colspan="8" class="text-center text-muted py-4">No recharge plans configured.</td></tr>
+            <tr><td colspan="10" class="text-center text-muted py-4">No recharge plans configured.</td></tr>
           @endforelse
         </tbody>
       </table>

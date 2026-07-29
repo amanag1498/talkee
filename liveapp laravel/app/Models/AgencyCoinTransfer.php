@@ -19,6 +19,7 @@ class AgencyCoinTransfer extends Model
         'coins',
         'recharge_plan_id',
         'bonus_coins',
+        'agency_bonus_coins',
         'total_coins',
         'note',
         'meta',
@@ -27,6 +28,7 @@ class AgencyCoinTransfer extends Model
     protected $casts = [
         'coins' => 'integer',
         'bonus_coins' => 'integer',
+        'agency_bonus_coins' => 'integer',
         'total_coins' => 'integer',
         'meta' => 'array',
     ];

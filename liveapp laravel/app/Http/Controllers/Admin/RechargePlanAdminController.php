@@ -77,6 +77,7 @@ class RechargePlanAdminController extends Controller
             ],
             'coins' => ['required', 'integer', 'min:1'],
             'bonus_coins' => ['nullable', 'integer', 'min:0'],
+            'agency_bonus_coins' => ['nullable', 'integer', 'min:0'],
             'sort_order' => ['required', 'integer', 'min:0'],
             'is_active' => ['nullable', 'boolean'],
         ]);
@@ -86,12 +87,14 @@ class RechargePlanAdminController extends Controller
     {
         $coins = (int) $data['coins'];
         $bonusCoins = (int) ($data['bonus_coins'] ?? 0);
+        $agencyBonusCoins = (int) ($data['agency_bonus_coins'] ?? 0);
 
         return [
             'title' => trim($data['title']),
             'amount_rupees' => (float) $data['amount_rupees'],
             'coins' => $coins,
             'bonus_coins' => $bonusCoins,
+            'agency_bonus_coins' => $agencyBonusCoins,
             'total_coins' => $coins + $bonusCoins,
             'sort_order' => (int) $data['sort_order'],
             'is_active' => (bool) ($data['is_active'] ?? false),

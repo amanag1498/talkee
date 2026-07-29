@@ -6,7 +6,7 @@
     <div class="card-header d-flex justify-content-between align-items-center">
       <h5 class="mb-0">Agency Wallet Transfer Report</h5>
       <form method="get" class="row g-2">
-        <div class="col-md-3">
+        <div class="col-md">
           <select name="agency_id" class="form-select">
             <option value="">All agencies</option>
             @foreach($agencies as $agency)
@@ -37,25 +37,31 @@
     </div>
     <div class="card-body">
       <div class="row g-3">
-        <div class="col-md-3">
+        <div class="col-md">
           <div class="border rounded-3 p-3 h-100">
             <small class="text-muted d-block">Rows</small>
             <div class="fs-4 fw-bold">{{ number_format($summary['total_rows'] ?? 0) }}</div>
           </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md">
           <div class="border rounded-3 p-3 h-100">
             <small class="text-muted d-block">Total Loaded</small>
             <div class="fs-4 fw-bold">{{ number_format($summary['total_loaded'] ?? 0) }}</div>
           </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md">
           <div class="border rounded-3 p-3 h-100">
             <small class="text-muted d-block">Base Coins Deducted</small>
             <div class="fs-4 fw-bold">{{ number_format($summary['total_distributed'] ?? 0) }}</div>
           </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md">
+          <div class="border rounded-3 p-3 h-100">
+            <small class="text-muted d-block">Agency Extra Bonus</small>
+            <div class="fs-4 fw-bold">{{ number_format($summary['total_agency_bonus_credited'] ?? 0) }}</div>
+          </div>
+        </div>
+        <div class="col-md">
           <div class="border rounded-3 p-3 h-100">
             <small class="text-muted d-block">Bonus Coins Credited</small>
             <div class="fs-4 fw-bold">{{ number_format($summary['total_bonus_credited'] ?? 0) }}</div>
@@ -77,6 +83,7 @@
             <th>Plan</th>
             <th>Base</th>
             <th>Bonus</th>
+            <th>Agency Bonus</th>
             <th>User Received</th>
             <th>Target User</th>
             <th>Actor</th>
@@ -96,6 +103,7 @@
               <td>{{ $transfer->rechargePlan?->title ?? data_get($transfer->meta, 'recharge_plan_title', '—') }}</td>
               <td>{{ number_format($transfer->coins) }}</td>
               <td>{{ $transfer->direction === 'agency_to_user' ? number_format($transfer->bonus_coins) : '—' }}</td>
+              <td>{{ $transfer->direction === 'agency_to_user' ? number_format($transfer->agency_bonus_coins) : '—' }}</td>
               <td>{{ $transfer->direction === 'agency_to_user' ? number_format($transfer->total_coins) : '—' }}</td>
               <td>{{ $transfer->targetUser?->name ? $transfer->targetUser->name.' (#'.$transfer->targetUser->id.')' : '—' }}</td>
               <td>
@@ -111,7 +119,7 @@
               <td>{{ optional($transfer->created_at)->format('d M Y, h:i A') }}</td>
             </tr>
           @empty
-            <tr><td colspan="11" class="text-center text-muted py-4">No agency wallet transfers found.</td></tr>
+            <tr><td colspan="12" class="text-center text-muted py-4">No agency wallet transfers found.</td></tr>
           @endforelse
         </tbody>
       </table>

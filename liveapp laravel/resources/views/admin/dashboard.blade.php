@@ -199,6 +199,21 @@
   </div>
 
   <div class="col-xl-3 col-md-6">
+    <div class="card bg-primary-dark text-white admin-home-stat">
+      <div class="card-body">
+        <div class="d-flex justify-content-between">
+          <div>
+            <small class="text-white-50">Extra Agency Bonuses</small>
+            <div class="fs-3 fw-semibold">{{ number_format($stats['agencyExtraBonusCoinsIssued']) }}</div>
+            <div class="small text-white-50 mt-2">Agency-only extra bonus coins issued to users</div>
+          </div>
+          <div class="stat-icon bg-white bg-opacity-10"><i class="ti ti-sparkles text-white"></i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-3 col-md-6">
     <div class="card admin-home-stat">
       <div class="card-body">
         <div class="d-flex justify-content-between">
