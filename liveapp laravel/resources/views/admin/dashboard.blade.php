@@ -184,6 +184,21 @@
   </div>
 
   <div class="col-xl-3 col-md-6">
+    <div class="card bg-warning text-dark admin-home-stat">
+      <div class="card-body">
+        <div class="d-flex justify-content-between">
+          <div>
+            <small class="text-dark opacity-75">Agency Recharge Bonuses</small>
+            <div class="fs-3 fw-semibold">{{ number_format($stats['agencyBonusCoinsIssued']) }}</div>
+            <div class="small text-dark opacity-75 mt-2">Bonus coins issued through agency recharge plans</div>
+          </div>
+          <div class="stat-icon bg-white bg-opacity-50"><i class="ti ti-gift text-warning"></i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-3 col-md-6">
     <div class="card admin-home-stat">
       <div class="card-body">
         <div class="d-flex justify-content-between">

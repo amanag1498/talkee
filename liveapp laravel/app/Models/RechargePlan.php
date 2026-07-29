@@ -18,6 +18,10 @@ class RechargePlan extends Model
 
     protected $casts = [
         'amount_rupees' => 'decimal:2',
+        'coins' => 'integer',
+        'bonus_coins' => 'integer',
+        'total_coins' => 'integer',
         'is_active' => 'boolean',
+        'sort_order' => 'integer',
     ];
 }

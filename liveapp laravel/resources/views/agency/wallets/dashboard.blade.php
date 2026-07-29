@@ -1,6 +1,6 @@
 @extends('layouts.agency-berry')
 @section('title', 'Agency Wallet')
-@section('page_intro', 'Separate treasury balance for agency loads and user coin credits with linked wallet ledger visibility.')
+@section('page_intro', 'Use active recharge plans to credit users while keeping agency treasury deductions fully traceable.')
 
 @section('page_actions')
   <a class="btn btn-light border" href="{{ $walletRoute ?? (request()->routeIs('admin.*') ? route('admin.agencies.wallet.show', $agency) : route('agency.wallet.show')) }}">Refresh</a>
@@ -34,7 +34,7 @@
         <div class="card-body">
           <small class="text-muted">Distributed</small>
           <div class="stat-value mt-1">{{ number_format($walletSummary['total_distributed'] ?? 0) }}</div>
-          <div class="stat-meta mt-2">Coins moved to users</div>
+          <div class="stat-meta mt-2">Base coins deducted for user recharges</div>
         </div>
       </div>
     </div>
@@ -71,19 +71,33 @@
 
       @if($canCreditUsers ?? false)
         <div class="card">
-          <div class="card-header"><h5 class="mb-0">Credit User From Agency Wallet</h5></div>
+          <div class="card-header"><h5 class="mb-0">Recharge User From Agency Wallet</h5></div>
           <div class="card-body">
             <form method="post" action="{{ request()->routeIs('admin.*') ? route('admin.agencies.wallet.credit-user', $agency) : route('agency.wallet.credit-user') }}" class="vstack gap-2">
               @csrf
               <label class="form-label">Target User ID</label>
               <input type="number" name="target_user_id" min="1" class="form-control" required>
-              <label class="form-label">Coins</label>
-              <input type="number" name="coins" min="1" class="form-control" required>
+              <label class="form-label">Recharge Plan</label>
+              <select name="recharge_plan_id" class="form-select" required>
+                <option value="">Select a recharge plan</option>
+                @foreach($rechargePlans ?? [] as $plan)
+                  <option value="{{ $plan['id'] }}" @selected(old('recharge_plan_id') == $plan['id'])>
+                    @if(request()->routeIs('admin.*'))
+                      {{ $plan['title'] }} — {{ number_format($plan['coins']) }} base + {{ number_format($plan['bonus_coins']) }} bonus = {{ number_format($plan['total_coins']) }}
+                    @else
+                      {{ $plan['title'] }} — {{ number_format($plan['coins']) }} coins
+                    @endif
+                  </option>
+                @endforeach
+              </select>
+              @if(empty($rechargePlans))
+                <div class="text-danger small">No active recharge plans are available.</div>
+              @endif
               <label class="form-label">Reference</label>
               <input type="text" name="reference" class="form-control" placeholder="Campaign / support / recharge ref">
               <label class="form-label">Note</label>
               <textarea name="note" rows="3" class="form-control" placeholder="Why this user is being credited"></textarea>
-              <button class="btn btn-success mt-2">Credit User</button>
+              <button @disabled(empty($rechargePlans)) class="btn btn-success mt-2">Recharge User</button>
             </form>
           </div>
         </div>
@@ -159,7 +173,11 @@
               <tr>
                 <th>#</th>
                 <th>Direction</th>
-                <th>Coins</th>
+                <th>Base Coins</th>
+                @if(request()->routeIs('admin.*'))
+                  <th>Bonus Coins</th>
+                  <th>User Received</th>
+                @endif
                 <th>User</th>
                 <th>Actor</th>
                 <th>Linked Wallet Tx</th>
@@ -172,6 +190,10 @@
                   <td>{{ $transfer->id }}</td>
                   <td>{{ str_replace('_', ' ', ucfirst($transfer->direction)) }}</td>
                   <td>{{ number_format($transfer->coins) }}</td>
+                  @if(request()->routeIs('admin.*'))
+                    <td>{{ $transfer->direction === 'agency_to_user' ? number_format($transfer->bonus_coins) : '—' }}</td>
+                    <td>{{ $transfer->direction === 'agency_to_user' ? number_format($transfer->total_coins) : '—' }}</td>
+                  @endif
                   <td>
                     @if($transfer->targetUser)
                       <div class="fw-semibold">{{ $transfer->targetUser->name }}</div>
@@ -200,7 +222,7 @@
                   <td>{{ optional($transfer->created_at)->format('d M Y, h:i A') }}</td>
                 </tr>
               @empty
-                <tr><td colspan="7" class="text-center text-muted py-4">No agency wallet transfers yet.</td></tr>
+                <tr><td colspan="{{ request()->routeIs('admin.*') ? 9 : 7 }}" class="text-center text-muted py-4">No agency wallet transfers yet.</td></tr>
               @endforelse
             </tbody>
           </table>

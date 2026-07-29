@@ -37,22 +37,28 @@
     </div>
     <div class="card-body">
       <div class="row g-3">
-        <div class="col-md-4">
+        <div class="col-md-3">
           <div class="border rounded-3 p-3 h-100">
             <small class="text-muted d-block">Rows</small>
             <div class="fs-4 fw-bold">{{ number_format($summary['total_rows'] ?? 0) }}</div>
           </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
           <div class="border rounded-3 p-3 h-100">
             <small class="text-muted d-block">Total Loaded</small>
             <div class="fs-4 fw-bold">{{ number_format($summary['total_loaded'] ?? 0) }}</div>
           </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
           <div class="border rounded-3 p-3 h-100">
-            <small class="text-muted d-block">Total Distributed</small>
+            <small class="text-muted d-block">Base Coins Deducted</small>
             <div class="fs-4 fw-bold">{{ number_format($summary['total_distributed'] ?? 0) }}</div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="border rounded-3 p-3 h-100">
+            <small class="text-muted d-block">Bonus Coins Credited</small>
+            <div class="fs-4 fw-bold">{{ number_format($summary['total_bonus_credited'] ?? 0) }}</div>
           </div>
         </div>
       </div>
@@ -68,7 +74,10 @@
             <th>#</th>
             <th>Agency</th>
             <th>Direction</th>
-            <th>Coins</th>
+            <th>Plan</th>
+            <th>Base</th>
+            <th>Bonus</th>
+            <th>User Received</th>
             <th>Target User</th>
             <th>Actor</th>
             <th>Note</th>
@@ -84,7 +93,10 @@
                 <div class="text-muted small">#{{ $transfer->agency_id }}</div>
               </td>
               <td>{{ str_replace('_', ' ', ucfirst($transfer->direction)) }}</td>
+              <td>{{ $transfer->rechargePlan?->title ?? data_get($transfer->meta, 'recharge_plan_title', '—') }}</td>
               <td>{{ number_format($transfer->coins) }}</td>
+              <td>{{ $transfer->direction === 'agency_to_user' ? number_format($transfer->bonus_coins) : '—' }}</td>
+              <td>{{ $transfer->direction === 'agency_to_user' ? number_format($transfer->total_coins) : '—' }}</td>
               <td>{{ $transfer->targetUser?->name ? $transfer->targetUser->name.' (#'.$transfer->targetUser->id.')' : '—' }}</td>
               <td>
                 @if($transfer->admin)
@@ -99,7 +111,7 @@
               <td>{{ optional($transfer->created_at)->format('d M Y, h:i A') }}</td>
             </tr>
           @empty
-            <tr><td colspan="8" class="text-center text-muted py-4">No agency wallet transfers found.</td></tr>
+            <tr><td colspan="11" class="text-center text-muted py-4">No agency wallet transfers found.</td></tr>
           @endforelse
         </tbody>
       </table>

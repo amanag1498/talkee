@@ -17,12 +17,17 @@ class AgencyCoinTransfer extends Model
         'agency_user_id',
         'direction',
         'coins',
+        'recharge_plan_id',
+        'bonus_coins',
+        'total_coins',
         'note',
         'meta',
     ];
 
     protected $casts = [
         'coins' => 'integer',
+        'bonus_coins' => 'integer',
+        'total_coins' => 'integer',
         'meta' => 'array',
     ];
 
@@ -59,5 +64,10 @@ class AgencyCoinTransfer extends Model
     public function agencyUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'agency_user_id');
+    }
+
+    public function rechargePlan(): BelongsTo
+    {
+        return $this->belongsTo(RechargePlan::class);
     }
 }

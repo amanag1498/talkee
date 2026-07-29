@@ -6,14 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Models\Agency;
 use App\Models\User;
 use App\Services\AgencyWalletService;
+use App\Services\RechargePlanService;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
 
 class WalletController extends Controller
 {
-    public function __construct(private AgencyWalletService $wallets)
-    {
-    }
+    public function __construct(
+        private AgencyWalletService $wallets,
+        private RechargePlanService $rechargePlans,
+    ) {}
 
     public function show(Request $request)
     {
@@ -27,6 +29,7 @@ class WalletController extends Controller
             'walletAudits' => collect(),
             'canLoadWallet' => false,
             'canCreditUsers' => true,
+            'rechargePlans' => $this->rechargePlans->activePlans(),
             'walletRoute' => route('agency.wallet.show'),
         ]);
     }
@@ -36,7 +39,7 @@ class WalletController extends Controller
         $agency = Agency::query()->where('owner_user_id', $request->user()->id)->firstOrFail();
         $data = $request->validate([
             'target_user_id' => ['required', 'integer', 'exists:users,id'],
-            'coins' => ['required', 'integer', 'min:1'],
+            'recharge_plan_id' => ['required', 'integer', 'exists:recharge_plans,id'],
             'reference' => ['nullable', 'string', 'max:255'],
             'note' => ['nullable', 'string', 'max:1000'],
         ]);
@@ -47,7 +50,7 @@ class WalletController extends Controller
             $this->wallets->transferToUser(
                 $agency,
                 $targetUser,
-                (int) $data['coins'],
+                (int) $data['recharge_plan_id'],
                 null,
                 $request->user(),
                 $data['note'] ?? null,
