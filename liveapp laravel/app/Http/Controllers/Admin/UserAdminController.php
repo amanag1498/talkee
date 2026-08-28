@@ -360,6 +360,7 @@ public function deviceUnblock(User $user)
         $data = $request->validate([
             'teen_patti' => 'nullable|boolean',
             'greedy' => 'nullable|boolean',
+            'fortune_wheel' => 'nullable|boolean',
             'reason' => 'nullable|string|max:500',
         ]);
 
@@ -367,6 +368,7 @@ public function deviceUnblock(User $user)
         $after = $this->gameAccess->syncUserAccess($user, [
             GameAccessService::GAME_TEEN_PATTI => (bool) ($data['teen_patti'] ?? false),
             GameAccessService::GAME_GREEDY => (bool) ($data['greedy'] ?? false),
+            GameAccessService::GAME_FORTUNE_WHEEL => (bool) ($data['fortune_wheel'] ?? false),
         ], $request->user());
 
         $this->audits->log(

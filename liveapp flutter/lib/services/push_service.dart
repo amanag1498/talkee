@@ -29,10 +29,13 @@ class PushService {
   static final PushService instance = PushService._();
 
   final FirebaseMessaging _fm = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin _fln = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _fln =
+      FlutterLocalNotificationsPlugin();
 
   AndroidNotificationChannel? _androidChannel;
   bool _initialized = false;
+  StreamSubscription<String>? _tokenRefreshSubscription;
+  Future<void>? _registrationInFlight;
   late ApiClient _api;
 
   /// Call ONCE after login (and after Firebase.initializeApp()).
@@ -51,15 +54,23 @@ class PushService {
         enableVibration: true,
       );
       final androidPlugin =
-      _fln.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+          _fln
+              .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin
+              >();
       await androidPlugin?.createNotificationChannel(_androidChannel!);
     }
 
     // Local notifications init
+    const darwinInitializationSettings = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
     const initSettings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-      iOS: DarwinInitializationSettings(),
-      macOS: DarwinInitializationSettings(),
+      iOS: darwinInitializationSettings,
+      macOS: darwinInitializationSettings,
     );
     await _fln.initialize(
       initSettings,
@@ -69,6 +80,14 @@ class PushService {
         _refreshNotificationsIfAny();
       },
     );
+
+    if (Platform.isIOS) {
+      await _fm.setForegroundNotificationPresentationOptions(
+        alert: false,
+        badge: false,
+        sound: false,
+      );
+    }
 
     // 🔔 Foreground FCM: show local + refresh list/badge
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
@@ -85,8 +104,10 @@ class PushService {
     // 🔔 App launched from a terminated state by tapping push
     final initialMsg = await _fm.getInitialMessage();
     if (initialMsg != null) {
-      unawaited(_handleRemoteNotificationTap(initialMsg));
-      _refreshNotificationsIfAny();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_handleRemoteNotificationTap(initialMsg));
+        _refreshNotificationsIfAny();
+      });
     }
 
     _initialized = true;
@@ -94,34 +115,64 @@ class PushService {
 
   /// Ask for permission and register FCM token to backend
   Future<void> requestPermissionAndRegister() async {
+    return _registrationInFlight ??= _registerCurrentToken().whenComplete(() {
+      _registrationInFlight = null;
+    });
+  }
+
+  Future<void> _registerCurrentToken() async {
     final settings = await _fm.requestPermission(
-      alert: true, announcement: false, badge: true, carPlay: false,
-      criticalAlert: false, provisional: false, sound: true,
+      alert: true,
+      announcement: false,
+      badge: true,
+      carPlay: false,
+      criticalAlert: false,
+      provisional: false,
+      sound: true,
     );
 
     if (settings.authorizationStatus == AuthorizationStatus.denied ||
         settings.authorizationStatus == AuthorizationStatus.notDetermined) {
       await _maybePromptOpenSettings();
+      return;
     }
 
-    final fcmToken = await _fm.getToken();
+    _tokenRefreshSubscription ??= _fm.onTokenRefresh.listen((newToken) {
+      unawaited(_registerToken(newToken));
+    });
+
+    if (Platform.isIOS && !await _waitForApnsToken()) return;
+
+    String? fcmToken;
+    try {
+      fcmToken = await _fm.getToken();
+    } catch (_) {
+      return;
+    }
     if (fcmToken == null || fcmToken.isEmpty) return;
 
-    try {
-      await _api.post('push/register', data: {
-        'token': fcmToken,
-        'platform': Platform.isIOS ? 'ios' : 'android',
-      });
-    } catch (_) {}
+    await _registerToken(fcmToken);
+  }
 
-    _fm.onTokenRefresh.listen((newToken) async {
+  Future<bool> _waitForApnsToken() async {
+    for (var attempt = 0; attempt < 20; attempt++) {
       try {
-        await _api.post('push/register', data: {
-          'token': newToken,
-          'platform': Platform.isIOS ? 'ios' : 'android',
-        });
+        final token = await _fm.getAPNSToken();
+        if (token != null && token.isNotEmpty) return true;
       } catch (_) {}
-    });
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+    return false;
+  }
+
+  Future<void> _registerToken(String token) async {
+    if (token.trim().isEmpty) return;
+    try {
+      await _api.post(
+        'push/register',
+        data: {'token': token, 'platform': Platform.isIOS ? 'ios' : 'android'},
+      );
+    } catch (_) {}
   }
 
   Future<bool> areNotificationsEnabled() async {
@@ -144,31 +195,37 @@ class PushService {
 
   Future<void> _showLocal(RemoteMessage message) async {
     final notif = message.notification;
-    final title = notif?.title ?? (message.data['title']?.toString() ?? 'Notification');
-    final body  = notif?.body  ?? (message.data['body']?.toString()  ?? '');
+    final title =
+        notif?.title ?? (message.data['title']?.toString() ?? 'Notification');
+    final body = notif?.body ?? (message.data['body']?.toString() ?? '');
 
     final details = NotificationDetails(
-      android: Platform.isAndroid
-          ? AndroidNotificationDetails(
-        _androidChannel?.id ?? 'high_importance',
-        _androidChannel?.name ?? 'General',
-        channelDescription: _androidChannel?.description,
-        importance: Importance.max,
-        priority: Priority.high,
-        playSound: true,
-        enableVibration: true,
-        visibility: NotificationVisibility.public,
-        icon: '@mipmap/ic_launcher',
-      )
-          : null,
+      android:
+          Platform.isAndroid
+              ? AndroidNotificationDetails(
+                _androidChannel?.id ?? 'high_importance',
+                _androidChannel?.name ?? 'General',
+                channelDescription: _androidChannel?.description,
+                importance: Importance.max,
+                priority: Priority.high,
+                playSound: true,
+                enableVibration: true,
+                visibility: NotificationVisibility.public,
+                icon: '@mipmap/ic_launcher',
+              )
+              : null,
       iOS: const DarwinNotificationDetails(
-        presentAlert: true, presentBadge: true, presentSound: true,
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
       ),
     );
 
     await _fln.show(
       DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      title, body, details,
+      title,
+      body,
+      details,
       payload: jsonEncode(message.data),
     );
   }
@@ -178,7 +235,9 @@ class PushService {
   }
 
   Future<void> _handleLocalNotificationTap(String? payload) async {
-    if (payload == null || payload.trim().isEmpty || payload == 'notifications') {
+    if (payload == null ||
+        payload.trim().isEmpty ||
+        payload == 'notifications') {
       _openNotificationsScreen();
       return;
     }
@@ -200,7 +259,10 @@ class PushService {
     final roomId = (data['room_id'] ?? meta['room_id'] ?? '').toString().trim();
 
     if (screen == 'room' && roomId.isNotEmpty) {
-      final opened = await _openLiveRoom(roomId, (meta['room_type'] ?? data['room_type'])?.toString());
+      final opened = await _openLiveRoom(
+        roomId,
+        (meta['room_type'] ?? data['room_type'])?.toString(),
+      );
       if (opened) return;
     }
 
@@ -222,23 +284,31 @@ class PushService {
     try {
       final live = Get.find<LiveService>();
       final normalizedType = (hintedRoomType ?? '').toLowerCase();
-      final room = normalizedType == 'audio'
-          ? await live.joinAudioRoom(roomId)
-          : await live.join(roomId, role: 'viewer');
-      final route = room.roomType == 'audio' ? Routes.liveAudio : Routes.liveVideo;
+      final room =
+          normalizedType == 'audio'
+              ? await live.joinAudioRoom(roomId)
+              : await live.join(roomId, role: 'viewer');
+      final route =
+          room.roomType == 'audio' ? Routes.liveAudio : Routes.liveVideo;
 
       if (Get.currentRoute == route) {
-        Get.offNamed(route, arguments: {
-          'room': room,
-          'viewer_only': true,
-          'initial_mic_on': false,
-        });
+        Get.offNamed(
+          route,
+          arguments: {
+            'room': room,
+            'viewer_only': true,
+            'initial_mic_on': false,
+          },
+        );
       } else {
-        Get.toNamed(route, arguments: {
-          'room': room,
-          'viewer_only': true,
-          'initial_mic_on': false,
-        });
+        Get.toNamed(
+          route,
+          arguments: {
+            'room': room,
+            'viewer_only': true,
+            'initial_mic_on': false,
+          },
+        );
       }
       return true;
     } catch (_) {
@@ -265,22 +335,29 @@ class PushService {
     if (Get.context == null) return;
     await showDialog(
       context: Get.context!,
-      builder: (_) => AlertDialog(
-        title: const Text('Enable notifications?'),
-        content: const Text(
-            'Notifications are currently turned off for this app. Open settings to enable them.'
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Later')),
-          TextButton(
-            onPressed: () async {
-              Get.back();
-              await openAppSettings();
-            },
-            child: const Text('Open settings', style: TextStyle(fontWeight: FontWeight.w700)),
+      builder:
+          (_) => AlertDialog(
+            title: const Text('Enable notifications?'),
+            content: const Text(
+              'Notifications are currently turned off for this app. Open settings to enable them.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Get.back(),
+                child: const Text('Later'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  Get.back();
+                  await openAppSettings();
+                },
+                child: const Text(
+                  'Open settings',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 }

@@ -181,7 +181,7 @@ class SettingsController extends Controller
     public function updateGames(Request $request)
     {
         $selectedGame = $request->query('game', 'teen_patti');
-        if (!in_array($selectedGame, ['teen_patti', 'greedy'], true)) {
+        if (!in_array($selectedGame, ['teen_patti', 'greedy', 'fortune_wheel'], true)) {
             $selectedGame = 'teen_patti';
         }
 

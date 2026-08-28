@@ -15,6 +15,7 @@ class AuthController extends GetxController {
 
   final Rxn<UserModel> user = Rxn<UserModel>();
   final RxBool loading = false.obs;
+  final RxString activeProvider = ''.obs;
   final RxString error = ''.obs;
 
   bool get isLoggedIn => auth.isLoggedIn;
@@ -28,10 +29,23 @@ class AuthController extends GetxController {
   }
 
   Future<void> loginWithGoogle() async {
+    await _login('google', auth.signInWithGoogleAndBackend);
+  }
+
+  Future<void> loginWithApple() async {
+    await _login('apple', auth.signInWithAppleAndBackend);
+  }
+
+  Future<void> _login(
+    String provider,
+    Future<UserModel> Function() signIn,
+  ) async {
+    if (loading.value) return;
     loading.value = true;
+    activeProvider.value = provider;
     error.value = '';
     try {
-      final u = await auth.signInWithGoogleAndBackend();
+      final u = await signIn();
       user.value = u;
       if (Get.isRegistered<AppSettingsService>()) {
         await Get.find<AppSettingsService>().refresh();
@@ -43,6 +57,8 @@ class AuthController extends GetxController {
         await Get.find<LiveRoomsController>().refreshForCurrentAuth();
       }
       Get.offAllNamed(Routes.home);
+    } on AuthSignInCancelledException {
+      error.value = '';
     } catch (e) {
       if (e is AppUpgradeRequiredException ||
           (Get.isRegistered<AppSettingsService>() &&
@@ -66,6 +82,7 @@ class AuthController extends GetxController {
       }
     } finally {
       loading.value = false;
+      activeProvider.value = '';
     }
   }
 

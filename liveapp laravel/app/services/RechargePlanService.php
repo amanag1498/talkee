@@ -6,9 +6,14 @@ use App\Models\RechargePlan;
 
 class RechargePlanService
 {
-    public function activePlans(): array
+    public function activePlans(?string $platform = null): array
     {
-        return $this->activePlanQuery()
+        $query = $this->activePlanQuery();
+        if (strtolower(trim((string) $platform)) === 'ios') {
+            $query->whereNotNull('apple_product_id')->where('apple_product_id', '<>', '');
+        }
+
+        return $query
             ->get()
             ->map(fn (RechargePlan $plan) => $this->publicPlan($plan))
             ->values()
@@ -44,6 +49,7 @@ class RechargePlanService
             'coins' => (int) $plan->coins,
             'bonus_coins' => (int) $plan->bonus_coins,
             'total_coins' => (int) $plan->total_coins,
+            'apple_product_id' => $plan->apple_product_id,
             'sort_order' => (int) $plan->sort_order,
         ];
     }

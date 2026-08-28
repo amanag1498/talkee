@@ -1883,7 +1883,9 @@ class _VideoCallPageState extends State<VideoCallPage>
 
   bool get _showTeenPattiInVideoRoom {
     final settings = Get.find<AppSettingsService>();
-    return (settings.teenPattiEnabled || settings.greedyEnabled) &&
+    return (settings.teenPattiEnabled ||
+            settings.greedyEnabled ||
+            settings.fortuneWheelEnabled) &&
         settings.videoRoomGamesEnabled;
   }
 

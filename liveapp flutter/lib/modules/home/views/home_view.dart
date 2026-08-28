@@ -13,6 +13,8 @@ import '../../../../app/widgets/animated_background.dart';
 import '../../../../app/widgets/talkee_logo.dart';
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/widgets/haptics.dart';
+import '../../games/fortune_wheel/services/fortune_wheel_preload_service.dart';
+import '../../games/fortune_wheel/widgets/fortune_wheel_panel.dart';
 import '../../Live/views/live_preflight_sheet.dart';
 import '../../calls/controllers/live_users_controller.dart';
 import '../../notifications/widgets/bell_badge_btn.dart';
@@ -69,6 +71,23 @@ class _HomeShellState extends State<_HomeShell> {
   final _page = PageController();
   int _index = 0;
   bool _handlingExitPrompt = false;
+  bool _fortuneDialogVisible = false;
+  String? _fortuneAutoOpenDate;
+  Worker? _fortuneSnapshotWorker;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !Get.isRegistered<FortuneWheelPreloadService>()) return;
+      final fortune = Get.find<FortuneWheelPreloadService>();
+      _fortuneSnapshotWorker = ever(
+        fortune.snapshot,
+        (_) => _scheduleFortuneWheelAutoOpen(),
+      );
+      _scheduleFortuneWheelAutoOpen();
+    });
+  }
 
   PremiumThemeTokens _tokens() {
     final settings = Get.find<AppSettingsService>();
@@ -77,8 +96,35 @@ class _HomeShellState extends State<_HomeShell> {
 
   @override
   void dispose() {
+    _fortuneSnapshotWorker?.dispose();
     _page.dispose();
     super.dispose();
+  }
+
+  void _scheduleFortuneWheelAutoOpen() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _fortuneDialogVisible) return;
+      if (!Get.isRegistered<FortuneWheelPreloadService>()) return;
+
+      final settings = Get.find<AppSettingsService>();
+      final snapshot = Get.find<FortuneWheelPreloadService>().snapshot.value;
+      if (!settings.fortuneWheelEnabled ||
+          snapshot == null ||
+          snapshot.freeSpinsRemaining <= 0 ||
+          _fortuneAutoOpenDate == snapshot.spunForDate) {
+        return;
+      }
+
+      _fortuneAutoOpenDate = snapshot.spunForDate;
+      _openFortuneWheelDialog();
+    });
+  }
+
+  Future<void> _openFortuneWheelDialog() async {
+    if (!mounted || _fortuneDialogVisible) return;
+    _fortuneDialogVisible = true;
+    await showFortuneWheelDialog(context, freeSpinOnly: true);
+    _fortuneDialogVisible = false;
   }
 
   @override
@@ -150,7 +196,11 @@ class _HomeShellState extends State<_HomeShell> {
                   final canLive =
                       Get.find<LiveEligibilityService>().canGoLive.value;
                   final hostRoomsEnabled =
-                      Get.find<AuthService>().currentUser?.hostProfile?.anyRoomsEnabled ?? true;
+                      Get.find<AuthService>()
+                          .currentUser
+                          ?.hostProfile
+                          ?.anyRoomsEnabled ??
+                      true;
                   return Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     child: CapsuleOrbNavBar(
@@ -170,7 +220,9 @@ class _HomeShellState extends State<_HomeShell> {
                           curve: Curves.easeOutCubic,
                         );
                       },
-                      showGoLive: appSettings.anyLiveCreationEnabled && hostRoomsEnabled,
+                      showGoLive:
+                          appSettings.anyLiveCreationEnabled &&
+                          hostRoomsEnabled,
                       activeAccent: tokens.primaryButtonGradient.first,
                       inactiveIcon: tokens.textSecondary.withValues(alpha: .86),
                       goLiveColor: tokens.dangerColor,
@@ -216,9 +268,7 @@ class _HomeShellState extends State<_HomeShell> {
                     ],
                   ),
                   borderRadius: BorderRadius.circular(30),
-                  border: Border.all(
-                    color: tokens.borderColor.withOpacity(.9),
-                  ),
+                  border: Border.all(color: tokens.borderColor.withOpacity(.9)),
                   boxShadow: [
                     BoxShadow(
                       color: tokens.glowColor.withOpacity(.18),
@@ -346,10 +396,7 @@ class _HomeShellState extends State<_HomeShell> {
       icon: Icons.workspace_premium_rounded,
       label: 'Dashboard',
       pageBuilder:
-          (isActive) => DashboardPage(
-            bottomPadding: 120,
-            isActive: isActive,
-          ),
+          (isActive) => DashboardPage(bottomPadding: 120, isActive: isActive),
     );
 
     addTab(
@@ -401,8 +448,7 @@ class _GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
       final tokens = getPremiumThemeTokens(
         Get.find<AppSettingsService>().activePremiumThemeVariant,
       );
-      final canGoLive =
-          Get.find<LiveEligibilityService>().canGoLive.value;
+      final canGoLive = Get.find<LiveEligibilityService>().canGoLive.value;
       final showAvailabilityToggle =
           (canGoLive || liveUsersController.isHost) &&
           liveUsersController.canToggleHostAvailability;
@@ -422,11 +468,12 @@ class _GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
                 size: 28,
                 showWordmark: true,
                 wordmarkBelow: false,
-                wordmarkStyle:
-                    Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: tokens.textPrimary,
-                    ),
+                wordmarkStyle: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: tokens.textPrimary,
+                ),
               ),
             ),
             const Spacer(),
@@ -438,26 +485,32 @@ class _GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
               padding: const EdgeInsets.only(right: 4),
               child: Center(
                 child: Obx(() {
-                  final online = liveUsersController.hostAppearsLive;
+                  final visibilityEnabled =
+                      liveUsersController.hostVisibilityEnabled;
+                  final appearsLive = liveUsersController.hostAppearsLive;
                   final busy = liveUsersController.togglingHostStatus.value;
                   return Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        online
+                        appearsLive
                             ? Icons.wifi_tethering_rounded
+                            : visibilityEnabled
+                            ? Icons.sync_rounded
                             : Icons.wifi_tethering_off_rounded,
                         color:
-                            online
+                            visibilityEnabled
                                 ? tokens.primaryButtonGradient.first
                                 : tokens.textSecondary.withValues(alpha: .84),
                         size: 18,
                       ),
                       const SizedBox(width: 6),
                       Switch.adaptive(
-                        value: online,
+                        value: visibilityEnabled,
                         onChanged:
-                            busy || !liveUsersController.canToggleHostAvailability
+                            busy ||
+                                    !liveUsersController
+                                        .canToggleHostAvailability
                                 ? null
                                 : (_) => liveUsersController.toggleHostStatus(),
                         activeColor: tokens.primaryButtonGradient.first,

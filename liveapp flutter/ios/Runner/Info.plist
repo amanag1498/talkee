@@ -22,6 +22,8 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>GIDClientID</key>
+	<string>106498003101-jp424ql5i7f3fn1svjgisccarel89s10.apps.googleusercontent.com</string>
 	<key>FacebookAppID</key>
 	<string>$(META_APP_ID)</string>
 	<key>FacebookClientToken</key>
@@ -34,8 +36,18 @@
 	<false/>
 	<key>NSUserTrackingUsageDescription</key>
 	<string>Talkieo uses this permission to measure ad performance and show more relevant promotions.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CFBundleURLTypes</key>
 	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.106498003101-jp424ql5i7f3fn1svjgisccarel89s10</string>
+			</array>
+		</dict>
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
@@ -45,6 +57,18 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Talkieo uses the camera for video calls and live video rooms.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Talkieo uses the microphone for calls, live audio rooms, and live video rooms.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Talkieo uses your photo library when you choose a profile or room image.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

@@ -14,7 +14,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "com.gdlive/device"
+    private val CHANNEL = "com.techybugs.talkee/device"
     private var vibrator: Vibrator? = null
     private var callWakeLock: PowerManager.WakeLock? = null
 

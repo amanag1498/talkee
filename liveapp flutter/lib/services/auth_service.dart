@@ -151,8 +151,12 @@ class AuthService {
         }
       }
       // 4a) Ask for notification permission + register FCM token
-      await PushService.instance.init(api: api);
-      await PushService.instance.requestPermissionAndRegister();
+      try {
+        await PushService.instance.init(api: api);
+        await PushService.instance.requestPermissionAndRegister();
+      } catch (error) {
+        debugPrint('[push] registration after Google login failed: $error');
+      }
 
       // 5) Preflight verify (Sanctum): GET /api/ws/verify must be 200 & not blocked
       try {
@@ -232,6 +236,131 @@ class AuthService {
     }
   }
 
+  Future<UserModel> signInWithAppleAndBackend() async {
+    if (!isApplePlatform) {
+      throw Exception('Sign in with Apple is only available on Apple devices.');
+    }
+
+    try {
+      final provider =
+          fb.AppleAuthProvider()
+            ..addScope('email')
+            ..addScope('name');
+      final credential = await fb.FirebaseAuth.instance.signInWithProvider(
+        provider,
+      );
+      final user = credential.user;
+      if (user == null) throw Exception('Firebase user missing');
+      return _completeAppleFirebaseLogin(user);
+    } on fb.FirebaseAuthException catch (e) {
+      if (isAppleSignInCancellation(e.code, e.message)) {
+        throw const AuthSignInCancelledException();
+      }
+      throw Exception('Apple sign-in failed: ${e.message ?? e.code}');
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      final body = e.response?.data;
+      if (status == 423 ||
+          body == 'blocked' ||
+          (body is Map &&
+              (body['blocked'] == true || body['error'] == 'blocked'))) {
+        await _signOutLocalOnly();
+        throw Exception('Your account has been blocked.');
+      }
+      if (_isUpgradeRequiredResponse(status, body)) {
+        throw AppUpgradeRequiredException(
+          _upgradeRequiredMessageFromBody(body),
+        );
+      }
+      if (body is Map<String, dynamic>) {
+        throw Exception(
+          _friendlyAuthMessage(
+            status ?? 0,
+            (body['msg'] ?? e.message ?? 'Login failed').toString(),
+            (body['code'] ?? '').toString(),
+          ),
+        );
+      }
+      throw Exception('Login failed. ${e.message ?? 'Please try again.'}');
+    }
+  }
+
+  Future<UserModel> _completeAppleFirebaseLogin(fb.User firebaseUser) async {
+    final idToken = await firebaseUser.getIdToken(true);
+    final res = await api.post<Map<String, dynamic>>(
+      'auth/firebase/login',
+      data: {'idToken': idToken, 'device_name': 'flutter-apple'},
+    );
+    final status = res.statusCode ?? 0;
+    final data = res.data ?? {};
+    if (status != 200 || data['ok'] != true) {
+      throw Exception(
+        _friendlyAuthMessage(
+          status,
+          (data['msg'] ?? 'Login failed').toString(),
+          (data['code'] ?? '').toString(),
+        ),
+      );
+    }
+
+    final token = (data['token'] as String?) ?? '';
+    final userMap = Map<String, dynamic>.from(data['user'] as Map);
+    final model = UserModel.fromJson(userMap);
+    if (userMap['is_blocked'] == true ||
+        data['blocked'] == true ||
+        data['error'] == 'blocked' ||
+        status == 423) {
+      await _signOutLocalOnly();
+      throw Exception('Your account has been blocked.');
+    }
+
+    await storage.saveAuth(token, model.toJson());
+    if (Get.isRegistered<MetaAttributionService>()) {
+      final attribution = Get.find<MetaAttributionService>();
+      await attribution.requestTrackingConsent();
+      await attribution.logLifecycleEvent(
+        'login',
+        provider: 'apple',
+        isNewUser: data['is_new_user'] == true,
+      );
+      if (data['is_new_user'] == true) {
+        await attribution.logLifecycleEvent('complete_registration');
+      }
+    }
+    try {
+      await PushService.instance.init(api: api);
+      await PushService.instance.requestPermissionAndRegister();
+    } catch (error) {
+      debugPrint('[push] registration after Apple login failed: $error');
+    }
+
+    try {
+      final verification = await api.get<Map<String, dynamic>>('ws/verify');
+      final verificationData = verification.data ?? {};
+      if ((verification.statusCode ?? 0) != 200 ||
+          verificationData['blocked'] == true) {
+        if (_isUpgradeRequiredResponse(
+          verification.statusCode,
+          verificationData,
+        )) {
+          return model;
+        }
+        await _signOutLocalOnly();
+        throw Exception('Your account has been blocked.');
+      }
+    } on DioException catch (e) {
+      if (_isUpgradeRequiredResponse(
+        e.response?.statusCode,
+        e.response?.data,
+      )) {
+        return model;
+      }
+      await _signOutLocalOnly();
+      rethrow;
+    }
+    return model;
+  }
+
   Future<void> logout() async {
     await PushService.instance.unregisterToken();
     try {
@@ -249,6 +378,68 @@ class AuthService {
         await Get.find<CallSocketService>().stop();
     } catch (_) {}
     await storage.clear();
+    Get.offAllNamed(Routes.login);
+  }
+
+  Future<void> deleteAccount() async {
+    final firebaseAuth = fb.FirebaseAuth.instance;
+    final firebaseUser = firebaseAuth.currentUser;
+    if (firebaseUser == null) {
+      throw Exception('Please sign in again before deleting your account.');
+    }
+    final usesApple =
+        isApplePlatform &&
+        (currentUser?.provider.toLowerCase() == 'apple' ||
+            firebaseUser.providerData.any(
+              (provider) => provider.providerId == 'apple.com',
+            ));
+    final usesGoogle =
+        currentUser?.provider.toLowerCase() == 'google' ||
+        firebaseUser.providerData.any(
+          (provider) => provider.providerId == 'google.com',
+        );
+
+    if (usesApple) {
+      final provider =
+          fb.AppleAuthProvider()
+            ..addScope('email')
+            ..addScope('name');
+      final credential = await firebaseUser.reauthenticateWithProvider(
+        provider,
+      );
+      final authorizationCode =
+          credential.additionalUserInfo?.authorizationCode?.trim() ?? '';
+      if (authorizationCode.isEmpty) {
+        throw Exception(
+          'Apple could not confirm account deletion. Please try again.',
+        );
+      }
+      await firebaseAuth.revokeTokenWithAuthorizationCode(authorizationCode);
+    } else if (usesGoogle) {
+      final googleUser = await _gsi.signIn();
+      if (googleUser == null) throw const AuthSignInCancelledException();
+      final googleAuth = await googleUser.authentication;
+      await firebaseUser.reauthenticateWithCredential(
+        fb.GoogleAuthProvider.credential(
+          idToken: googleAuth.idToken,
+          accessToken: googleAuth.accessToken,
+        ),
+      );
+    }
+
+    await PushService.instance.unregisterToken();
+    final response = await api.delete<Map<String, dynamic>>('account');
+    if (response.data?['ok'] != true) {
+      throw Exception(
+        (response.data?['message'] ?? 'Account deletion failed.').toString(),
+      );
+    }
+    try {
+      await firebaseUser.delete();
+    } catch (error) {
+      debugPrint('[auth] Firebase identity cleanup deferred: $error');
+    }
+    await _signOutLocalOnly();
     Get.offAllNamed(Routes.login);
   }
 
@@ -335,10 +526,10 @@ class AuthService {
       return 'Server login is not configured correctly. Firebase project id is missing.';
     }
     if (status == 401 && code == 'firebase_token_invalid') {
-      return 'Google sign-in expired or is invalid. Please sign in again.';
+      return 'Your sign-in expired or is invalid. Please sign in again.';
     }
     if (status == 422 && code == 'firebase_email_missing') {
-      return 'This Google account did not provide an email address.';
+      return 'This sign-in account did not provide an email address.';
     }
     return msg;
   }
@@ -371,4 +562,27 @@ class AuthService {
         ? Get.find<AppSettingsService>().forceUpgradeMessage
         : 'Please update Talkieo to continue using the app.';
   }
+}
+
+class AuthSignInCancelledException implements Exception {
+  const AuthSignInCancelledException();
+}
+
+bool get isApplePlatform =>
+    !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS);
+
+@visibleForTesting
+bool isAppleSignInCancellation(String code, String? message) {
+  final normalizedCode = code.toLowerCase();
+  final normalizedMessage = (message ?? '').toLowerCase();
+  return normalizedCode == 'web-context-canceled' ||
+      normalizedCode == 'canceled' ||
+      normalizedCode == 'cancelled' ||
+      normalizedCode == 'popup-closed-by-user' ||
+      normalizedMessage.contains('user canceled') ||
+      normalizedMessage.contains('user cancelled') ||
+      normalizedMessage.contains('canceled by the user') ||
+      normalizedMessage.contains('cancelled by the user');
 }

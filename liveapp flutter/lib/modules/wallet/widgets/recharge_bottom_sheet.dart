@@ -9,7 +9,9 @@ import '../../../services/auth_service.dart';
 import '../../../services/meta_attribution_service.dart';
 import '../../../services/app_settings_service.dart';
 import '../models/wallet_summary_dto.dart';
+import '../services/apple_in_app_purchase_service.dart';
 import '../services/razorpay_checkout_service.dart';
+import '../services/recharge_payment_platform.dart';
 import '../services/wallet_api.dart';
 
 bool isInsufficientCoinsErrorMessage(String message) {
@@ -82,7 +84,41 @@ class _RechargeBottomSheetState extends State<RechargeBottomSheet> {
         _loading = true;
         _error = null;
       });
-      final summary = await Get.find<WalletApi>().fetchSummary();
+      var summary = await Get.find<WalletApi>().fetchSummary();
+      if (rechargePaymentProviderFor(AppSettingsService.currentPlatform) ==
+              RechargePaymentProvider.appleInAppPurchase &&
+          summary.paymentReady) {
+        try {
+          final prices = await Get.find<AppleInAppPurchaseService>()
+              .loadLocalizedPrices(summary.quickPacks);
+          final availablePacks =
+              summary.quickPacks
+                  .where(
+                    (pack) =>
+                        pack.appleProductId != null &&
+                        prices.containsKey(pack.appleProductId),
+                  )
+                  .map(
+                    (pack) => pack.copyWith(
+                      localizedStorePrice: prices[pack.appleProductId],
+                    ),
+                  )
+                  .toList();
+          summary = summary.copyWith(
+            paymentReady: availablePacks.isNotEmpty,
+            message:
+                availablePacks.isEmpty
+                    ? 'Apple coin packs are not available in this storefront.'
+                    : 'Secure payment through Apple In-App Purchase.',
+            quickPacks: availablePacks,
+          );
+        } catch (error) {
+          summary = summary.copyWith(
+            paymentReady: false,
+            message: error.toString().replaceFirst('Exception: ', ''),
+          );
+        }
+      }
       if (!mounted) return;
       setState(() {
         _summary = summary;
@@ -128,6 +164,12 @@ class _RechargeBottomSheetState extends State<RechargeBottomSheet> {
     setState(() => _submitting = true);
 
     try {
+      if (rechargePaymentProviderFor(AppSettingsService.currentPlatform) ==
+          RechargePaymentProvider.appleInAppPurchase) {
+        await _startAppleRecharge(plan);
+        return;
+      }
+
       final api = Get.find<WalletApi>();
       final order = await api.createRechargeOrder(plan.id);
       if (order.gateway != 'razorpay' || order.checkout == null) {
@@ -235,6 +277,59 @@ class _RechargeBottomSheetState extends State<RechargeBottomSheet> {
         e.toString().replaceFirst('Exception: ', ''),
         snackPosition: SnackPosition.BOTTOM,
       );
+    }
+  }
+
+  Future<void> _startAppleRecharge(WalletPackDto plan) async {
+    final outcome = await Get.find<AppleInAppPurchaseService>().purchase(plan);
+    if (!mounted) return;
+
+    switch (outcome.type) {
+      case ApplePurchaseOutcomeType.success:
+        final refreshed =
+            outcome.summary?.copyWith(quickPacks: _summary?.quickPacks) ??
+            _summary;
+        setState(() {
+          _summary = refreshed;
+          _submitting = false;
+        });
+        Haptics.success();
+        Get.snackbar(
+          'Recharge successful',
+          '${plan.totalCoins} coins added to your wallet.',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+        break;
+      case ApplePurchaseOutcomeType.pending:
+        setState(() => _submitting = false);
+        Haptics.warning();
+        Get.snackbar(
+          'Purchase pending',
+          outcome.message ??
+              'Apple is processing the purchase. Coins will be added after approval.',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 4),
+        );
+        break;
+      case ApplePurchaseOutcomeType.cancelled:
+        setState(() => _submitting = false);
+        Haptics.warning();
+        Get.snackbar(
+          'Purchase cancelled',
+          'No coins were added.',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+        break;
+      case ApplePurchaseOutcomeType.failed:
+        setState(() => _submitting = false);
+        Haptics.error();
+        Get.snackbar(
+          'Apple purchase incomplete',
+          outcome.message ?? 'Please try again.',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 4),
+        );
+        break;
     }
   }
 
@@ -416,6 +511,14 @@ class _RechargeBottomSheetState extends State<RechargeBottomSheet> {
     if (amount == amount.roundToDouble()) return amount.toInt().toString();
     return amount.toStringAsFixed(2);
   }
+
+  static String _displayPrice(WalletPackDto pack) {
+    if (rechargePaymentProviderFor(AppSettingsService.currentPlatform) ==
+        RechargePaymentProvider.appleInAppPurchase) {
+      return pack.localizedStorePrice ?? 'Unavailable';
+    }
+    return '₹${_formatPrice(pack.price)}';
+  }
 }
 
 class _BalanceCard extends StatelessWidget {
@@ -545,7 +648,7 @@ class _FooterBar extends StatelessWidget {
             ? 'Payment Setup Required'
             : selectedPlan == null
             ? 'Select a Pack'
-            : 'Continue with ₹${_RechargeBottomSheetState._formatPrice(selectedPlan!.price)}';
+            : 'Continue with ${_RechargeBottomSheetState._displayPrice(selectedPlan!)}';
 
     final secondaryLabel =
         selectedPlan == null ? null : 'Add ${selectedPlan!.totalCoins} coins';
@@ -624,7 +727,7 @@ class _PlanCard extends StatelessWidget {
     final tokens = getPremiumThemeTokens(
       Get.find<AppSettingsService>().activePremiumThemeVariant,
     );
-    final price = _RechargeBottomSheetState._formatPrice(pack.price);
+    final price = _RechargeBottomSheetState._displayPrice(pack);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
@@ -723,7 +826,7 @@ class _PlanCard extends StatelessWidget {
                 ),
                 const Spacer(),
                 Text(
-                  '₹$price',
+                  price,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 24,

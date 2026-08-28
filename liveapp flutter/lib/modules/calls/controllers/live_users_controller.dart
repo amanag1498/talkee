@@ -26,6 +26,7 @@ class LiveUsersController extends GetxController {
   final RxInt viewerBalance = 0.obs;
   final RxInt minimumBalance = 0.obs;
   final RxString hostManualStatus = 'offline'.obs;
+  final RxString hostSocketStatus = 'offline'.obs;
   final RxBool togglingHostStatus = false.obs;
   final RxBool hasMore = true.obs;
   final RxInt currentPage = 1.obs;
@@ -35,7 +36,9 @@ class LiveUsersController extends GetxController {
   bool _fetchInFlight = false;
 
   bool get isHost => _auth.currentUser?.roles.contains('host') ?? false;
-  bool get hostAppearsLive => hostManualStatus.value == 'online';
+  bool get hostVisibilityEnabled => hostManualStatus.value == 'online';
+  bool get hostAppearsLive =>
+      hostVisibilityEnabled && hostSocketStatus.value == 'online';
   bool get hostVideoRoomsEnabled =>
       _auth.currentUser?.hostProfile?.videoRoomsEnabled ?? true;
   bool get hostAudioRoomsEnabled =>
@@ -47,8 +50,10 @@ class LiveUsersController extends GetxController {
   bool get hostAccountBlocked =>
       (_auth.currentUser?.isBlocked ?? false) ||
       (_auth.currentUser?.hostProfile?.isBlocked ?? false);
-  bool get hostHasAnyRoomEnabled => hostVideoRoomsEnabled || hostAudioRoomsEnabled;
-  bool get hostHasAnyCallEnabled => hostVideoCallsEnabled || hostAudioCallsEnabled;
+  bool get hostHasAnyRoomEnabled =>
+      hostVideoRoomsEnabled || hostAudioRoomsEnabled;
+  bool get hostHasAnyCallEnabled =>
+      hostVideoCallsEnabled || hostAudioCallsEnabled;
   bool get canToggleHostAvailability =>
       isHost && !hostAccountBlocked && hostHasAnyCallEnabled;
 
@@ -60,7 +65,9 @@ class LiveUsersController extends GetxController {
     if (isHost) {
       refreshHostStatus();
     }
-    ever<Map<String, dynamic>?>(_callController.availabilityEvent, (event) async {
+    ever<Map<String, dynamic>?>(_callController.availabilityEvent, (
+      event,
+    ) async {
       if (event == null) return;
       final userId = (event['user_id'] as num?)?.toInt();
       if (userId == null) return;
@@ -72,7 +79,9 @@ class LiveUsersController extends GetxController {
           event['manual_status'] == 'online' &&
           event['socket_status'] == 'online';
       final isAvailable = isOnline && event['call_status'] == 'available';
-      final index = users.indexWhere((row) => (row['id'] as num?)?.toInt() == userId);
+      final index = users.indexWhere(
+        (row) => (row['id'] as num?)?.toInt() == userId,
+      );
       if (!isOnline) {
         if (index >= 0) {
           users.removeAt(index);
@@ -85,7 +94,9 @@ class LiveUsersController extends GetxController {
       }
       final updated = Map<String, dynamic>.from(users[index]);
       updated['availability'] = {
-        ...Map<String, dynamic>.from(updated['availability'] as Map? ?? const {}),
+        ...Map<String, dynamic>.from(
+          updated['availability'] as Map? ?? const {},
+        ),
         'manual_status': event['manual_status'],
         'socket_status': event['socket_status'],
         'call_status': event['call_status'],
@@ -93,13 +104,19 @@ class LiveUsersController extends GetxController {
         'is_online': isOnline,
         'is_available': isAvailable,
         'is_busy': isOnline && !isAvailable,
-        'reason': event['reason'] ?? Map<String, dynamic>.from(updated['availability'] as Map? ?? const {})['reason'],
+        'reason':
+            event['reason'] ??
+            Map<String, dynamic>.from(
+              updated['availability'] as Map? ?? const {},
+            )['reason'],
       };
       updated['is_online'] = isOnline;
       updated['is_available'] = isAvailable;
       updated['is_busy'] = isOnline && !isAvailable;
-      updated['call_unavailable_reason'] = event['reason'] ?? updated['call_unavailable_reason'];
-      updated['unavailable_reason'] = event['reason'] ?? updated['unavailable_reason'];
+      updated['call_unavailable_reason'] =
+          event['reason'] ?? updated['call_unavailable_reason'];
+      updated['unavailable_reason'] =
+          event['reason'] ?? updated['unavailable_reason'];
       updated['can_call'] =
           canStartCall(updated, 'audio') || canStartCall(updated, 'video');
       users[index] = updated;
@@ -143,7 +160,11 @@ class LiveUsersController extends GetxController {
       final list =
           (data['users'] as List?)
               ?.map((e) => Map<String, dynamic>.from(e as Map))
-              .where((row) => isCallTypeEnabled(row, 'audio') || isCallTypeEnabled(row, 'video'))
+              .where(
+                (row) =>
+                    isCallTypeEnabled(row, 'audio') ||
+                    isCallTypeEnabled(row, 'video'),
+              )
               .toList() ??
           <Map<String, dynamic>>[];
       final firstUser = list.isNotEmpty ? list.first : null;
@@ -161,7 +182,10 @@ class LiveUsersController extends GetxController {
       _sortUsers();
       viewerBalance.value = _asInt(data['viewer_balance']);
       minimumBalance.value = _asInt(data['minimum_balance_to_start_call']);
-      currentPage.value = _asInt(meta['current_page']) > 0 ? _asInt(meta['current_page']) : targetPage;
+      currentPage.value =
+          _asInt(meta['current_page']) > 0
+              ? _asInt(meta['current_page'])
+              : targetPage;
       hasMore.value = meta['has_more'] == true;
       totalUsers.value = _asInt(meta['total']);
       final appliedPerPage = _asInt(meta['per_page']);
@@ -189,16 +213,44 @@ class LiveUsersController extends GetxController {
   }
 
   Future<void> loadMore() async {
-    if (!_directoryActivated || loading.value || loadingMore.value || !hasMore.value) {
+    if (!_directoryActivated ||
+        loading.value ||
+        loadingMore.value ||
+        !hasMore.value) {
       return;
     }
     await fetch(reset: false);
   }
 
-  Future<void> refreshHostStatus() async {
+  Future<void> refreshHostStatus({bool showError = false}) async {
     if (!isHost) return;
-    final status = await _callService.fetchHostStatus();
-    _applyHostStatus(status);
+    try {
+      final status = await _callService.fetchHostStatus();
+      _applyHostStatus(status);
+    } on DioException catch (e) {
+      debugPrint(
+        '[host-status] refresh failed: ${e.response?.statusCode} ${e.message}',
+      );
+      if (showError) {
+        final data = e.response?.data;
+        Get.snackbar(
+          'Host status',
+          data is Map && data['message'] != null
+              ? data['message'].toString()
+              : 'Unable to refresh host status right now.',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      }
+    } catch (e) {
+      debugPrint('[host-status] refresh failed: $e');
+      if (showError) {
+        Get.snackbar(
+          'Host status',
+          'Unable to refresh host status right now.',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      }
+    }
   }
 
   Future<void> toggleHostStatus() async {
@@ -213,7 +265,7 @@ class LiveUsersController extends GetxController {
             : 'Calls are disabled for this host.',
         snackPosition: SnackPosition.BOTTOM,
       );
-      await refreshHostStatus();
+      await refreshHostStatus(showError: true);
       return;
     }
 
@@ -226,6 +278,13 @@ class LiveUsersController extends GetxController {
       }
       final status = await _callService.toggleHostStatus(next);
       _applyHostStatus(status);
+      if (next == 'online' && !hostAppearsLive) {
+        Get.snackbar(
+          'Host visibility enabled',
+          'Reconnecting presence. You will appear live once the connection is ready.',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      }
       await fetch(reset: true);
     } on DioException catch (e) {
       final statusCode = e.response?.statusCode;
@@ -258,7 +317,10 @@ class LiveUsersController extends GetxController {
       Get.snackbar('Calls', message, snackPosition: SnackPosition.BOTTOM);
       return;
     }
-    await _callController.placeCall(receiverId: (user['id'] as num).toInt(), type: type);
+    await _callController.placeCall(
+      receiverId: (user['id'] as num).toInt(),
+      type: type,
+    );
   }
 
   int rateFor(Map<String, dynamic> user, String type) {
@@ -275,7 +337,9 @@ class LiveUsersController extends GetxController {
   }
 
   bool canStartCall(Map<String, dynamic> user, String type) {
-    final availability = Map<String, dynamic>.from(user['availability'] as Map? ?? const {});
+    final availability = Map<String, dynamic>.from(
+      user['availability'] as Map? ?? const {},
+    );
     final isAvailable = availability['is_available'] == true;
     return isCallTypeEnabled(user, type) &&
         isAvailable &&
@@ -284,13 +348,17 @@ class LiveUsersController extends GetxController {
 
   bool isCallTypeEnabled(Map<String, dynamic> user, String type) {
     final key = type == 'video' ? 'video_calls_enabled' : 'audio_calls_enabled';
-    final hostProfile = Map<String, dynamic>.from(user['host_profile'] as Map? ?? const {});
+    final hostProfile = Map<String, dynamic>.from(
+      user['host_profile'] as Map? ?? const {},
+    );
     final raw = user[key] ?? hostProfile[key] ?? true;
     return _asBool(raw);
   }
 
   String availabilityLabel(Map<String, dynamic> user) {
-    final availability = Map<String, dynamic>.from(user['availability'] as Map? ?? const {});
+    final availability = Map<String, dynamic>.from(
+      user['availability'] as Map? ?? const {},
+    );
     final online = availability['is_online'] == true;
     final available = availability['is_available'] == true;
     if (!online) {
@@ -300,8 +368,15 @@ class LiveUsersController extends GetxController {
   }
 
   String unavailableMessage(Map<String, dynamic> user, String type) {
-    final availability = Map<String, dynamic>.from(user['availability'] as Map? ?? const {});
-    final reason = (user['call_unavailable_reason'] ?? user['unavailable_reason'] ?? availability['reason'] ?? '').toString();
+    final availability = Map<String, dynamic>.from(
+      user['availability'] as Map? ?? const {},
+    );
+    final reason =
+        (user['call_unavailable_reason'] ??
+                user['unavailable_reason'] ??
+                availability['reason'] ??
+                '')
+            .toString();
     final required = requiredBalanceFor(user, type);
     if (!isCallTypeEnabled(user, type)) {
       return 'This host is not accepting ${type == 'video' ? 'video' : 'audio'} calls right now.';
@@ -335,7 +410,10 @@ class LiveUsersController extends GetxController {
   }
 
   void _applyHostStatus(Map<String, dynamic> status) {
-    final userBlocked = _asBool(status['is_blocked'], fallback: _auth.currentUser?.isBlocked);
+    final userBlocked = _asBool(
+      status['is_blocked'],
+      fallback: _auth.currentUser?.isBlocked,
+    );
     final hostBlocked = _asBool(
       status['host_is_blocked'],
       fallback: _auth.currentUser?.hostProfile?.isBlocked,
@@ -368,13 +446,11 @@ class LiveUsersController extends GetxController {
         json['host_profile'] = currentHostProfile;
       }),
     );
+    final blocked = userBlocked || hostBlocked;
     hostManualStatus.value =
-        !userBlocked &&
-                !hostBlocked &&
-                manualStatus == 'online' &&
-                socketStatus == 'online'
-            ? 'online'
-            : 'offline';
+        !blocked && manualStatus == 'online' ? 'online' : 'offline';
+    hostSocketStatus.value =
+        !blocked && socketStatus == 'online' ? 'online' : 'offline';
   }
 
   bool _asBool(dynamic value, {dynamic fallback}) {
@@ -386,24 +462,28 @@ class LiveUsersController extends GetxController {
   }
 
   void _sortUsers() {
-    final sorted = users.toList()
-      ..sort((a, b) {
-        final scoreA = _sortScore(a);
-        final scoreB = _sortScore(b);
-        if (scoreA != scoreB) {
-          return scoreA.compareTo(scoreB);
-        }
-        final nameA = (a['name'] ?? '').toString().toLowerCase();
-        final nameB = (b['name'] ?? '').toString().toLowerCase();
-        return nameA.compareTo(nameB);
-      });
+    final sorted =
+        users.toList()..sort((a, b) {
+          final scoreA = _sortScore(a);
+          final scoreB = _sortScore(b);
+          if (scoreA != scoreB) {
+            return scoreA.compareTo(scoreB);
+          }
+          final nameA = (a['name'] ?? '').toString().toLowerCase();
+          final nameB = (b['name'] ?? '').toString().toLowerCase();
+          return nameA.compareTo(nameB);
+        });
     users.assignAll(sorted);
   }
 
   int _sortScore(Map<String, dynamic> user) {
-    final availability = Map<String, dynamic>.from(user['availability'] as Map? ?? const {});
-    final online = user['is_online'] == true || availability['is_online'] == true;
-    final available = user['is_available'] == true || availability['is_available'] == true;
+    final availability = Map<String, dynamic>.from(
+      user['availability'] as Map? ?? const {},
+    );
+    final online =
+        user['is_online'] == true || availability['is_online'] == true;
+    final available =
+        user['is_available'] == true || availability['is_available'] == true;
     final busy = user['is_busy'] == true || availability['is_busy'] == true;
     if (online && available) return 0;
     if (online && busy) return 1;

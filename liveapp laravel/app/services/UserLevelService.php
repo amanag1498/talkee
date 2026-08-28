@@ -36,6 +36,7 @@ class UserLevelService
      */
     private array $excludedCategories = [
         'recharge',
+        'recharge_refund',
         'purchase',
         'earning',
         'refund',

@@ -26,6 +26,7 @@ class RechargeOrderService
 
     public function __construct(
         private RazorpayGatewayService $razorpay,
+        private AppleAppStoreService $apple,
     ) {
     }
 
@@ -46,13 +47,23 @@ class RechargeOrderService
             && Schema::hasColumn('wallet_transactions', 'category');
     }
 
-    public function paymentReady(): bool
+    public function paymentReady(?string $platform = null): bool
     {
+        if (strtolower(trim((string) $platform)) === 'ios') {
+            return $this->apple->configured();
+        }
+
         return $this->razorpay->configured();
     }
 
-    public function paymentSummaryMessage(): string
+    public function paymentSummaryMessage(?string $platform = null): string
     {
+        if (strtolower(trim((string) $platform)) === 'ios') {
+            return $this->apple->configured()
+                ? 'Secure payment through Apple In-App Purchase.'
+                : 'Apple In-App Purchase setup required.';
+        }
+
         if ($this->razorpay->configured()) {
             return 'Secure payments with Razorpay.';
         }
@@ -62,6 +73,334 @@ class RechargeOrderService
         }
 
         return 'Payment setup required.';
+    }
+
+    /**
+     * Verify an iOS consumable with Apple before creating the order and
+     * crediting the existing wallet ledger.
+     */
+    public function verifyApplePurchase(
+        User $user,
+        string $productId,
+        string $transactionId,
+        ?string $platform = null,
+    ): array {
+        if (strtolower(trim((string) $platform)) !== 'ios') {
+            throw new InvalidArgumentException('Apple purchases are only available in the iOS app.');
+        }
+
+        if (! $this->paymentOrdersAvailable()
+            || ! $this->rechargeLedgerColumnsAvailable()
+            || ! Schema::hasColumn('payment_orders', 'apple_transaction_id')
+            || ! Schema::hasColumn('recharge_plans', 'apple_product_id')
+        ) {
+            throw new InvalidArgumentException('Apple recharge setup is incomplete. Run the latest migrations.');
+        }
+
+        $productId = trim($productId);
+        $transactionId = trim($transactionId);
+        $plan = RechargePlan::query()
+            ->where('is_active', true)
+            ->where('apple_product_id', $productId)
+            ->first();
+
+        if (! $plan) {
+            throw new InvalidArgumentException('Apple coin pack is unavailable.');
+        }
+
+        $appleTransaction = $this->apple->transaction($transactionId);
+        if ((string) ($appleTransaction['productId'] ?? '') !== $productId) {
+            throw new InvalidArgumentException('Apple purchase product does not match this coin pack.');
+        }
+        if (strtolower((string) ($appleTransaction['appAccountToken'] ?? ''))
+            !== $this->appleAccountToken($user)
+        ) {
+            throw new InvalidArgumentException('Apple purchase is not linked to this Talkieo account.');
+        }
+
+        return DB::transaction(function () use ($user, $plan, $productId, $transactionId, $appleTransaction) {
+            $order = PaymentOrder::query()
+                ->where('apple_transaction_id', $transactionId)
+                ->lockForUpdate()
+                ->first();
+
+            if ($order && (int) $order->user_id !== (int) $user->id) {
+                throw new InvalidArgumentException('Apple purchase has already been claimed by another account.');
+            }
+            if ($order && (int) $order->recharge_plan_id !== (int) $plan->id) {
+                throw new InvalidArgumentException('Apple purchase was recorded for another coin pack.');
+            }
+
+            if (! $order) {
+                $rawPrice = is_numeric($appleTransaction['price'] ?? null)
+                    ? (float) $appleTransaction['price']
+                    : null;
+                $order = PaymentOrder::query()->create([
+                    'user_id' => $user->id,
+                    'recharge_plan_id' => $plan->id,
+                    'order_id' => self::TALKIEO_RECEIPT_PREFIX.Str::lower((string) Str::ulid()),
+                    'amount_rupees' => $plan->amount_rupees,
+                    'coins' => $plan->coins,
+                    'bonus_coins' => $plan->bonus_coins,
+                    'total_coins' => $plan->total_coins,
+                    'status' => 'verified',
+                    'gateway' => 'apple_iap',
+                    'gateway_payment_id' => $transactionId,
+                    'apple_transaction_id' => $transactionId,
+                    'store_product_id' => $productId,
+                    'store_environment' => strtolower((string) ($appleTransaction['environment'] ?? '')),
+                    'store_price' => $rawPrice === null ? null : $rawPrice / 1000,
+                    'store_currency' => strtoupper((string) ($appleTransaction['currency'] ?? '')),
+                    'gateway_response' => [
+                        'apple_transaction' => $appleTransaction,
+                    ],
+                ]);
+            }
+
+            WalletService::getOrCreate($user);
+            $wallet = Wallet::query()
+                ->where('user_id', $user->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            return $this->completeSuccessfulOrder(
+                $order,
+                $wallet,
+                $transactionId,
+                ['apple_transaction' => $appleTransaction],
+            );
+        });
+    }
+
+    public function processAppleNotification(string $signedPayload): array
+    {
+        $notification = $this->apple->notification($signedPayload);
+        $appleTransaction = $notification['transaction'] ?? [];
+        $transactionId = trim((string) ($appleTransaction['transactionId'] ?? ''));
+
+        return DB::transaction(function () use ($notification, $appleTransaction, $transactionId) {
+            $order = PaymentOrder::query()
+                ->where('apple_transaction_id', $transactionId)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $order) {
+                return [
+                    'processed' => false,
+                    'reason' => 'order_not_found',
+                ];
+            }
+
+            $notificationUuid = trim((string) ($notification['notification_uuid'] ?? ''));
+            $existingPayload = is_array($order->gateway_response)
+                ? $order->gateway_response
+                : [];
+            $processedUuids = array_values(array_filter(
+                (array) ($existingPayload['apple_notification_uuids'] ?? []),
+            ));
+            if ($notificationUuid !== '' && in_array($notificationUuid, $processedUuids, true)) {
+                return [
+                    'processed' => true,
+                    'reason' => 'already_processed',
+                ];
+            }
+            if ($notificationUuid !== '') {
+                $processedUuids[] = $notificationUuid;
+            }
+
+            $notificationAudit = [
+                'notification_uuid' => $notificationUuid,
+                'notification_type' => $notification['notification_type'] ?? null,
+                'subtype' => $notification['subtype'] ?? null,
+                'received_at' => now()->toIso8601String(),
+                'transaction' => $appleTransaction,
+            ];
+            WalletService::getOrCreate($order->user);
+            $wallet = Wallet::query()
+                ->where('user_id', $order->user_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            // Financial state is derived from the transaction fetched directly
+            // from Apple's authenticated Server API, never from notificationType.
+            // A reversed refund is authoritative only once Apple reports that
+            // the transaction no longer has a revocation date.
+            if (empty($appleTransaction['revocationDate'])
+                && in_array($order->status, ['refunded', 'partially_refunded'], true)
+            ) {
+                return $this->reverseAppleRefund(
+                    $order,
+                    $wallet,
+                    $transactionId,
+                    $notificationAudit,
+                    $processedUuids,
+                    $existingPayload,
+                );
+            }
+
+            if (empty($appleTransaction['revocationDate'])) {
+                $order->forceFill([
+                    'gateway_response' => array_merge($existingPayload, [
+                        'latest_apple_notification' => $notificationAudit,
+                        'apple_notification_uuids' => $processedUuids,
+                    ]),
+                ])->save();
+
+                return [
+                    'processed' => true,
+                    'reason' => 'no_revocation',
+                ];
+            }
+
+            $existingRefund = WalletTransaction::query()
+                ->where('wallet_id', $wallet->id)
+                ->where('reference_type', 'payment_order_refund')
+                ->where('reference_id', $order->id)
+                ->where('category', 'recharge_refund')
+                ->first();
+
+            $revocationPercentage = max(
+                1,
+                min(100000, (int) ($appleTransaction['revocationPercentage'] ?? 100000)),
+            );
+            $refundedCoins = (int) ceil(
+                ((int) $order->total_coins * $revocationPercentage) / 100000,
+            );
+            $recoveredCoins = (int) ($existingRefund?->coins ?? 0);
+            if (! $existingRefund) {
+                $balanceBefore = (int) $wallet->balance;
+                $recoveredCoins = min($balanceBefore, $refundedCoins);
+                $balanceAfter = $balanceBefore - $recoveredCoins;
+                $existingRefund = WalletTransaction::query()->create([
+                    'wallet_id' => $wallet->id,
+                    'type' => 'debit',
+                    'coins' => $recoveredCoins,
+                    'amount' => $order->store_price ?? $order->amount_rupees,
+                    'currency' => $order->store_currency ?: 'INR',
+                    'category' => 'recharge_refund',
+                    'reference' => 'payment_order_refund:'.$order->id,
+                    'reference_type' => 'payment_order_refund',
+                    'reference_id' => $order->id,
+                    'transaction_id' => $transactionId,
+                    'gateway' => 'apple_iap',
+                    'description' => 'Apple purchase refunded',
+                    'balance_before' => $balanceBefore,
+                    'balance_after' => $balanceAfter,
+                    'meta' => [
+                        'order_id' => $order->order_id,
+                        'store_product_id' => $order->store_product_id,
+                        'revocation_percentage' => $revocationPercentage,
+                        'refunded_coins' => $refundedCoins,
+                        'unrecovered_coins' => $refundedCoins - $recoveredCoins,
+                    ],
+                ]);
+                if ($recoveredCoins > 0) {
+                    $wallet->update(['balance' => $balanceAfter]);
+                }
+            }
+
+            $order->forceFill([
+                'status' => $revocationPercentage < 100000
+                    ? 'partially_refunded'
+                    : 'refunded',
+                'gateway_response' => array_merge($existingPayload, [
+                    'latest_apple_notification' => $notificationAudit,
+                    'apple_notification_uuids' => $processedUuids,
+                    'apple_refund' => [
+                        'revocation_percentage' => $revocationPercentage,
+                        'refunded_coins' => $refundedCoins,
+                        'recovered_coins' => $recoveredCoins,
+                        'unrecovered_coins' => $refundedCoins - $recoveredCoins,
+                    ],
+                ]),
+            ])->save();
+
+            return [
+                'processed' => true,
+                'reason' => 'refunded',
+                'refunded_coins' => $refundedCoins,
+                'recovered_coins' => $recoveredCoins,
+                'unrecovered_coins' => $refundedCoins - $recoveredCoins,
+            ];
+        });
+    }
+
+    /**
+     * Reinstate only coins actually recovered when Apple reverses a refund.
+     *
+     * @param  array<string, mixed>  $notificationAudit
+     * @param  array<int, string>  $processedUuids
+     * @param  array<string, mixed>  $existingPayload
+     * @return array<string, mixed>
+     */
+    private function reverseAppleRefund(
+        PaymentOrder $order,
+        Wallet $wallet,
+        string $transactionId,
+        array $notificationAudit,
+        array $processedUuids,
+        array $existingPayload,
+    ): array {
+        $refund = WalletTransaction::query()
+            ->where('wallet_id', $wallet->id)
+            ->where('reference_type', 'payment_order_refund')
+            ->where('reference_id', $order->id)
+            ->where('category', 'recharge_refund')
+            ->first();
+        $reversal = WalletTransaction::query()
+            ->where('wallet_id', $wallet->id)
+            ->where('reference_type', 'payment_order_refund_reversal')
+            ->where('reference_id', $order->id)
+            ->where('category', 'recharge_refund_reversal')
+            ->first();
+        $restoredCoins = (int) ($reversal?->coins ?? 0);
+
+        if ($refund && ! $reversal) {
+            $restoredCoins = (int) $refund->coins;
+            $balanceBefore = (int) $wallet->balance;
+            $balanceAfter = $balanceBefore + $restoredCoins;
+            WalletTransaction::query()->create([
+                'wallet_id' => $wallet->id,
+                'type' => 'credit',
+                'coins' => $restoredCoins,
+                'amount' => $order->store_price ?? $order->amount_rupees,
+                'currency' => $order->store_currency ?: 'INR',
+                'category' => 'recharge_refund_reversal',
+                'reference' => 'payment_order_refund_reversal:'.$order->id,
+                'reference_type' => 'payment_order_refund_reversal',
+                'reference_id' => $order->id,
+                'transaction_id' => $transactionId,
+                'gateway' => 'apple_iap',
+                'description' => 'Apple purchase refund reversed',
+                'balance_before' => $balanceBefore,
+                'balance_after' => $balanceAfter,
+                'meta' => [
+                    'order_id' => $order->order_id,
+                    'store_product_id' => $order->store_product_id,
+                    'restored_coins' => $restoredCoins,
+                ],
+            ]);
+            if ($restoredCoins > 0) {
+                $wallet->update(['balance' => $balanceAfter]);
+            }
+        }
+
+        $order->forceFill([
+            'status' => 'success',
+            'gateway_response' => array_merge($existingPayload, [
+                'latest_apple_notification' => $notificationAudit,
+                'apple_notification_uuids' => $processedUuids,
+                'apple_refund_reversal' => [
+                    'restored_coins' => $restoredCoins,
+                ],
+            ]),
+        ])->save();
+
+        return [
+            'processed' => true,
+            'reason' => $reversal ? 'already_reversed' : 'refund_reversed',
+            'restored_coins' => $restoredCoins,
+        ];
     }
 
     public function createOrder(User $user, int $planId, ?string $gateway = null): PaymentOrder
@@ -889,19 +1228,25 @@ class RechargeOrderService
         $balanceBefore = (int) $wallet->balance;
         $balanceAfter = $balanceBefore + (int) $order->total_coins;
 
+        $currency = $order->store_currency ?: 'INR';
+        $amount = $order->store_price ?? $order->amount_rupees;
+        $description = $order->gateway === 'apple_iap'
+            ? 'Apple In-App Purchase '.$order->store_product_id
+            : 'Recharge ₹'.number_format((float) $order->amount_rupees, 0);
+
         $transaction = WalletTransaction::query()->create([
             'wallet_id' => $wallet->id,
             'type' => 'credit',
             'coins' => (int) $order->total_coins,
-            'amount' => $order->amount_rupees,
-            'currency' => 'INR',
+            'amount' => $amount,
+            'currency' => $currency,
             'category' => 'recharge',
             'reference' => 'payment_order:' . $order->id,
             'reference_type' => 'payment_order',
             'reference_id' => $order->id,
             'transaction_id' => $gatewayPaymentId,
             'gateway' => $order->gateway,
-            'description' => 'Recharge ₹' . number_format((float) $order->amount_rupees, 0),
+            'description' => $description,
             'balance_before' => $balanceBefore,
             'balance_after' => $balanceAfter,
             'meta' => [
@@ -909,6 +1254,8 @@ class RechargeOrderService
                 'bonus_coins' => (int) $order->bonus_coins,
                 'order_id' => $order->order_id,
                 'gateway_order_id' => $order->gateway_order_id,
+                'store_product_id' => $order->store_product_id,
+                'store_environment' => $order->store_environment,
             ],
         ]);
 
@@ -984,6 +1331,25 @@ class RechargeOrderService
         }
 
         return array_merge($existing, $extra);
+    }
+
+    private function appleAccountToken(User $user): string
+    {
+        $namespace = hex2bin('6ba7b8119dad11d180b400c04fd430c8');
+        $hash = sha1($namespace.'com.techybugs.talkee:user:'.$user->id, true);
+        $bytes = array_values(unpack('C16', substr($hash, 0, 16)));
+        $bytes[6] = ($bytes[6] & 0x0F) | 0x50;
+        $bytes[8] = ($bytes[8] & 0x3F) | 0x80;
+        $hex = implode('', array_map(fn (int $byte) => sprintf('%02x', $byte), $bytes));
+
+        return sprintf(
+            '%s-%s-%s-%s-%s',
+            substr($hex, 0, 8),
+            substr($hex, 8, 4),
+            substr($hex, 12, 4),
+            substr($hex, 16, 4),
+            substr($hex, 20, 12),
+        );
     }
 
     private function amountInSubunits(mixed $amountRupees): int

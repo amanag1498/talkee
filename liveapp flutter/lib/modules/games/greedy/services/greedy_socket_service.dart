@@ -20,7 +20,7 @@ class GreedySocketService {
     required String bearerToken,
   }) async {
     await stop();
-    final deviceId = await DeviceIdService.getAndroidId();
+    final deviceId = await DeviceIdService.getDeviceId();
 
     _socket = io.io(wsGamesUrl, <String, dynamic>{
       'transports': ['websocket'],
@@ -44,10 +44,22 @@ class GreedySocketService {
     _socket!.on('connect_error', (e) => _log('connect_error $e'));
     _socket!.on('feature:error', (data) => _emitEvent('feature:error', data));
     _socket!.on('games:event', (data) => _emitEvent('games:event', data));
-    _socket!.on('greedy:bet_placed', (data) => _emitEvent('greedy:bet_placed', data));
-    _socket!.on('greedy:round_locked', (data) => _emitEvent('greedy:round_locked', data));
-    _socket!.on('greedy:round_settled', (data) => _emitEvent('greedy:round_settled', data));
-    _socket!.on('greedy:round_started', (data) => _emitEvent('greedy:round_started', data));
+    _socket!.on(
+      'greedy:bet_placed',
+      (data) => _emitEvent('greedy:bet_placed', data),
+    );
+    _socket!.on(
+      'greedy:round_locked',
+      (data) => _emitEvent('greedy:round_locked', data),
+    );
+    _socket!.on(
+      'greedy:round_settled',
+      (data) => _emitEvent('greedy:round_settled', data),
+    );
+    _socket!.on(
+      'greedy:round_started',
+      (data) => _emitEvent('greedy:round_started', data),
+    );
     _socket!.on('greedy:snapshot', (data) {
       try {
         final payload = Map<String, dynamic>.from(data as Map);

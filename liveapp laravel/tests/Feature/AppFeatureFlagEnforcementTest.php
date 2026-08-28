@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Models\UserGameAccess;
+use App\Services\GameAccessService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Role;
@@ -40,6 +42,10 @@ class AppFeatureFlagEnforcementTest extends TestCase
             'app_features.platform.android.entry_effects_enabled' => true,
             'app_features.platform.android.wallet_recharge_enabled' => true,
             'app_features.platform.android.host_calling_enabled' => true,
+            'app_features.platform.android.fortune_wheel_enabled' => true,
+            'app_features.platform.android.video_room_games_enabled' => true,
+            'games.fortune_wheel.enabled' => true,
+            'games.fortune_wheel.visible_in_video_room_strip' => true,
         ]);
     }
 
@@ -164,6 +170,35 @@ class AppFeatureFlagEnforcementTest extends TestCase
         $this->actingAs($this->admin)
             ->put(route('admin.settings.app.update'), $payload)
             ->assertSessionHasErrors('app_features.enable_premium_theme_variants');
+    }
+
+    public function test_fortune_wheel_requires_platform_game_and_user_access(): void
+    {
+        Sanctum::actingAs($this->member);
+
+        $this->withHeaders($this->androidHeaders())
+            ->getJson('/api/app-config')
+            ->assertOk()
+            ->assertJsonPath('data.features.fortune_wheel_enabled', false);
+
+        UserGameAccess::query()->create([
+            'user_id' => $this->member->id,
+            'game_key' => GameAccessService::GAME_FORTUNE_WHEEL,
+            'granted_by' => $this->admin->id,
+        ]);
+
+        $this->withHeaders($this->androidHeaders())
+            ->getJson('/api/app-config')
+            ->assertOk()
+            ->assertJsonPath('data.features.fortune_wheel_enabled', true)
+            ->assertJsonPath('data.features.video_room_games_enabled', true);
+
+        config(['app_features.platform.android.fortune_wheel_enabled' => false]);
+
+        $this->withHeaders($this->androidHeaders())
+            ->getJson('/api/games/fortune-wheel')
+            ->assertForbidden()
+            ->assertJsonPath('feature', 'fortune_wheel_enabled');
     }
 
     private function androidHeaders(int $versionCode = 10): array

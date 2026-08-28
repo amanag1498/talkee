@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.1+8
+version: 1.0.1+9
 
 environment:
   sdk: ^3.7.2
@@ -63,11 +63,17 @@ dependencies:
   path_provider: ^2.1.5
   path: ^1.9.1
   package_info_plus: ^8.0.2
-  razorpay_flutter: ^1.4.5
+  in_app_purchase_platform_interface: ^1.4.0
+  in_app_purchase_storekit: ^0.4.8
+  # Keep Razorpay native code out of the iOS binary. Android continues to use
+  # the existing Talkieo Razorpay checkout implementation.
+  razorpay_flutter:
+    path: third_party/razorpay_flutter_android_only
   facebook_app_events: ^0.28.0
   app_tracking_transparency: ^2.0.7
   uuid: ^4.5.1
   audioplayers: ^6.6.0
+  lottie: ^3.1.2
   # your existing: get, dio, etc.
 
 
@@ -126,3 +132,5 @@ flutter:
   assets:
     - lib/modules/home/views/
     - assets/games/teen_patti/
+    - assets/games/fortune_wheel/
+    - assets/images/animations/

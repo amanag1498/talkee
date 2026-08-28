@@ -47,6 +47,16 @@ return [
         'base_url' => env('RAZORPAY_BASE_URL', 'https://api.razorpay.com/v1'),
     ],
 
+    'apple_iap' => [
+        'enabled' => env('APPLE_IAP_ENABLED', false),
+        'bundle_id' => env('APPLE_IAP_BUNDLE_ID', 'com.techybugs.talkee'),
+        'issuer_id' => env('APPLE_IAP_ISSUER_ID', ''),
+        'key_id' => env('APPLE_IAP_KEY_ID', ''),
+        'private_key' => env('APPLE_IAP_PRIVATE_KEY', ''),
+        'private_key_path' => env('APPLE_IAP_PRIVATE_KEY_PATH', ''),
+        'environment' => env('APPLE_IAP_ENVIRONMENT', 'production'),
+    ],
+
     'meta' => [
         'app_id' => env('META_APP_ID', ''),
         'client_token' => env('META_CLIENT_TOKEN', ''),

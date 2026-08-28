@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 class CallVibrationService {
   CallVibrationService._();
 
-  static const _channel = MethodChannel('com.gdlive/device');
+  static const _channel = MethodChannel('com.techybugs.talkee/device');
 
   static Future<void> startIncomingCallVibration() async {
     try {

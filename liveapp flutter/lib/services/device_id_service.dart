@@ -1,9 +1,9 @@
 import 'package:flutter/services.dart';
 
 class DeviceIdService {
-  static const _channel = MethodChannel('com.gdlive/device');
+  static const _channel = MethodChannel('com.techybugs.talkee/device');
 
-  static Future<String> getAndroidId() async {
+  static Future<String> getDeviceId() async {
     try {
       final id = await _channel.invokeMethod<String>('getDeviceId');
       return (id ?? '').trim();

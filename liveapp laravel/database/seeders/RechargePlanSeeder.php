@@ -20,7 +20,10 @@ class RechargePlanSeeder extends Seeder
         foreach ($plans as $plan) {
             RechargePlan::query()->updateOrCreate(
                 ['title' => $plan['title']],
-                $plan + ['is_active' => true]
+                $plan + [
+                    'apple_product_id' => 'com.techybugs.talkee.coins.'.$plan['total_coins'],
+                    'is_active' => true,
+                ]
             );
         }
     }

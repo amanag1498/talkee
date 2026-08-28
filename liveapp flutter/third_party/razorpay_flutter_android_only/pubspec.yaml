@@ -1,0 +1,20 @@
+name: razorpay_flutter
+description: Android-only Talkieo fork of Razorpay Flutter 1.4.5.
+version: 1.4.5
+publish_to: none
+
+environment:
+  sdk: ">=2.12.0 <4.0.0"
+  flutter: ">=2.0.0"
+
+dependencies:
+  eventify: ^1.0.0
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.razorpay.razorpay_flutter
+        pluginClass: RazorpayFlutterPlugin

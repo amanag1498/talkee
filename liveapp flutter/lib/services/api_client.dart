@@ -2,6 +2,7 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart' as dio_pkg;
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
 import 'storage_service.dart';
@@ -9,6 +10,11 @@ import '../services/device_id_service.dart';
 import 'app_settings_service.dart';
 
 class ApiClient {
+  static const bool _verboseApiLogs = bool.fromEnvironment(
+    'VERBOSE_API_LOGS',
+    defaultValue: false,
+  );
+
   final dio_pkg.Dio dio;
   final StorageService storage;
 
@@ -57,6 +63,11 @@ class ApiClient {
     dio.interceptors.add(
       dio_pkg.InterceptorsWrapper(
         onRequest: (o, h) {
+          if (!(kDebugMode && _verboseApiLogs)) {
+            h.next(o);
+            return;
+          }
+
           String pretty(dynamic v) {
             try {
               return const JsonEncoder.withIndent('  ').convert(v);
@@ -84,6 +95,11 @@ class ApiClient {
           h.next(o);
         },
         onResponse: (r, h) {
+          if (!(kDebugMode && _verboseApiLogs)) {
+            h.next(r);
+            return;
+          }
+
           String pretty(dynamic v) {
             try {
               return const JsonEncoder.withIndent('  ').convert(v);
@@ -101,20 +117,22 @@ class ApiClient {
           h.next(r);
         },
         onError: (e, h) {
-          String pretty(dynamic v) {
-            try {
-              return const JsonEncoder.withIndent('  ').convert(v);
-            } catch (_) {
-              return '$v';
+          if (kDebugMode && _verboseApiLogs) {
+            String pretty(dynamic v) {
+              try {
+                return const JsonEncoder.withIndent('  ').convert(v);
+              } catch (_) {
+                return '$v';
+              }
             }
-          }
 
-          final ro = e.requestOptions;
-          print('❌  ${e.response?.statusCode ?? '-'} ${ro.method} ${ro.uri}');
-          if (e.response?.data != null) {
-            print('❌  error body:\n${pretty(e.response!.data)}');
+            final ro = e.requestOptions;
+            print('❌  ${e.response?.statusCode ?? '-'} ${ro.method} ${ro.uri}');
+            if (e.response?.data != null) {
+              print('❌  error body:\n${pretty(e.response!.data)}');
+            }
+            print('❌  dio error: ${e.type} ${e.message}');
           }
-          print('❌  dio error: ${e.type} ${e.message}');
 
           final statusCode = e.response?.statusCode ?? 0;
           final body = e.response?.data;
@@ -249,7 +267,7 @@ class ApiClient {
 
   Future<String> _getDeviceId() async {
     if (_cachedDeviceId != null) return _cachedDeviceId!;
-    _fetchInFlight ??= DeviceIdService.getAndroidId();
+    _fetchInFlight ??= DeviceIdService.getDeviceId();
     final id = await _fetchInFlight!;
     _cachedDeviceId = id;
     _fetchInFlight = null;

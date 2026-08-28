@@ -23,9 +23,10 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="talkee_default_channel" />
+        <!-- Keep WebRTC texture video compatible with Android GPU drivers. -->
         <meta-data
             android:name="io.flutter.embedding.android.EnableImpeller"
-            android:value="true" />
+            android:value="false" />
         <meta-data android:name="com.facebook.sdk.ApplicationId" android:value="@string/facebook_app_id" />
         <meta-data android:name="com.facebook.sdk.ClientToken" android:value="@string/facebook_client_token" />
         <meta-data android:name="com.facebook.sdk.AutoInitEnabled" android:value="false" />

@@ -5,7 +5,7 @@
 @section('content')
   @php
     $selectedGame = request('game', 'teen_patti');
-    if (!in_array($selectedGame, ['teen_patti', 'greedy'], true)) {
+    if (!in_array($selectedGame, ['teen_patti', 'greedy', 'fortune_wheel'], true)) {
       $selectedGame = 'teen_patti';
     }
 
@@ -23,6 +23,13 @@
         'dashboard_route' => 'admin.games.greedy.dashboard',
         'settings_route' => route('admin.settings.games.edit', ['game' => 'greedy']),
         'accent' => 'primary',
+      ],
+      'fortune_wheel' => [
+        'label' => 'Fortune Wheel',
+        'subtitle' => 'Daily free spins, paid spin cost, weighted rewards, and timed entitlement prizes.',
+        'dashboard_route' => 'admin.games.fortune-wheel.dashboard',
+        'settings_route' => route('admin.settings.games.edit', ['game' => 'fortune_wheel']),
+        'accent' => 'warning',
       ],
     ];
 
@@ -58,6 +65,9 @@
     $durationKey = "games.{$selectedGame}.round_duration_seconds";
     $lockKey = "games.{$selectedGame}.betting_lock_seconds";
     $displayKey = "games.{$selectedGame}.result_display_seconds";
+    $freeSpinsKey = "games.{$selectedGame}.free_spins_per_day";
+    $paidSpinCostKey = "games.{$selectedGame}.paid_spin_cost_coins";
+    $paidSpinsEnabledKey = "games.{$selectedGame}.paid_spins_enabled";
   @endphp
 
   <div class="admin-page-shell">
@@ -67,13 +77,14 @@
           <span class="admin-page-eyebrow"><i class="ti ti-device-gamepad-2"></i> Real-time Game Controls</span>
           <h1 class="admin-page-title">Game Settings</h1>
           <p class="admin-page-subtitle">
-            Separate control surfaces for Teen Patti and Greedy. Each tab keeps the round engine, room visibility, fake bets, timing, and payout rules isolated so the admin side stays readable.
+            Separate controls for Teen Patti, Greedy, and Fortune Wheel. Each tab keeps game availability, room visibility, timing, costs, and reward rules isolated.
           </p>
         </div>
         <div class="col-lg-4">
           <div class="admin-page-actions">
             <a href="{{ route('admin.games.teen-patti.dashboard') }}" class="btn btn-light border">Teen Patti Dashboard</a>
             <a href="{{ route('admin.games.greedy.dashboard') }}" class="btn btn-light border">Greedy Dashboard</a>
+            <a href="{{ route('admin.games.fortune-wheel.dashboard') }}" class="btn btn-light border">Fortune Wheel Dashboard</a>
           </div>
         </div>
       </div>
@@ -113,24 +124,37 @@
           </div>
         </div>
       </div>
-      <div class="col-lg-3 col-md-6">
-        <div class="card h-100">
-          <div class="card-body">
+      @if($selectedGame === 'fortune_wheel')
+        <div class="col-lg-3 col-md-6">
+          <div class="card h-100"><div class="card-body">
+            <div class="text-muted small">Free Spins</div>
+            <div class="fs-4 fw-semibold">{{ number_format((int) ($values[$freeSpinsKey] ?? 0)) }} / day</div>
+            <div class="small text-muted mt-1">{{ !empty($values[$paidSpinsEnabledKey]) ? 'Paid spins enabled' : 'Paid spins disabled' }}</div>
+          </div></div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+          <div class="card h-100"><div class="card-body">
+            <div class="text-muted small">Paid Spin Cost</div>
+            <div class="fs-4 fw-semibold">{{ number_format((int) ($values[$paidSpinCostKey] ?? 0)) }} coins</div>
+            <div class="small text-muted mt-1">Charged after free spins are used</div>
+          </div></div>
+        </div>
+      @else
+        <div class="col-lg-3 col-md-6">
+          <div class="card h-100"><div class="card-body">
             <div class="text-muted small">Bet Window</div>
             <div class="fs-4 fw-semibold">{{ $values[$durationKey] ?? '—' }}s</div>
             <div class="small text-muted mt-1">Lock {{ $values[$lockKey] ?? '—' }}s before result, display {{ $values[$displayKey] ?? '—' }}s</div>
-          </div>
+          </div></div>
         </div>
-      </div>
-      <div class="col-lg-3 col-md-6">
-        <div class="card h-100">
-          <div class="card-body">
+        <div class="col-lg-3 col-md-6">
+          <div class="card h-100"><div class="card-body">
             <div class="text-muted small">Bet Range</div>
             <div class="fs-4 fw-semibold">{{ number_format((int) ($values[$minKey] ?? 0)) }} - {{ number_format((int) ($values[$maxKey] ?? 0)) }}</div>
             <div class="small text-muted mt-1">{{ !empty($values[$fakeKey]) ? 'Fake bets enabled' : 'Fake bets disabled' }}</div>
-          </div>
+          </div></div>
         </div>
-      </div>
+      @endif
     </div>
 
     <form method="post" action="{{ route('admin.settings.games.update', ['game' => $selectedGame]) }}" class="card">

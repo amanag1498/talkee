@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
 import '../../modules/Live/services/live_service.dart';
@@ -38,6 +39,8 @@ import '../../modules/entry_packs/services/entry_pack_api.dart';
 import '../../modules/entry_packs/views/entry_pack_catalog_page.dart';
 import '../../modules/games/greedy/services/greedy_api.dart';
 import '../../modules/games/greedy/services/greedy_socket_service.dart';
+import '../../modules/games/fortune_wheel/services/fortune_wheel_api.dart';
+import '../../modules/games/fortune_wheel/services/fortune_wheel_preload_service.dart';
 import '../../modules/games/teen_patti/services/teen_patti_api.dart';
 import '../../modules/games/teen_patti/services/teen_patti_socket_service.dart';
 import '../../modules/subscriptions/controllers/viewer_gate_controller.dart';
@@ -64,8 +67,11 @@ import '../../services/live_rooms_ws_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/live_eligibility_service.dart'; // 👈 add
 import '../../services/meta_attribution_service.dart';
+import '../../services/push_service.dart';
 import '../../modules/wallet/services/wallet_api.dart';
+import '../../modules/wallet/services/apple_in_app_purchase_service.dart';
 import '../../modules/wallet/services/razorpay_checkout_service.dart';
+import '../../modules/wallet/services/recharge_payment_platform.dart';
 import '../../modules/wallet/views/wallet_history_page.dart';
 
 import '../middleware/auth_middleware.dart';
@@ -96,19 +102,53 @@ class AppPages {
       permanent: true,
     );
     unawaited(appSettings.initialize());
+    if (authService.isLoggedIn) {
+      unawaited(() async {
+        try {
+          await PushService.instance.init(api: api);
+          await PushService.instance.requestPermissionAndRegister();
+        } catch (error) {
+          debugPrint('[push] startup registration failed: $error');
+        }
+      }());
+    }
     Get.put<CallService>(CallService(api), permanent: true);
     Get.put<CallSocketService>(CallSocketService(), permanent: true);
     Get.put<ProfileApi>(ProfileApi(api), permanent: true);
     Get.put<HostFollowApi>(HostFollowApi(api), permanent: true);
     Get.put<ApplicationsApi>(ApplicationsApi(api), permanent: true);
-    Get.put<WalletApi>(WalletApi(api), permanent: true);
+    final walletApi = Get.put<WalletApi>(WalletApi(api), permanent: true);
     Get.put<TeenPattiApi>(TeenPattiApi(api), permanent: true);
     Get.put<GreedyApi>(GreedyApi(api), permanent: true);
-    Get.put<RazorpayCheckoutService>(
-      RazorpayCheckoutService(),
+    if (rechargePaymentProviderFor(AppSettingsService.currentPlatform) ==
+        RechargePaymentProvider.appleInAppPurchase) {
+      final applePurchases = Get.put<AppleInAppPurchaseService>(
+        AppleInAppPurchaseService(
+          walletApi: walletApi,
+          authService: authService,
+        ),
+        permanent: true,
+      );
+      unawaited(applePurchases.initialize());
+    } else {
+      Get.put<RazorpayCheckoutService>(
+        RazorpayCheckoutService(),
+        permanent: true,
+      );
+    }
+    Get.put<EntryPackApi>(EntryPackApi(api), permanent: true);
+    final fortuneWheelApi = Get.put<FortuneWheelApi>(
+      FortuneWheelApi(api),
       permanent: true,
     );
-    Get.put<EntryPackApi>(EntryPackApi(api), permanent: true);
+    Get.put<FortuneWheelPreloadService>(
+      FortuneWheelPreloadService(
+        api: fortuneWheelApi,
+        settings: appSettings,
+        storage: storage,
+      ),
+      permanent: true,
+    );
     Get.put<DashboardApi>(DashboardApi(api), permanent: true);
     Get.put<ThemesApi>(ThemesApi(api), permanent: true);
     Get.put<BannerService>(

@@ -22,7 +22,7 @@ class CallSocketService {
     Future<void> Function(String reason)? onForceLogout,
   }) async {
     await stop();
-    final deviceId = await DeviceIdService.getAndroidId();
+    final deviceId = await DeviceIdService.getDeviceId();
 
     _socket = io.io(url, <String, dynamic>{
       'transports': ['websocket'],

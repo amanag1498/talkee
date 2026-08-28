@@ -54,8 +54,7 @@ class RoomsSocketService {
   Stream<Map<String, dynamic>> get messageEvents => _messageEvents.stream;
   Stream<Map<String, dynamic>> get messageErrors => _messageErrors.stream;
   Stream<Map<String, dynamic>> get moderationEvents => _moderationEvents.stream;
-  Stream<Map<String, dynamic>> get moderationErrors =>
-      _moderationErrors.stream;
+  Stream<Map<String, dynamic>> get moderationErrors => _moderationErrors.stream;
   Stream<Map<String, dynamic>> get moderationSystemMessages =>
       _moderationSystemMessages.stream;
   Stream<Map<String, dynamic>> get profileEvents => _profileEvents.stream;
@@ -72,7 +71,7 @@ class RoomsSocketService {
   }) async {
     _verbose = verbose;
     await stop();
-    final deviceId = await DeviceIdService.getAndroidId();
+    final deviceId = await DeviceIdService.getDeviceId();
 
     final opts = <String, dynamic>{
       'transports': ['websocket'],

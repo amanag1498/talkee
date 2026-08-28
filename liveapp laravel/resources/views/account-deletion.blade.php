@@ -184,8 +184,8 @@
       <div class="content">
         <div class="card-surface">
           <p class="copy">
-            If you would like to delete your Talkieo account, you can submit a request through the support channel below.
-            This page is provided as Talkieo's public account deletion resource for users who are not able to access the app.
+            You can permanently delete your Talkieo account inside the app from Settings &gt; Delete Account.
+            This page remains available as Talkieo's public deletion resource for users who cannot access the app.
           </p>
 
           <div class="action-box mt-4">
@@ -211,15 +211,15 @@
             with applicable legal, security, fraud prevention, and retention requirements.
           </p>
 
-          <h2>Temporary deactivation vs deletion</h2>
+          <h2>In-app deletion</h2>
           <p>
-            Account deactivation only disables account access temporarily. Account deletion is a separate request and is intended
-            to remove the Talkieo account and associated account data, subject to any data we must retain for legitimate legal or operational reasons.
+            The in-app Delete Account action reauthenticates you, revokes active access, removes personal profile data, and anonymizes
+            records that must be retained for legitimate financial, fraud-prevention, moderation, payout, legal, or operational reasons.
           </p>
 
           <h2>Need help instead?</h2>
           <p>
-            If you do not want to permanently delete your account and only need support or temporary deactivation, contact
+            If you cannot access the in-app action or need support before permanently deleting your account, contact
             <a href="mailto:admin@talkee.in">admin@talkee.in</a>.
           </p>
         </div>

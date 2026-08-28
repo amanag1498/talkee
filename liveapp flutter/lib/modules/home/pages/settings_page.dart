@@ -208,154 +208,158 @@ class _SettingsPageState extends State<SettingsPage>
               physics: const BouncingScrollPhysics(),
               padding: EdgeInsets.fromLTRB(16, 16, 4, widget.bottomPadding),
               children: [
-              _AnimatedEntrance(
-                index: 0,
-                child: Obx(() {
-                  final profile = _profileController.profile.value;
-                  final effectiveName =
-                      profile?.name ?? user?.name ?? 'Talkieo user';
-                  final effectiveRoles =
-                      profile?.roles ?? user?.roles ?? const <String>[];
-                  final avatarUrl = resolveAvatarUrl(
-                    api,
-                    profile?.avatarUrl ?? user?.avatarUrl,
-                  );
-                  final roleLabel =
-                      effectiveRoles.isEmpty
-                          ? 'USER'
-                          : effectiveRoles.join(' • ').toUpperCase();
-                  return _AccountCard(
-                    userId: profile?.id ?? user?.id,
-                    name: effectiveName,
-                    roleLabel: roleLabel,
-                    avatarUrl: avatarUrl,
-                    profileFrameUrl:
-                        profile?.profileFrame?.assetUrl ??
-                        user?.profileFrame?.assetUrl,
-                    initials:
-                        (effectiveName.isNotEmpty
-                                ? effectiveName.substring(0, 1)
-                                : 'U')
-                            .toUpperCase(),
-                    level: profile?.level ?? user?.level,
-                    levelTitle: profile?.levelTitle ?? user?.levelTitle,
-                    badgeColor: profile?.badgeColor ?? user?.badgeColor,
-                    lifetimeSpendCoins:
-                        profile?.lifetimeSpendCoins ?? user?.lifetimeSpendCoins,
-                    nextLevelTitle:
-                        profile?.nextLevelTitle ?? user?.nextLevelTitle,
-                    nextLevelRequiredSpend:
-                        profile?.nextLevelRequiredSpend ??
-                        user?.nextLevelRequiredSpend,
-                    remainingSpendToNextLevel:
-                        profile?.remainingSpendToNextLevel ??
-                        user?.remainingSpendToNextLevel,
-                    progressPercent:
-                        profile?.progressPercent ?? user?.progressPercent,
-                    actions: const [],
-                  );
-                }),
-              ),
-              const SizedBox(height: 12),
-              _AnimatedEntrance(
-                index: 1,
-                child: _SettingsSection(
-                  title: 'Wallet & Plans',
-                  subtitle: 'Coins, subscriptions, and entry effects',
-                  children:
-                      monetizationChildren.isEmpty
-                          ? const [
-                            _PremiumEmptyState(
-                              title: 'Wallet and premium tools are unavailable',
-                              message:
-                                  'This section is currently disabled by the platform configuration.',
-                            ),
-                          ]
-                          : monetizationChildren,
+                _AnimatedEntrance(
+                  index: 0,
+                  child: Obx(() {
+                    final profile = _profileController.profile.value;
+                    final effectiveName =
+                        profile?.name ?? user?.name ?? 'Talkieo user';
+                    final effectiveRoles =
+                        profile?.roles ?? user?.roles ?? const <String>[];
+                    final avatarUrl = resolveAvatarUrl(
+                      api,
+                      profile?.avatarUrl ?? user?.avatarUrl,
+                    );
+                    final roleLabel =
+                        effectiveRoles.isEmpty
+                            ? 'USER'
+                            : effectiveRoles.join(' • ').toUpperCase();
+                    return _AccountCard(
+                      userId: profile?.id ?? user?.id,
+                      name: effectiveName,
+                      roleLabel: roleLabel,
+                      avatarUrl: avatarUrl,
+                      profileFrameUrl:
+                          profile?.profileFrame?.assetUrl ??
+                          user?.profileFrame?.assetUrl,
+                      initials:
+                          (effectiveName.isNotEmpty
+                                  ? effectiveName.substring(0, 1)
+                                  : 'U')
+                              .toUpperCase(),
+                      level: profile?.level ?? user?.level,
+                      levelTitle: profile?.levelTitle ?? user?.levelTitle,
+                      badgeColor: profile?.badgeColor ?? user?.badgeColor,
+                      lifetimeSpendCoins:
+                          profile?.lifetimeSpendCoins ??
+                          user?.lifetimeSpendCoins,
+                      nextLevelTitle:
+                          profile?.nextLevelTitle ?? user?.nextLevelTitle,
+                      nextLevelRequiredSpend:
+                          profile?.nextLevelRequiredSpend ??
+                          user?.nextLevelRequiredSpend,
+                      remainingSpendToNextLevel:
+                          profile?.remainingSpendToNextLevel ??
+                          user?.remainingSpendToNextLevel,
+                      progressPercent:
+                          profile?.progressPercent ?? user?.progressPercent,
+                      actions: const [],
+                    );
+                  }),
                 ),
-              ),
-              const SizedBox(height: 12),
-              _AnimatedEntrance(
-                index: 3,
-                child: Obx(() {
-                  final active = appSettings.activePremiumThemeVariant;
-                  final unlocked = appSettings.unlockedThemeKeys.length;
-                  final meta = '${_themeVariantLabel(active)} · $unlocked unlocked';
-                  return _SettingsSection(
-                    title: 'Appearance',
-                    subtitle: 'Theme selection and unlock status',
+                const SizedBox(height: 12),
+                _AnimatedEntrance(
+                  index: 1,
+                  child: _SettingsSection(
+                    title: 'Wallet & Plans',
+                    subtitle: 'Coins, subscriptions, and entry effects',
+                    children:
+                        monetizationChildren.isEmpty
+                            ? const [
+                              _PremiumEmptyState(
+                                title:
+                                    'Wallet and premium tools are unavailable',
+                                message:
+                                    'This section is currently disabled by the platform configuration.',
+                              ),
+                            ]
+                            : monetizationChildren,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _AnimatedEntrance(
+                  index: 3,
+                  child: Obx(() {
+                    final active = appSettings.activePremiumThemeVariant;
+                    final unlocked = appSettings.unlockedThemeKeys.length;
+                    final meta =
+                        '${_themeVariantLabel(active)} · $unlocked unlocked';
+                    return _SettingsSection(
+                      title: 'Appearance',
+                      subtitle: 'Theme selection and unlock status',
+                      children: [
+                        _PremiumSettingTile(
+                          icon: Icons.palette_rounded,
+                          title: 'Theme Center',
+                          subtitle: 'Browse, unlock, and select themes',
+                          meta: meta,
+                          onTap: () => Get.toNamed(Routes.themeCenter),
+                        ),
+                      ],
+                    );
+                  }),
+                ),
+                const SizedBox(height: 12),
+                _AnimatedEntrance(
+                  index: 4,
+                  child: _SettingsSection(
+                    title: 'Support & Legal',
+                    subtitle: 'Assistance, privacy, and policy documents',
                     children: [
                       _PremiumSettingTile(
-                        icon: Icons.palette_rounded,
-                        title: 'Theme Center',
-                        subtitle: 'Browse, unlock, and select themes',
-                        meta: meta,
-                        onTap: () => Get.toNamed(Routes.themeCenter),
+                        icon: Icons.privacy_tip_rounded,
+                        title: 'Privacy Policy',
+                        subtitle: 'Read how Talkieo handles your data',
+                        onTap: () => _openExternal(AppUrls.privacyPolicyUrl),
+                      ),
+                      _PremiumSettingTile(
+                        icon: Icons.article_rounded,
+                        title: 'Terms & Conditions',
+                        subtitle: 'Review the service terms',
+                        onTap: () => _openExternal(AppUrls.termsOfServiceUrl),
+                      ),
+                      _PremiumSettingTile(
+                        icon: Icons.support_agent_rounded,
+                        title: 'Help / Support',
+                        subtitle: 'Get assistance if something is wrong',
+                        onTap: () => _openExternal(AppUrls.supportUrl),
+                      ),
+                      _PremiumSettingTile(
+                        icon: Icons.delete_forever_rounded,
+                        title: 'Deletion Information',
+                        subtitle:
+                            'Read what is removed and what must be retained',
+                        tint: const Color(0xFFE45C30),
+                        onTap: () => _openExternal(AppUrls.accountDeletionUrl),
                       ),
                     ],
-                  );
-                }),
-              ),
-              const SizedBox(height: 12),
-              _AnimatedEntrance(
-                index: 4,
-                child: _SettingsSection(
-                  title: 'Support & Legal',
-                  subtitle: 'Assistance, privacy, and policy documents',
-                  children: [
-                    _PremiumSettingTile(
-                      icon: Icons.privacy_tip_rounded,
-                      title: 'Privacy Policy',
-                      subtitle: 'Read how Talkieo handles your data',
-                      onTap: () => _openExternal(AppUrls.privacyPolicyUrl),
-                    ),
-                    _PremiumSettingTile(
-                      icon: Icons.article_rounded,
-                      title: 'Terms & Conditions',
-                      subtitle: 'Review the service terms',
-                      onTap: () => _openExternal(AppUrls.termsOfServiceUrl),
-                    ),
-                    _PremiumSettingTile(
-                      icon: Icons.support_agent_rounded,
-                      title: 'Help / Support',
-                      subtitle: 'Get assistance if something is wrong',
-                      onTap: () => _openExternal(AppUrls.supportUrl),
-                    ),
-                    _PremiumSettingTile(
-                      icon: Icons.delete_forever_rounded,
-                      title: 'Account Deletion',
-                      subtitle: 'Open the public account deletion request page',
-                      tint: const Color(0xFFE45C30),
-                      onTap: () => _openExternal(AppUrls.accountDeletionUrl),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              _AnimatedEntrance(
-                index: 5,
-                child: _SettingsSection(
-                  title: 'Session',
-                  subtitle: 'Account access on this device',
-                  children: [
-                    _PremiumSettingTile(
-                      icon: Icons.person_off_rounded,
-                      title: 'Deactivate Account',
-                      subtitle:
-                          'Request deactivation without permanently deleting your Talkieo account',
-                      tint: const Color(0xFFFF8A3D),
-                      onTap: _confirmDeactivateAccount,
-                    ),
-                    _PremiumSettingTile(
-                      icon: Icons.logout_rounded,
-                      title: 'Logout',
-                      subtitle: 'Sign out of this device',
-                      tint: tokens.dangerColor,
-                      onTap: () => _confirmLogout(auth),
-                    ),
-                  ],
+                const SizedBox(height: 12),
+                _AnimatedEntrance(
+                  index: 5,
+                  child: _SettingsSection(
+                    title: 'Session',
+                    subtitle: 'Account access on this device',
+                    children: [
+                      _PremiumSettingTile(
+                        icon: Icons.delete_forever_rounded,
+                        title: 'Delete Account',
+                        subtitle:
+                            'Permanently delete your Talkieo account and personal data',
+                        tint: const Color(0xFFE45C30),
+                        onTap: () => _confirmDeleteAccount(auth),
+                      ),
+                      _PremiumSettingTile(
+                        icon: Icons.logout_rounded,
+                        title: 'Logout',
+                        subtitle: 'Sign out of this device',
+                        tint: tokens.dangerColor,
+                        onTap: () => _confirmLogout(auth),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
               ],
             ),
           ],
@@ -369,7 +373,7 @@ class _SettingsPageState extends State<SettingsPage>
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-  Future<void> _confirmDeactivateAccount() async {
+  Future<void> _confirmDeleteAccount(AuthService auth) async {
     final tokens = _settingsTokens();
     final confirmed = await showDialog<bool>(
       context: context,
@@ -384,10 +388,7 @@ class _SettingsPageState extends State<SettingsPage>
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  tokens.cardGradient.first,
-                  tokens.cardGradient.last,
-                ],
+                colors: [tokens.cardGradient.first, tokens.cardGradient.last],
               ),
               border: Border.all(color: tokens.borderColor),
               boxShadow: [
@@ -411,22 +412,22 @@ class _SettingsPageState extends State<SettingsPage>
                         height: 42,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: const Color(0xFFFF8A3D).withOpacity(.14),
+                          color: const Color(0xFFE45C30).withOpacity(.14),
                           border: Border.all(
-                            color: const Color(0xFFFF8A3D).withOpacity(.32),
+                            color: const Color(0xFFE45C30).withOpacity(.32),
                           ),
                         ),
                         alignment: Alignment.center,
                         child: const Icon(
-                          Icons.person_off_rounded,
-                          color: Color(0xFFFF8A3D),
+                          Icons.delete_forever_rounded,
+                          color: Color(0xFFE45C30),
                           size: 20,
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Deactivate account?',
+                          'Permanently delete account?',
                           style: TextStyle(
                             color: tokens.textPrimary,
                             fontWeight: FontWeight.w900,
@@ -438,7 +439,7 @@ class _SettingsPageState extends State<SettingsPage>
                   ),
                   const SizedBox(height: 14),
                   Text(
-                    'This sends you to support so you can request account deactivation. Your account is not permanently deleted by this action.',
+                    'This permanently removes your Talkieo profile and access. Financial, fraud-prevention, moderation, and payout records may be retained in anonymized form where required.',
                     style: TextStyle(
                       color: tokens.textSecondary,
                       fontWeight: FontWeight.w600,
@@ -447,7 +448,7 @@ class _SettingsPageState extends State<SettingsPage>
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'Support email: ${AppUrls.supportEmail}',
+                    'You will be asked to sign in again before deletion. This cannot be undone.',
                     style: TextStyle(
                       color: tokens.textSecondary.withOpacity(.9),
                       fontWeight: FontWeight.w700,
@@ -466,7 +467,8 @@ class _SettingsPageState extends State<SettingsPage>
                               borderRadius: BorderRadius.circular(16),
                             ),
                           ),
-                          onPressed: () => Navigator.of(dialogContext).pop(false),
+                          onPressed:
+                              () => Navigator.of(dialogContext).pop(false),
                           child: const Text('Cancel'),
                         ),
                       ),
@@ -476,10 +478,7 @@ class _SettingsPageState extends State<SettingsPage>
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(16),
                             gradient: const LinearGradient(
-                              colors: [
-                                Color(0xFFFF8A3D),
-                                Color(0xFFE45C30),
-                              ],
+                              colors: [Color(0xFFE45C30), Color(0xFFC62828)],
                             ),
                           ),
                           child: FilledButton(
@@ -492,8 +491,9 @@ class _SettingsPageState extends State<SettingsPage>
                                 borderRadius: BorderRadius.circular(16),
                               ),
                             ),
-                            onPressed: () => Navigator.of(dialogContext).pop(true),
-                            child: const Text('Continue'),
+                            onPressed:
+                                () => Navigator.of(dialogContext).pop(true),
+                            child: const Text('Delete forever'),
                           ),
                         ),
                       ),
@@ -508,7 +508,20 @@ class _SettingsPageState extends State<SettingsPage>
     );
 
     if (confirmed == true) {
-      await _openExternal(AppUrls.deactivateAccountMailto);
+      try {
+        await auth.deleteAccount();
+      } on AuthSignInCancelledException {
+        return;
+      } catch (error) {
+        if (!mounted) return;
+        final message = error.toString().replaceFirst(
+          RegExp(r'^Exception:\s*'),
+          '',
+        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
+      }
     }
   }
 
@@ -527,10 +540,7 @@ class _SettingsPageState extends State<SettingsPage>
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  tokens.cardGradient.first,
-                  tokens.cardGradient.last,
-                ],
+                colors: [tokens.cardGradient.first, tokens.cardGradient.last],
               ),
               border: Border.all(color: tokens.borderColor),
               boxShadow: [
@@ -601,7 +611,8 @@ class _SettingsPageState extends State<SettingsPage>
                               borderRadius: BorderRadius.circular(16),
                             ),
                           ),
-                          onPressed: () => Navigator.of(dialogContext).pop(false),
+                          onPressed:
+                              () => Navigator.of(dialogContext).pop(false),
                           child: const Text('Cancel'),
                         ),
                       ),
@@ -613,7 +624,11 @@ class _SettingsPageState extends State<SettingsPage>
                             gradient: LinearGradient(
                               colors: [
                                 tokens.dangerColor,
-                                Color.lerp(tokens.dangerColor, Colors.black, .18)!,
+                                Color.lerp(
+                                  tokens.dangerColor,
+                                  Colors.black,
+                                  .18,
+                                )!,
                               ],
                             ),
                           ),
@@ -627,7 +642,8 @@ class _SettingsPageState extends State<SettingsPage>
                                 borderRadius: BorderRadius.circular(16),
                               ),
                             ),
-                            onPressed: () => Navigator.of(dialogContext).pop(true),
+                            onPressed:
+                                () => Navigator.of(dialogContext).pop(true),
                             child: const Text('Logout'),
                           ),
                         ),
@@ -757,7 +773,9 @@ class _ThemeVariantSheet extends StatelessWidget {
                         const SizedBox(height: 14),
                         Text(
                           'Theme',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          style: Theme.of(
+                            context,
+                          ).textTheme.titleLarge?.copyWith(
                             color: tokens.textPrimary,
                             fontWeight: FontWeight.w900,
                           ),
@@ -799,13 +817,12 @@ class _ThemeVariantSheet extends StatelessWidget {
                             selected: selected == variant,
                             enabled: true,
                             previewColor: _variantPreviewColor(variant),
-                            onTap:
-                                () async {
-                                  await appSettings.setThemeVariantOverride(
-                                    variant,
-                                  );
-                                  if (context.mounted) Get.back();
-                                },
+                            onTap: () async {
+                              await appSettings.setThemeVariantOverride(
+                                variant,
+                              );
+                              if (context.mounted) Get.back();
+                            },
                           ),
                           if (variant != kPremiumThemeVariants.last)
                             const SizedBox(height: 10),
@@ -865,7 +882,8 @@ class _ThemeVariantOptionTile extends StatelessWidget {
                     : tokens.glassColor.withOpacity(.82),
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color: selected ? previewColor.withOpacity(.75) : tokens.borderColor,
+              color:
+                  selected ? previewColor.withOpacity(.75) : tokens.borderColor,
             ),
           ),
           child: Row(
@@ -972,118 +990,110 @@ class _AccountCard extends StatelessWidget {
     return _GlassShell(
       padding: const EdgeInsets.all(15),
       borderRadius: 30,
+      onTap: () {
+        Haptics.light();
+        Get.toNamed(Routes.profile);
+      },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(24),
-              onTap: () {
-                Haptics.light();
-                Get.toNamed(Routes.profile);
-              },
-              child: Padding(
-                padding: const EdgeInsets.all(2),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(24),
-                        gradient: hasProfileFrame
+          Padding(
+            padding: const EdgeInsets.all(2),
+            child: Row(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(24),
+                    gradient:
+                        hasProfileFrame
                             ? null
                             : LinearGradient(
-                                colors: tokens.primaryButtonGradient,
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                        color: hasProfileFrame ? Colors.transparent : null,
+                              colors: tokens.primaryButtonGradient,
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                    color: hasProfileFrame ? Colors.transparent : null,
+                  ),
+                  child: FramedAvatar(
+                    size: 56,
+                    label: initials,
+                    avatarUrl: avatarUrl,
+                    frameUrl: profileFrameUrl,
+                    backgroundColor: tokens.cardGradient.first,
+                    avatarInset: 0.04,
+                    borderRadius: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: tokens.textPrimary,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 21,
+                        ),
                       ),
-                      child: FramedAvatar(
-                        size: 56,
-                        label: initials,
-                        avatarUrl: avatarUrl,
-                        frameUrl: profileFrameUrl,
-                        backgroundColor: tokens.cardGradient.first,
-                        avatarInset: 0.04,
-                        borderRadius: 22,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      if (userId != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'User ID: $userId',
+                          style: TextStyle(
+                            color: tokens.textSecondary.withOpacity(.88),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12.4,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
                         children: [
-                          Text(
-                            name,
-                            style: Theme.of(
-                              context,
-                            ).textTheme.titleLarge?.copyWith(
-                              color: tokens.textPrimary,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 21,
+                          _RoleChip(label: roleLabel),
+                          if (level != null ||
+                              (levelTitle?.trim().isNotEmpty ?? false))
+                            _RoleChip(
+                              label:
+                                  levelTitle?.trim().isNotEmpty == true
+                                      ? 'L$level · ${levelTitle!.trim()}'
+                                      : 'LEVEL ${level ?? 1}',
+                              color:
+                                  _parseColor(badgeColor) ?? tokens.glowColor,
                             ),
-                          ),
-                          if (userId != null) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              'User ID: $userId',
-                              style: TextStyle(
-                                color: tokens.textSecondary.withOpacity(.88),
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12.4,
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 4),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 6,
-                            children: [
-                              _RoleChip(label: roleLabel),
-                              if (level != null ||
-                                  (levelTitle?.trim().isNotEmpty ?? false))
-                                _RoleChip(
-                                  label:
-                                      levelTitle?.trim().isNotEmpty == true
-                                          ? 'L$level · ${levelTitle!.trim()}'
-                                          : 'LEVEL ${level ?? 1}',
-                                  color:
-                                      _parseColor(badgeColor) ??
-                                      tokens.glowColor,
-                                ),
-                            ],
-                          ),
                         ],
                       ),
-                    ),
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            tokens.chipColor.withOpacity(.96),
-                            tokens.glassColor.withOpacity(.74),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: tokens.borderColor.withOpacity(.82),
-                        ),
-                      ),
-                      child: Icon(
-                        Icons.arrow_forward_rounded,
-                        color: tokens.textPrimary,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        tokens.chipColor.withOpacity(.96),
+                        tokens.glassColor.withOpacity(.74),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: tokens.borderColor.withOpacity(.82),
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.arrow_forward_rounded,
+                    color: tokens.textPrimary,
+                  ),
+                ),
+              ],
             ),
           ),
           if ((lifetimeSpendCoins ?? 0) > 0 || level != null) ...[
@@ -1147,9 +1157,10 @@ class _LevelProgressCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = _settingsTokens();
-    final accent = badgeColor == const Color(0xFF7B50C5)
-        ? tokens.primaryButtonGradient.first
-        : badgeColor;
+    final accent =
+        badgeColor == const Color(0xFF7B50C5)
+            ? tokens.primaryButtonGradient.first
+            : badgeColor;
     final currentLevelLabel =
         levelTitle?.trim().isNotEmpty == true
             ? 'Level ${level ?? 1} · ${levelTitle!.trim()}'
@@ -1283,10 +1294,7 @@ class _SettingsSection extends StatelessWidget {
                   if (index != children.length - 1)
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 18),
-                      child: Divider(
-                        height: 1,
-                        color: tokens.borderColor,
-                      ),
+                      child: Divider(height: 1, color: tokens.borderColor),
                     ),
                 ],
               );
@@ -1589,11 +1597,13 @@ class _GlassShell extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
   final double borderRadius;
+  final VoidCallback? onTap;
 
   const _GlassShell({
     required this.child,
     this.padding = const EdgeInsets.all(16),
     this.borderRadius = 28,
+    this.onTap,
   });
 
   @override
@@ -1604,7 +1614,6 @@ class _GlassShell extends StatelessWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: Container(
-          padding: padding,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -1621,7 +1630,17 @@ class _GlassShell extends StatelessWidget {
               ),
             ],
           ),
-          child: child,
+          child:
+              onTap == null
+                  ? Padding(padding: padding, child: child)
+                  : Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(borderRadius),
+                      onTap: onTap,
+                      child: Padding(padding: padding, child: child),
+                    ),
+                  ),
         ),
       ),
     );
@@ -1641,22 +1660,25 @@ class _RoleChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: chipColor == Colors.white
-            ? tokens.chipColor.withOpacity(.78)
-            : chipColor.withOpacity(.12),
+        color:
+            chipColor == Colors.white
+                ? tokens.chipColor.withOpacity(.78)
+                : chipColor.withOpacity(.12),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
-          color: chipColor == Colors.white
-              ? tokens.borderColor
-              : chipColor.withOpacity(.18),
+          color:
+              chipColor == Colors.white
+                  ? tokens.borderColor
+                  : chipColor.withOpacity(.18),
         ),
       ),
       child: Text(
         label,
         style: TextStyle(
-          color: chipColor == Colors.white
-              ? tokens.textPrimary
-              : chipColor.withOpacity(.92),
+          color:
+              chipColor == Colors.white
+                  ? tokens.textPrimary
+                  : chipColor.withOpacity(.92),
           fontSize: 11,
           fontWeight: FontWeight.w700,
           letterSpacing: .4,

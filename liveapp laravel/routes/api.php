@@ -1,7 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\{PlanController, SubscriptionController, LiveRoomController, LiveRoomSeatRequestController, LiveRoomGiftController, ProfileController, ApplicationApiController, WalletApiController, RechargePlanController, RechargeOrderController, NotificationApiController, PushTokenController, LiveRoomIngestController, OpsController, BannerController, BannerTrackingController, LiveUsersController, CallController, CallReportApiController, LevelController, HostFollowController, EntryPackController, LiveRoomPkController, ThemeController, HostModerationController, UserReportController, UnblockRequestController, AdminModerationController, WsModerationController, DashboardLeaderboardController, RazorpayWebhookController, MetaAppEventController};
+use App\Http\Controllers\Api\{PlanController, SubscriptionController, LiveRoomController, LiveRoomSeatRequestController, LiveRoomGiftController, ProfileController, ApplicationApiController, WalletApiController, RechargePlanController, RechargeOrderController, NotificationApiController, PushTokenController, LiveRoomIngestController, OpsController, BannerController, BannerTrackingController, LiveUsersController, CallController, CallReportApiController, LevelController, HostFollowController, EntryPackController, LiveRoomPkController, ThemeController, HostModerationController, UserReportController, UnblockRequestController, AdminModerationController, WsModerationController, DashboardLeaderboardController, RazorpayWebhookController, MetaAppEventController, AccountDeletionController, AppleIapNotificationController, FortuneWheelController};
 use App\Http\Controllers\Api\TeenPattiController;
 use App\Http\Controllers\Api\GreedyGameController;
 use App\Http\Controllers\Auth\FirebaseAuthApiController;
@@ -114,6 +114,9 @@ Route::middleware(['auth:sanctum','throttle:240,1'])->group(function () {
     Route::get('/games/greedy', [GreedyGameController::class, 'snapshot'])->middleware('feature_enabled:greedy_enabled');
     Route::get('/games/greedy/history', [GreedyGameController::class, 'history'])->middleware('feature_enabled:greedy_enabled');
     Route::post('/games/greedy/bets', [GreedyGameController::class, 'placeBet'])->middleware('feature_enabled:greedy_enabled');
+    Route::get('/games/fortune-wheel', [FortuneWheelController::class, 'snapshot'])->middleware('feature_enabled:fortune_wheel_enabled');
+    Route::post('/games/fortune-wheel/spin', [FortuneWheelController::class, 'spin'])->middleware('feature_enabled:fortune_wheel_enabled');
+    Route::get('/games/fortune-wheel/history', [FortuneWheelController::class, 'history'])->middleware('feature_enabled:fortune_wheel_enabled');
     Route::get('/entry-packs', [EntryPackController::class, 'index'])->middleware('feature_enabled:entry_effects_enabled');
     Route::post('/entry-packs/{entryPack}/purchase', [EntryPackController::class, 'purchase'])->middleware('feature_enabled:entry_effects_enabled');
     Route::get('/me/entry-pack', [EntryPackController::class, 'mine'])->middleware('feature_enabled:entry_effects_enabled');
@@ -143,6 +146,8 @@ Route::middleware(['auth:sanctum','throttle:240,1'])->group(function () {
     Route::get('/recharge/orders', [RechargeOrderController::class, 'index'])->middleware('feature_enabled:wallet_recharge_enabled');
     Route::post('/recharge/orders', [RechargeOrderController::class, 'store'])->middleware('feature_enabled:wallet_recharge_enabled');
     Route::post('/recharge/orders/{orderId}/verify', [RechargeOrderController::class, 'verify'])->middleware('feature_enabled:wallet_recharge_enabled');
+    Route::post('/recharge/apple/verify', [RechargeOrderController::class, 'verifyApple'])->middleware('feature_enabled:wallet_recharge_enabled');
+    Route::delete('/account', AccountDeletionController::class)->middleware('throttle:5,1');
 
     Route::post('/calls/request', [CallController::class, 'request'])->middleware('feature_enabled:host_calling_enabled');
     Route::post('/calls/{call}/accept', [CallController::class, 'accept'])->middleware('feature_enabled:host_calling_enabled');
@@ -192,6 +197,7 @@ Route::middleware('throttle:240,1')->group(function () {
 
 Route::post('/auth/firebase/login', [FirebaseAuthApiController::class, 'login']);
 Route::post('/payments/razorpay/webhook', RazorpayWebhookController::class)->middleware('throttle:120,1');
+Route::post('/payments/apple/notifications', AppleIapNotificationController::class)->middleware('throttle:120,1');
 Route::middleware('auth:sanctum')->post('/auth/logout', [FirebaseAuthApiController::class, 'logout']);
 
 // Example of an authenticated API route:

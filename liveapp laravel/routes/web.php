@@ -30,6 +30,7 @@ use App\Http\Controllers\Admin\BannerAdminController;
 use App\Http\Controllers\Admin\SettingsController as AdminSettingsController;
 use App\Http\Controllers\Admin\TeenPattiAdminController;
 use App\Http\Controllers\Admin\GreedyGameAdminController;
+use App\Http\Controllers\Admin\FortuneWheelAdminController;
 use App\Http\Controllers\Admin\ThemeAdminController;
 use App\Http\Controllers\Admin\CallReportController as AdminCallReportController;
 use App\Http\Controllers\Admin\HostFollowerReportController as AdminHostFollowerReportController;
@@ -243,6 +244,10 @@ Route::middleware(['auth','not_blocked','role:admin'])->prefix('admin')->name('a
   Route::post('games/greedy/tick', [GreedyGameAdminController::class, 'tick'])->name('games.greedy.tick');
   Route::post('games/greedy/rounds/{round}/reconcile', [GreedyGameAdminController::class, 'reconcile'])->name('games.greedy.rounds.reconcile');
   Route::post('games/greedy/bets/{bet}/refund', [GreedyGameAdminController::class, 'refund'])->name('games.greedy.bets.refund');
+  Route::get('games/fortune-wheel', [FortuneWheelAdminController::class, 'dashboard'])->name('games.fortune-wheel.dashboard');
+  Route::post('games/fortune-wheel/segments', [FortuneWheelAdminController::class, 'storeSegment'])->name('games.fortune-wheel.segments.store');
+  Route::put('games/fortune-wheel/segments/{segment}', [FortuneWheelAdminController::class, 'updateSegment'])->name('games.fortune-wheel.segments.update');
+  Route::delete('games/fortune-wheel/segments/{segment}', [FortuneWheelAdminController::class, 'destroySegment'])->name('games.fortune-wheel.segments.destroy');
   Route::get('moderation/blocked-users', [AdminModerationController::class, 'blockedUsers'])->name('moderation.blocked-users');
   Route::post('moderation/blocked-users/unblock', [AdminModerationController::class, 'adminUnblock'])->name('moderation.blocked-users.unblock');
   Route::get('moderation/reports', [AdminModerationController::class, 'reports'])->name('moderation.reports');

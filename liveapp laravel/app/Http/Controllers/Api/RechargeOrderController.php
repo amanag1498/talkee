@@ -109,4 +109,44 @@ class RechargeOrderController extends Controller
             ],
         ], $httpStatus);
     }
+
+    public function verifyApple(Request $request, MetaAppEventRecorder $metaEvents)
+    {
+        $data = $request->validate([
+            'product_id' => 'required|string|max:255',
+            'transaction_id' => 'required|string|max:255',
+        ]);
+
+        try {
+            $result = $this->service->verifyApplePurchase(
+                $request->user(),
+                $data['product_id'],
+                $data['transaction_id'],
+                $request->header('X-Client-Platform'),
+            );
+        } catch (InvalidArgumentException $exception) {
+            return response()->json([
+                'ok' => false,
+                'message' => $exception->getMessage(),
+            ], 422);
+        }
+
+        $result['order']->loadMissing('user');
+        if (!$result['already_processed']) {
+            $metaEvents->recordVerifiedPurchase($result['order'], $request);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'message' => $result['already_processed']
+                ? 'Apple purchase already verified.'
+                : 'Apple purchase verified.',
+            'data' => [
+                'order' => $result['order'],
+                'wallet_balance' => (int) $result['wallet']->balance,
+                'transaction' => $result['transaction'],
+                'already_processed' => $result['already_processed'],
+            ],
+        ]);
+    }
 }

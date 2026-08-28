@@ -13,6 +13,7 @@ import '../../../app/widgets/google_button.dart';
 import '../../../app/widgets/shake.dart';
 import '../../../app/widgets/talkee_logo.dart';
 import '../../../services/app_settings_service.dart';
+import '../../../services/auth_service.dart';
 import '../controllers/auth_controller.dart';
 
 class LoginView extends GetView<AuthController> {
@@ -193,12 +194,44 @@ class _LoginDarkOnly extends GetView<AuthController> {
 
                                 GoogleButton(
                                   onPressed: loading ? null : controller.loginWithGoogle,
-                                  loading: loading,
+                                  loading: loading && controller.activeProvider.value == 'google',
                                 ),
+
+                                if (isApplePlatform) ...[
+                                  const SizedBox(height: 12),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: 54,
+                                    child: FilledButton.icon(
+                                      onPressed: loading ? null : controller.loginWithApple,
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: Colors.black,
+                                        foregroundColor: Colors.white,
+                                        disabledBackgroundColor: Colors.black54,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
+                                      ),
+                                      icon: loading && controller.activeProvider.value == 'apple'
+                                          ? const SizedBox.square(
+                                              dimension: 20,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : const Icon(Icons.apple, size: 25),
+                                      label: const Text(
+                                        'Sign in with Apple',
+                                        style: TextStyle(fontWeight: FontWeight.w800),
+                                      ),
+                                    ),
+                                  ),
+                                ],
 
                                 const SizedBox(height: 14),
                                 Text(
-                                  'One tap with Google. No passwords, no forms.',
+                                  'Secure sign-in. No passwords, no forms.',
                                   textAlign: TextAlign.center,
                                   style: theme.textTheme.bodySmall?.copyWith(
                                     color: tokens.textSecondary.withOpacity(.82),

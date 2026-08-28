@@ -13,6 +13,7 @@ class RechargePlan extends Model
         'bonus_coins',
         'agency_bonus_coins',
         'total_coins',
+        'apple_product_id',
         'is_active',
         'sort_order',
     ];

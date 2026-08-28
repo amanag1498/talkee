@@ -78,6 +78,29 @@ class WalletApi {
     return fetchSummary();
   }
 
+  Future<WalletSummaryDto> verifyApplePurchase({
+    required String productId,
+    required String transactionId,
+  }) async {
+    final response = await _api.post<Map<String, dynamic>>(
+      'recharge/apple/verify',
+      data: {
+        'product_id': productId,
+        'transaction_id': transactionId,
+      },
+    );
+    final body = response.data is Map<String, dynamic>
+        ? response.data as Map<String, dynamic>
+        : Map<String, dynamic>.from(response.data as Map? ?? const <String, dynamic>{});
+    if (body['ok'] != true) {
+      throw Exception(
+        (body['message'] ?? 'Apple purchase verification failed.').toString(),
+      );
+    }
+
+    return fetchSummary();
+  }
+
   Future<List<WalletTransactionDto>> fetchTransactions({String filter = 'all'}) async {
     final response = await _api.get<Map<String, dynamic>>(
       'wallet/transactions',

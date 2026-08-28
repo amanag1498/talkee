@@ -23,6 +23,7 @@ class EnsureFeatureEnabled
         $gameKey = match ($featureKey) {
             'teen_patti_enabled' => GameAccessService::GAME_TEEN_PATTI,
             'greedy_enabled' => GameAccessService::GAME_GREEDY,
+            'fortune_wheel_enabled' => GameAccessService::GAME_FORTUNE_WHEEL,
             default => null,
         };
 
@@ -55,6 +56,7 @@ class EnsureFeatureEnabled
             'host_calling_enabled' => 'Host calling is currently unavailable.',
             'teen_patti_enabled' => 'Teen Patti is currently unavailable.',
             'greedy_enabled' => 'Greedy is currently unavailable.',
+            'fortune_wheel_enabled' => 'Fortune Wheel is currently unavailable.',
             'video_room_games_enabled' => 'Live room games are currently unavailable.',
             default => 'This feature is currently unavailable.',
         };
@@ -65,6 +67,7 @@ class EnsureFeatureEnabled
         return match ($featureKey) {
             'teen_patti_enabled' => 'Teen Patti is locked for this user.',
             'greedy_enabled' => 'Greedy is locked for this user.',
+            'fortune_wheel_enabled' => 'Fortune Wheel is locked for this user.',
             default => $this->messageFor($featureKey),
         };
     }

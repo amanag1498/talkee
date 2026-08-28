@@ -24,7 +24,7 @@ class AppRuntimeGate extends StatelessWidget {
         return _BlockingStateScreen(
           icon: Icons.system_update_rounded,
           eyebrow: 'Update required',
-          title: 'Update Talkee to continue',
+          title: 'Update Talkieo to continue',
           message: settings.forceUpgradeMessage,
           detailLabel:
               'Installed ${AppSettingsService.appVersionName} (${AppSettingsService.appVersionCode})',

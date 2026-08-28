@@ -421,6 +421,12 @@
               </a>
             </li>
             <li class="pc-item">
+              <a href="{{ route('admin.games.fortune-wheel.dashboard') }}" class="pc-link {{ request()->routeIs('admin.games.fortune-wheel.*') ? 'active' : '' }}">
+                <span class="pc-micon"><i class="ti ti-wheel"></i></span>
+                <span class="pc-mtext">Fortune Wheel</span>
+              </a>
+            </li>
+            <li class="pc-item">
               <a href="{{ route('admin.settings.games.edit') }}" class="pc-link {{ request()->routeIs('admin.settings.games.*') ? 'active' : '' }}">
                 <span class="pc-micon"><i class="ti ti-adjustments-horizontal"></i></span>
                 <span class="pc-mtext">Game Settings</span>

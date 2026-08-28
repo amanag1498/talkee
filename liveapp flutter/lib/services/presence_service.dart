@@ -44,7 +44,7 @@ class PresenceService with WidgetsBindingObserver {
         _url == wsPresenceUrl && _token == bearerToken && _sock != null;
     _url = wsPresenceUrl;
     _token = bearerToken;
-    _deviceId = await DeviceIdService.getAndroidId();
+    _deviceId = await DeviceIdService.getDeviceId();
     _onForceLogout = onForceLogout;
     _onNotify = onNotify;
 
@@ -56,7 +56,9 @@ class PresenceService with WidgetsBindingObserver {
       _observerRegistered = true;
     }
 
-    _connSub ??= Connectivity().onConnectivityChanged.listen((dynamic event) async {
+    _connSub ??= Connectivity().onConnectivityChanged.listen((
+      dynamic event,
+    ) async {
       final results = _normalizeConnectivity(event);
       final online = _isAnyOnline(results);
       debugPrint('[presence][${_ts()}] connectivity=$results online=$online');

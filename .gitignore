@@ -8,6 +8,7 @@
 
 # Flutter
 liveapp flutter/.dart_tool/
+liveapp flutter/**/.dart_tool/
 liveapp flutter/build/
 liveapp flutter/.flutter-plugins
 liveapp flutter/.flutter-plugins-dependencies
@@ -18,6 +19,12 @@ liveapp flutter/**/ios/Flutter/.last_build_id
 liveapp flutter/android/app/debug/
 liveapp flutter/android/app/profile/
 liveapp flutter/android/app/release/
+liveapp flutter/third_party/razorpay_flutter_android_only/pubspec.lock
+
+# Accidental local command/output files
+liveapp flutter/Get
+liveapp flutter/Keystore
+liveapp flutter/Run
 
 # Laravel
 liveapp laravel/vendor/

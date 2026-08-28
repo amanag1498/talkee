@@ -1,5 +1,5 @@
 // lib/app/widgets/animated_background.dart
-// Talkee — Premium Mesh Background
+// Talkieo — Premium Mesh Background
 // Branded gradient mesh + moving aurora blobs + subtle texture + drifting icons.
 
 import 'dart:math' as math;

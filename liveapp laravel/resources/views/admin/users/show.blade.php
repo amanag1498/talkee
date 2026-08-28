@@ -157,6 +157,20 @@
               <div class="border rounded-3 p-3">
                 <div class="d-flex justify-content-between align-items-center gap-3">
                   <div>
+                    <div class="fw-semibold">Fortune Wheel</div>
+                    <div class="text-muted small">Allow daily free-spin preload and wheel access for user #{{ $user->id }}</div>
+                  </div>
+                  <div class="form-check form-switch m-0">
+                    <input type="hidden" name="fortune_wheel" value="0">
+                    <input class="form-check-input" type="checkbox" name="fortune_wheel" value="1" id="game_access_fortune_wheel" @checked($gameAccessMap['fortune_wheel'] ?? false)>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="border rounded-3 p-3">
+                <div class="d-flex justify-content-between align-items-center gap-3">
+                  <div>
                     <div class="fw-semibold">Greedy</div>
                     <div class="text-muted small">Unlock access for user #{{ $user->id }}</div>
                   </div>

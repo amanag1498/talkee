@@ -20,11 +20,17 @@ class PaymentOrder extends Model
         'gateway_order_id',
         'gateway_payment_id',
         'gateway_response',
+        'apple_transaction_id',
+        'store_product_id',
+        'store_environment',
+        'store_price',
+        'store_currency',
         'verified_at',
     ];
 
     protected $casts = [
         'amount_rupees' => 'decimal:2',
+        'store_price' => 'decimal:3',
         'gateway_response' => 'array',
         'verified_at' => 'datetime',
     ];

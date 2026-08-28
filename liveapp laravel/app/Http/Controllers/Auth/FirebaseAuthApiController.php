@@ -231,13 +231,22 @@ class FirebaseAuthApiController extends Controller
         $name  = $verified->claims()->get('name');
         $pic   = $verified->claims()->get('picture');
         $ev    = (bool) ($verified->claims()->get('email_verified') ?? false);
+        $firebaseClaims = $verified->claims()->get('firebase') ?? [];
+        $signInProvider = is_array($firebaseClaims)
+            ? ($firebaseClaims['sign_in_provider'] ?? null)
+            : null;
+        $provider = match ($signInProvider) {
+            'apple.com' => 'apple',
+            'google.com' => 'google',
+            default => 'firebase',
+        };
 
         if (!$email) {
             OpsMetrics::increment(OpsMetrics::AUTH_FAILURES);
             return response()->json([
                 'ok' => false,
                 'code' => 'firebase_email_missing',
-                'msg' => 'Google did not provide an email address for this account.',
+                'msg' => 'The identity provider did not provide an email address for this account.',
             ], 422);
         }
 
@@ -252,7 +261,7 @@ class FirebaseAuthApiController extends Controller
                 'email'             => $email,
                 'firebase_uid'      => $uid,
                 'avatar_url'        => $pic,
-                'provider'          => 'google',
+                'provider'          => $provider,
                 'email_verified_at' => $ev ? now() : null,
                 'device_id'         => $deviceId,
                 'password'          => bcrypt(str()->random(32)),
@@ -265,6 +274,7 @@ class FirebaseAuthApiController extends Controller
             if (!$user->firebase_uid)                      $patch['firebase_uid'] = $uid;
             if ($ev && is_null($user->email_verified_at))  $patch['email_verified_at'] = now();
             if (!$user->avatar_url && $pic)                $patch['avatar_url'] = $pic;
+            if ($provider !== 'firebase' && $user->provider !== $provider) $patch['provider'] = $provider;
             if (!empty($patch)) $user->forceFill($patch)->save();
             Log::info('AUTH_API_USER_FOUND', [
                 'user_id' => $user->id,
@@ -276,7 +286,7 @@ class FirebaseAuthApiController extends Controller
         if ($created) {
             app(MetaAppEventRecorder::class)->record('complete_registration', $user, [
                 'source' => 'server',
-                'properties' => ['login_provider' => 'google'],
+                'properties' => ['login_provider' => $provider],
             ], $request);
         }
 
