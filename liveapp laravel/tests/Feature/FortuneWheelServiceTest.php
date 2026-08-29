@@ -85,16 +85,26 @@ class FortuneWheelServiceTest extends TestCase
         $this->assertSame(50, data_get($paidSpin, 'spin.spin_cost_coins'));
         $this->assertSame(490, data_get($paidSpin, 'wallet_balance'));
 
+        $paidSpinId = (int) data_get($paidSpin, 'spin.id');
+        $paidSpinRecord = FortuneWheelSpin::query()->findOrFail($paidSpinId);
+
         $this->assertDatabaseHas('wallet_transactions', [
+            'id' => $paidSpinRecord->wallet_debit_transaction_id,
             'type' => 'debit',
             'coins' => 50,
-            'category' => 'other',
+            'category' => 'game_bet_debit',
+            'reference' => 'fortune_wheel_spin:'.$paidSpinId,
+            'reference_type' => 'fortune_wheel_spin',
+            'reference_id' => $paidSpinId,
         ]);
         $this->assertDatabaseHas('wallet_transactions', [
+            'id' => $paidSpinRecord->wallet_credit_transaction_id,
             'type' => 'credit',
             'coins' => 20,
-            'category' => 'game_reward_credit',
+            'category' => 'game_payout_credit',
+            'reference' => 'fortune_wheel_spin:'.$paidSpinId,
             'reference_type' => 'fortune_wheel_spin',
+            'reference_id' => $paidSpinId,
         ]);
     }
 

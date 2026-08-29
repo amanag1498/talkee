@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\UserEntryPack;
 use App\Models\UserSubscription;
 use App\Models\Wallet;
+use App\Models\WalletTransaction;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -120,6 +121,7 @@ class FortuneWheelService
 
             User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
             WalletService::getOrCreate($user);
+            $wallet = Wallet::query()->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
 
             $spunForDate = $this->spunForDate();
             $freeUsed = FortuneWheelSpin::query()
@@ -137,25 +139,8 @@ class FortuneWheelService
                 throw new HttpException(422, 'Paid Fortune Wheel spins are disabled.');
             }
 
-            $walletDebit = null;
-            if ($spinCost > 0) {
-                try {
-                    $walletDebit = WalletService::spend(
-                        user: $user,
-                        coins: $spinCost,
-                        category: 'other',
-                        counterparty: null,
-                        reference: 'fortune_wheel_spin:'.($normalizedKey ?: Str::uuid()->toString()),
-                        meta: [
-                            'game' => 'fortune_wheel',
-                            'event' => 'FORTUNE_WHEEL_SPIN_DEBIT',
-                            'spin_type' => $spinType,
-                            'idempotency_key' => $normalizedKey,
-                        ],
-                    );
-                } catch (\InvalidArgumentException) {
-                    throw new HttpException(422, 'Insufficient wallet balance.');
-                }
+            if ($spinCost > 0 && (int) $wallet->balance < $spinCost) {
+                throw new HttpException(422, 'Insufficient wallet balance.');
             }
 
             $segment = $this->weightedSegment($segments);
@@ -169,7 +154,6 @@ class FortuneWheelService
                 'entry_pack_id' => $segment->entry_pack_id,
                 'subscription_plan_id' => $segment->subscription_plan_id,
                 'reward_duration_hours' => $segment->reward_duration_hours,
-                'wallet_debit_transaction_id' => $walletDebit?->id,
                 'idempotency_key' => $normalizedKey,
                 'spun_for_date' => $spunForDate,
                 'meta' => [
@@ -178,7 +162,38 @@ class FortuneWheelService
                 ],
             ]);
 
+            $walletDebit = null;
+            if ($spinCost > 0) {
+                $balanceBefore = (int) $wallet->balance;
+                $balanceAfter = $balanceBefore - $spinCost;
+                $wallet->update(['balance' => $balanceAfter]);
+
+                $walletDebit = WalletTransaction::query()->create([
+                    'wallet_id' => $wallet->id,
+                    'type' => 'debit',
+                    'coins' => $spinCost,
+                    'category' => 'game_bet_debit',
+                    'reference' => 'fortune_wheel_spin:'.$spin->id,
+                    'reference_type' => 'fortune_wheel_spin',
+                    'reference_id' => $spin->id,
+                    'description' => 'Fortune Wheel paid spin',
+                    'balance_before' => $balanceBefore,
+                    'balance_after' => $balanceAfter,
+                    'meta' => [
+                        'game' => 'fortune_wheel',
+                        'event' => 'FORTUNE_WHEEL_SPIN_DEBIT',
+                        'spin_id' => $spin->id,
+                        'segment_id' => $segment->id,
+                        'spin_type' => $spinType,
+                        'idempotency_key' => $normalizedKey,
+                    ],
+                ]);
+            }
+
             $rewardRefs = $this->applyReward($user, $segment, $spin);
+            if ($walletDebit) {
+                $rewardRefs['wallet_debit_transaction_id'] = $walletDebit->id;
+            }
             if ($rewardRefs !== []) {
                 $spin->forceFill($rewardRefs)->save();
             }
@@ -211,10 +226,14 @@ class FortuneWheelService
             ->all();
     }
 
-    public function adminDashboardPayload(): array
+    public function adminDashboardPayload(array $filters = []): array
     {
         $today = $this->spunForDate();
         $todaySpins = FortuneWheelSpin::query()->whereDate('spun_for_date', $today);
+        $weekStart = CarbonImmutable::parse($today, $this->timezone())->startOfWeek()->toDateString();
+        $weekSpins = FortuneWheelSpin::query()
+            ->whereDate('spun_for_date', '>=', $weekStart)
+            ->whereDate('spun_for_date', '<=', $today);
         $paidSpins = (clone $todaySpins)->where('spin_type', FortuneWheelSpin::TYPE_PAID);
         $segments = FortuneWheelSegment::query()
             ->with(['entryPack', 'subscriptionPlan'])
@@ -248,14 +267,41 @@ class FortuneWheelService
             $healthWarnings[] = 'Paid spin coin margin is zero or negative before valuing entry-pack and subscription rewards.';
         }
 
+        $auditQuery = $this->filteredAdminSpinsQuery($filters);
+        $auditSummary = $this->aggregateSpinQuery(clone $auditQuery);
+        $dailyBreakdown = (clone $auditQuery)
+            ->selectRaw('spun_for_date')
+            ->selectRaw('COUNT(*) as total_spins')
+            ->selectRaw("SUM(CASE WHEN spin_type = 'free' THEN 1 ELSE 0 END) as free_spins")
+            ->selectRaw("SUM(CASE WHEN spin_type = 'paid' THEN 1 ELSE 0 END) as paid_spins")
+            ->selectRaw("SUM(CASE WHEN reward_type = 'entry_pack' AND user_entry_pack_id IS NOT NULL THEN 1 ELSE 0 END) as entry_pack_entitlements")
+            ->selectRaw("SUM(CASE WHEN reward_type = 'subscription' AND user_subscription_id IS NOT NULL THEN 1 ELSE 0 END) as subscription_entitlements")
+            ->selectRaw("SUM(CASE WHEN (reward_type = 'entry_pack' AND user_entry_pack_id IS NULL) OR (reward_type = 'subscription' AND user_subscription_id IS NULL) THEN 1 ELSE 0 END) as entitlement_grant_issues")
+            ->selectRaw('COALESCE(SUM(CASE WHEN user_entry_pack_id IS NOT NULL OR user_subscription_id IS NOT NULL THEN reward_duration_hours ELSE 0 END), 0) as entitlement_hours')
+            ->selectRaw('COALESCE(SUM(spin_cost_coins), 0) as coins_collected')
+            ->selectRaw("COALESCE(SUM(CASE WHEN reward_type = 'coins' THEN reward_value_coins ELSE 0 END), 0) as coins_rewarded")
+            ->groupBy('spun_for_date')
+            ->orderByDesc('spun_for_date')
+            ->get();
+
         return [
             'settings' => $this->publicSettings(),
             'segments' => $segments,
-            'recent_spins' => FortuneWheelSpin::query()
-                ->with(['user', 'segment', 'entryPack', 'subscriptionPlan'])
-                ->latest('id')
-                ->limit(25)
-                ->get(),
+            'spin_audit' => [
+                'summary' => $auditSummary,
+                'daily' => $dailyBreakdown,
+                'spins' => (clone $auditQuery)
+                    ->with(['user', 'segment', 'entryPack', 'subscriptionPlan', 'userEntryPack', 'userSubscription'])
+                    ->latest('id')
+                    ->paginate((int) ($filters['per_page'] ?? 25))
+                    ->withQueryString(),
+            ],
+            'entitlement_summary' => [
+                'today' => $this->aggregateSpinQuery(clone $todaySpins),
+                'week' => $this->aggregateSpinQuery(clone $weekSpins),
+                'week_start' => $weekStart,
+                'week_end' => $today,
+            ],
             'summary' => [
                 'today' => $today,
                 'spins_today' => (int) (clone $todaySpins)->count(),
@@ -273,6 +319,65 @@ class FortuneWheelService
             'health_warnings' => $healthWarnings,
             'entry_packs' => $entryPacks,
             'subscription_plans' => $subscriptionPlans,
+        ];
+    }
+
+    private function filteredAdminSpinsQuery(array $filters): Builder
+    {
+        $query = FortuneWheelSpin::query();
+        $search = trim((string) ($filters['q'] ?? ''));
+
+        return $query
+            ->when($search !== '', function (Builder $query) use ($search) {
+                $like = "%{$search}%";
+                $query->where(function (Builder $query) use ($search, $like) {
+                    $query
+                        ->where('idempotency_key', 'like', $like)
+                        ->orWhereHas('user', fn (Builder $user) => $user
+                            ->where('name', 'like', $like)
+                            ->orWhere('email', 'like', $like));
+
+                    if (ctype_digit($search)) {
+                        $query->orWhere('id', (int) $search)->orWhere('user_id', (int) $search);
+                    }
+                });
+            })
+            ->when(! empty($filters['spin_type']), fn (Builder $query) => $query->where('spin_type', $filters['spin_type']))
+            ->when(! empty($filters['reward_type']), fn (Builder $query) => $query->where('reward_type', $filters['reward_type']))
+            ->when(! empty($filters['date_from']), fn (Builder $query) => $query->whereDate('spun_for_date', '>=', $filters['date_from']))
+            ->when(! empty($filters['date_to']), fn (Builder $query) => $query->whereDate('spun_for_date', '<=', $filters['date_to']));
+    }
+
+    private function aggregateSpinQuery(Builder $query): array
+    {
+        $row = $query
+            ->selectRaw('COUNT(*) as total_spins')
+            ->selectRaw('COUNT(DISTINCT user_id) as unique_players')
+            ->selectRaw("SUM(CASE WHEN spin_type = 'free' THEN 1 ELSE 0 END) as free_spins")
+            ->selectRaw("SUM(CASE WHEN spin_type = 'paid' THEN 1 ELSE 0 END) as paid_spins")
+            ->selectRaw("SUM(CASE WHEN reward_type = 'entry_pack' AND user_entry_pack_id IS NOT NULL THEN 1 ELSE 0 END) as entry_pack_entitlements")
+            ->selectRaw("SUM(CASE WHEN reward_type = 'subscription' AND user_subscription_id IS NOT NULL THEN 1 ELSE 0 END) as subscription_entitlements")
+            ->selectRaw("SUM(CASE WHEN (reward_type = 'entry_pack' AND user_entry_pack_id IS NULL) OR (reward_type = 'subscription' AND user_subscription_id IS NULL) THEN 1 ELSE 0 END) as entitlement_grant_issues")
+            ->selectRaw('COALESCE(SUM(CASE WHEN user_entry_pack_id IS NOT NULL OR user_subscription_id IS NOT NULL THEN reward_duration_hours ELSE 0 END), 0) as entitlement_hours')
+            ->selectRaw('COALESCE(SUM(spin_cost_coins), 0) as coins_collected')
+            ->selectRaw("COALESCE(SUM(CASE WHEN reward_type = 'coins' THEN reward_value_coins ELSE 0 END), 0) as coins_rewarded")
+            ->first();
+
+        $entryPacks = (int) ($row?->entry_pack_entitlements ?? 0);
+        $subscriptions = (int) ($row?->subscription_entitlements ?? 0);
+
+        return [
+            'total_spins' => (int) ($row?->total_spins ?? 0),
+            'unique_players' => (int) ($row?->unique_players ?? 0),
+            'free_spins' => (int) ($row?->free_spins ?? 0),
+            'paid_spins' => (int) ($row?->paid_spins ?? 0),
+            'entry_pack_entitlements' => $entryPacks,
+            'subscription_entitlements' => $subscriptions,
+            'total_entitlements' => $entryPacks + $subscriptions,
+            'entitlement_grant_issues' => (int) ($row?->entitlement_grant_issues ?? 0),
+            'entitlement_hours' => (int) ($row?->entitlement_hours ?? 0),
+            'coins_collected' => (int) ($row?->coins_collected ?? 0),
+            'coins_rewarded' => (int) ($row?->coins_rewarded ?? 0),
         ];
     }
 
@@ -354,16 +459,16 @@ class FortuneWheelService
             reference: 'fortune_wheel_spin:'.$spin->id,
             meta: [
                 'game' => 'fortune_wheel',
-                'event' => 'FORTUNE_WHEEL_REWARD_CREDIT',
+                'event' => 'FORTUNE_WHEEL_PAYOUT_CREDIT',
                 'spin_id' => $spin->id,
                 'segment_id' => $segment->id,
             ],
             attributes: [
-                'category' => 'game_reward_credit',
+                'category' => 'game_payout_credit',
                 'reference_type' => 'fortune_wheel_spin',
                 'reference_id' => $spin->id,
             ],
-            description: 'Fortune Wheel coin reward',
+            description: 'Fortune Wheel coin payout',
         );
 
         return ['wallet_credit_transaction_id' => $walletCredit->id];

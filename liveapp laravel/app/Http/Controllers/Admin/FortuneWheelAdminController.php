@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\EntryPack;
 use App\Models\FortuneWheelSegment;
+use App\Models\FortuneWheelSpin;
 use App\Models\SubscriptionPlan;
 use App\Services\FortuneWheelService;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -15,10 +17,44 @@ class FortuneWheelAdminController extends Controller
 {
     public function __construct(private FortuneWheelService $fortuneWheel) {}
 
-    public function dashboard()
+    public function dashboard(Request $request)
     {
+        $validated = $request->validate([
+            'period' => ['nullable', 'string', Rule::in(['today', 'week', '30_days', 'custom'])],
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => [
+                'nullable',
+                'date_format:Y-m-d',
+                Rule::when($request->filled('date_from'), 'after_or_equal:date_from'),
+            ],
+            'q' => ['nullable', 'string', 'max:120'],
+            'spin_type' => ['nullable', 'string', Rule::in([FortuneWheelSpin::TYPE_FREE, FortuneWheelSpin::TYPE_PAID])],
+            'reward_type' => ['nullable', 'string', Rule::in(FortuneWheelSegment::REWARD_TYPES)],
+            'per_page' => ['nullable', 'integer', Rule::in([25, 50, 100])],
+        ]);
+
+        $period = (string) ($validated['period'] ?? 'week');
+        $today = CarbonImmutable::now($this->fortuneWheel->timezone())->startOfDay();
+        [$dateFrom, $dateTo] = match ($period) {
+            'today' => [$today->toDateString(), $today->toDateString()],
+            'week' => [$today->startOfWeek()->toDateString(), $today->toDateString()],
+            '30_days' => [$today->subDays(29)->toDateString(), $today->toDateString()],
+            default => [(string) ($validated['date_from'] ?? ''), (string) ($validated['date_to'] ?? '')],
+        };
+
+        $filters = [
+            'period' => $period,
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+            'q' => trim((string) ($validated['q'] ?? '')),
+            'spin_type' => (string) ($validated['spin_type'] ?? ''),
+            'reward_type' => (string) ($validated['reward_type'] ?? ''),
+            'per_page' => (int) ($validated['per_page'] ?? 25),
+        ];
+
         return view('admin.games.fortune-wheel.dashboard', [
-            'payload' => $this->fortuneWheel->adminDashboardPayload(),
+            'payload' => $this->fortuneWheel->adminDashboardPayload($filters),
+            'filters' => $filters,
         ]);
     }
 

@@ -9,9 +9,9 @@
     'gift' => 'Gift',
     'subscription' => 'Subscription purchase',
     'entry_pack_purchase' => 'Entry pack purchase',
-    'game_bet_debit' => 'Teen Patti bet debit',
-    'game_payout_credit' => 'Teen Patti payout credit',
-    'game_refund_credit' => 'Teen Patti refund credit',
+    'game_bet_debit' => 'Game bet / spin debit',
+    'game_payout_credit' => 'Game payout credit',
+    'game_refund_credit' => 'Game refund credit',
     'agency_credit' => 'Agency wallet credit',
     'audio_call' => 'Audio call',
     'video_call' => 'Video call',
@@ -23,6 +23,13 @@
       $reference = trim((string) ($tx->reference ?? ''));
       $category = strtolower(trim((string) ($tx->category ?? '')));
       $type = strtolower(trim((string) ($tx->type ?? '')));
+      $game = strtolower(trim((string) data_get($tx->meta, 'game', '')));
+      $gameLabel = match ($game) {
+          'teen_patti' => 'Teen Patti',
+          'greedy' => 'Greedy',
+          'fortune_wheel' => 'Fortune Wheel',
+          default => 'Game',
+      };
 
       if (str_starts_with($reference, 'ENTRY_PACK_PURCHASE:')) {
           return 'Entry pack purchase';
@@ -32,9 +39,9 @@
           'subscription' => 'Subscription purchase',
           'recharge', 'purchase' => 'Wallet recharge',
           'gift' => 'Gift sent',
-          'game_bet_debit' => 'Teen Patti bet debit',
-          'game_payout_credit' => 'Teen Patti payout credit',
-          'game_refund_credit' => 'Teen Patti refund credit',
+          'game_bet_debit' => $game === 'fortune_wheel' ? 'Fortune Wheel spin debit' : $gameLabel.' bet debit',
+          'game_payout_credit' => $gameLabel.' payout credit',
+          'game_refund_credit' => $gameLabel.' refund credit',
           'agency_credit' => 'Agency wallet credit',
           'audio_call' => 'Audio call spend',
           'video_call' => 'Video call spend',
