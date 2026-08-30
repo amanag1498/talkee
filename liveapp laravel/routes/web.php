@@ -208,6 +208,8 @@ Route::middleware(['auth','not_blocked','role:admin'])->prefix('admin')->name('a
   Route::post('agency-payout-reports/generate', [AdminAgencyPayoutReportController::class, 'generate'])->name('agency-payout-reports.generate');
   Route::get('agency-payout-reports/{agency_payout_report}', [AdminAgencyPayoutReportController::class, 'show'])->name('agency-payout-reports.show');
   Route::post('agency-payout-reports/{agency_payout_report}/items/{agency_payout_report_item}', [AdminAgencyPayoutReportController::class, 'updateItem'])->name('agency-payout-reports.items.update');
+  Route::post('agency-payout-reports/{agency_payout_report}/items/{agency_payout_report_item}/transfer-to-wallet', [AdminAgencyPayoutReportController::class, 'transferItemToWallet'])->name('agency-payout-reports.items.transfer-to-wallet');
+  Route::delete('agency-payout-reports/{agency_payout_report}/items/{agency_payout_report_item}', [AdminAgencyPayoutReportController::class, 'destroyItem'])->name('agency-payout-reports.items.destroy');
   Route::post('agency-payout-reports/{agency_payout_report}/review', [AdminAgencyPayoutReportController::class, 'review'])->name('agency-payout-reports.review');
   Route::post('agency-payout-reports/{agency_payout_report}/approve', [AdminAgencyPayoutReportController::class, 'approve'])->name('agency-payout-reports.approve');
   Route::post('agency-payout-reports/{agency_payout_report}/publish', [AdminAgencyPayoutReportController::class, 'publish'])->name('agency-payout-reports.publish');

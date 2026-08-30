@@ -283,6 +283,87 @@ class AgencyPayoutReportTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_admin_can_delete_a_host_settlement_row(): void
+    {
+        [$agency, , $host] = $this->seedAgencyFixture();
+        $admin = User::factory()->create();
+        $admin->assignRole('admin');
+        $service = app(AgencyWeeklyPayoutReportService::class);
+        [$start, $end] = $service->resolvePeriod('2026-04-21', '2026-04-27');
+        $report = $service->generate($start, $end, $agency->id, false)['reports'][0];
+        $item = $report->fresh('items')->items->firstOrFail();
+
+        $this->actingAs($admin)
+            ->get(route('admin.agency-payout-reports.show', $report))
+            ->assertOk()
+            ->assertSee('Delete')
+            ->assertSee(route('admin.agency-payout-reports.items.destroy', [$report, $item]), false);
+
+        $this->actingAs($admin)
+            ->delete(route('admin.agency-payout-reports.items.destroy', [$report, $item]))
+            ->assertRedirect(route('admin.agency-payout-reports.show', $report));
+
+        $this->assertDatabaseMissing('agency_payout_report_items', ['id' => $item->id]);
+        $this->assertDatabaseHas('admin_action_audits', [
+            'admin_user_id' => $admin->id,
+            'target_user_id' => $host->user_id,
+            'action' => 'delete_item',
+            'entity_id' => $report->id,
+        ]);
+    }
+
+    public function test_admin_can_transfer_host_settlement_coins_to_wallet_once(): void
+    {
+        [$agency, , $host] = $this->seedAgencyFixture();
+        $admin = User::factory()->create();
+        $admin->assignRole('admin');
+        $service = app(AgencyWeeklyPayoutReportService::class);
+        [$start, $end] = $service->resolvePeriod('2026-04-21', '2026-04-27');
+        $report = $service->generate($start, $end, $agency->id, false)['reports'][0];
+        $item = $report->fresh('items')->items->firstOrFail();
+        $itemMeta = $item->meta ?? [];
+        $itemMeta['total_coins'] = 250;
+        $item->forceFill(['meta' => $itemMeta])->save();
+        $item->refresh();
+        $coins = (int) $item->total_coins;
+        $balanceBefore = (int) $host->user->wallet->balance;
+
+        $this->actingAs($admin)
+            ->get(route('admin.agency-payout-reports.show', $report))
+            ->assertOk()
+            ->assertSee('Transfer to Wallet')
+            ->assertSee(route('admin.agency-payout-reports.items.transfer-to-wallet', [$report, $item]), false);
+
+        $this->actingAs($admin)
+            ->post(route('admin.agency-payout-reports.items.transfer-to-wallet', [$report, $item]))
+            ->assertRedirect(route('admin.agency-payout-reports.show', $report));
+
+        $item->refresh();
+        $transactionId = (int) data_get($item->meta, 'wallet_transfer.transaction_id');
+        $this->assertGreaterThan(0, $transactionId);
+        $this->assertSame($coins, (int) data_get($item->meta, 'wallet_transfer.coins'));
+        $this->assertStringContainsString("Transferred {$coins} coins to wallet.", $item->admin_note);
+        $this->assertSame($balanceBefore + $coins, (int) $host->user->wallet()->value('balance'));
+        $this->assertDatabaseHas('wallet_transactions', [
+            'id' => $transactionId,
+            'wallet_id' => $host->user->wallet->id,
+            'type' => 'credit',
+            'coins' => $coins,
+            'category' => 'agency_payout',
+            'reference' => 'AGENCY_PAYOUT_ITEM_WALLET_TRANSFER:'.$item->id,
+            'reference_type' => \App\Models\AgencyPayoutReportItem::class,
+            'reference_id' => $item->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('admin.agency-payout-reports.items.transfer-to-wallet', [$report, $item]))
+            ->assertSessionHasErrors('transfer_to_wallet');
+        $this->assertSame($balanceBefore + $coins, (int) $host->user->wallet()->value('balance'));
+        $this->assertSame(1, WalletTransaction::query()
+            ->where('reference', 'AGENCY_PAYOUT_ITEM_WALLET_TRANSFER:'.$item->id)
+            ->count());
+    }
+
     private function seedAgencyFixture(): array
     {
         $owner = User::factory()->create(['name' => 'Agency Owner']);

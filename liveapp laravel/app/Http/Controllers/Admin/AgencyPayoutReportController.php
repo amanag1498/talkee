@@ -258,6 +258,42 @@ class AgencyPayoutReportController extends Controller
             ->with('status', 'Host payout row updated. Approved reports return to pending review after edits.');
     }
 
+    public function destroyItem(Request $request, AgencyPayoutReport $agency_payout_report, AgencyPayoutReportItem $agency_payout_report_item)
+    {
+        try {
+            $this->service->deleteItem(
+                report: $agency_payout_report,
+                item: $agency_payout_report_item,
+                actor: $request->user(),
+            );
+        } catch (InvalidArgumentException $e) {
+            return back()->withErrors(['delete_item' => $e->getMessage()]);
+        }
+
+        return redirect()
+            ->route('admin.agency-payout-reports.show', $agency_payout_report)
+            ->with('status', 'Host payout row deleted. Report totals were recalculated.');
+    }
+
+    public function transferItemToWallet(Request $request, AgencyPayoutReport $agency_payout_report, AgencyPayoutReportItem $agency_payout_report_item)
+    {
+        try {
+            $result = $this->service->transferItemToWallet(
+                report: $agency_payout_report,
+                item: $agency_payout_report_item,
+                actor: $request->user(),
+            );
+        } catch (InvalidArgumentException $e) {
+            return back()->withErrors(['transfer_to_wallet' => $e->getMessage()]);
+        }
+
+        $coins = (int) $result['wallet_transaction']->coins;
+
+        return redirect()
+            ->route('admin.agency-payout-reports.show', $agency_payout_report)
+            ->with('status', "Transferred {$coins} coins to the host wallet.");
+    }
+
     public function destroy(Request $request, AgencyPayoutReport $agency_payout_report)
     {
         $data = $request->validate([

@@ -319,12 +319,17 @@
             <th>Agency Commission INR</th>
             <th>Total INR</th>
             <th>Admin Notes</th>
-            <th class="payout-grid-sticky-right text-end">Save</th>
+            <th class="payout-grid-sticky-right text-end">Actions</th>
           </tr>
         </thead>
         <tbody>
           @forelse($report->items as $item)
-            @php($formId = 'item-form-' . $item->id)
+            @php
+              $formId = 'item-form-' . $item->id;
+              $walletTransfer = data_get($item->meta, 'wallet_transfer');
+              $transferred = filled(data_get($walletTransfer, 'transaction_id'));
+              $rowLocked = $locked || $transferred;
+            @endphp
             <tr data-payout-row>
               <td class="payout-grid-sticky-left">
                 <div class="payout-grid-row-host">
@@ -332,21 +337,21 @@
                   <span>User ID: {{ $item->host?->user_id ?? '—' }} · {{ $item->host?->stage_name ?? '—' }}</span>
                 </div>
               </td>
-              <td><input type="number" min="0" name="video_room_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input calc-field" value="{{ $item->video_room_minutes }}" @disabled($locked)></td>
-              <td><input type="number" min="0" name="audio_room_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input calc-field" value="{{ $item->audio_room_minutes }}" @disabled($locked)></td>
-              <td><input type="number" min="0" name="video_gift_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->video_gift_coins }}" @disabled($locked)></td>
-              <td><input type="number" min="0" name="audio_gift_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->audio_gift_coins }}" @disabled($locked)></td>
-              <td><input type="number" min="0" name="pk_gift_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->pk_gift_coins }}" @disabled($locked)></td>
-              <td><input type="number" min="0" name="video_call_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->video_call_coins }}" @disabled($locked)></td>
-              <td><input type="number" min="0" name="video_call_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input calc-field" value="{{ $item->video_call_minutes }}" @disabled($locked)></td>
-              <td><input type="number" min="0" name="audio_call_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->audio_call_coins }}" @disabled($locked)></td>
-              <td><input type="number" min="0" name="audio_call_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input calc-field" value="{{ $item->audio_call_minutes }}" @disabled($locked)></td>
-              <td><input type="number" min="0" name="bonus_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->bonus_coins }}" @disabled($locked)></td>
+              <td><input type="number" min="0" name="video_room_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input calc-field" value="{{ $item->video_room_minutes }}" @disabled($rowLocked)></td>
+              <td><input type="number" min="0" name="audio_room_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input calc-field" value="{{ $item->audio_room_minutes }}" @disabled($rowLocked)></td>
+              <td><input type="number" min="0" name="video_gift_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->video_gift_coins }}" @disabled($rowLocked)></td>
+              <td><input type="number" min="0" name="audio_gift_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->audio_gift_coins }}" @disabled($rowLocked)></td>
+              <td><input type="number" min="0" name="pk_gift_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->pk_gift_coins }}" @disabled($rowLocked)></td>
+              <td><input type="number" min="0" name="video_call_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->video_call_coins }}" @disabled($rowLocked)></td>
+              <td><input type="number" min="0" name="video_call_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input calc-field" value="{{ $item->video_call_minutes }}" @disabled($rowLocked)></td>
+              <td><input type="number" min="0" name="audio_call_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->audio_call_coins }}" @disabled($rowLocked)></td>
+              <td><input type="number" min="0" name="audio_call_minutes" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input calc-field" value="{{ $item->audio_call_minutes }}" @disabled($rowLocked)></td>
+              <td><input type="number" min="0" name="bonus_coins" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field coin-field" value="{{ $item->bonus_coins }}" @disabled($rowLocked)></td>
               <td><input type="number" min="0" class="form-control form-control-sm payout-grid-input payout-grid-input-wide row-total-coins" value="{{ $item->total_coins }}" readonly></td>
-              <td><input type="number" step="0.01" min="0" name="host_payout_inr" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field inr-field" value="{{ number_format($item->host_payout_inr, 2, '.', '') }}" @disabled($locked)></td>
+              <td><input type="number" step="0.01" min="0" name="host_payout_inr" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field inr-field" value="{{ number_format($item->host_payout_inr, 2, '.', '') }}" @disabled($rowLocked)></td>
               <td>
                 <input type="hidden" name="agency_commission_coins" form="{{ $formId }}" value="{{ $item->agency_commission_coins }}">
-                <input type="number" step="0.01" min="0" name="agency_commission_inr" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field inr-field" value="{{ number_format($item->agency_commission_inr, 2, '.', '') }}" @disabled($locked)>
+                <input type="number" step="0.01" min="0" name="agency_commission_inr" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide calc-field inr-field" value="{{ number_format($item->agency_commission_inr, 2, '.', '') }}" @disabled($rowLocked)>
               </td>
               <td><input type="number" step="0.01" min="0" name="total_inr" form="{{ $formId }}" class="form-control form-control-sm payout-grid-input payout-grid-input-wide row-total-inr" value="{{ number_format($item->total_inr, 2, '.', '') }}" readonly></td>
               <td>
@@ -356,14 +361,28 @@
                   rows="2"
                   class="form-control form-control-sm payout-grid-input-note"
                   placeholder="Admin notes"
-                  @disabled($locked)
+                  @disabled($rowLocked)
                 >{{ $item->admin_note }}</textarea>
               </td>
               <td class="payout-grid-sticky-right text-end">
                 <form id="{{ $formId }}" method="post" action="{{ route('admin.agency-payout-reports.items.update', [$report, $item]) }}">
                   @csrf
                 </form>
-                <button class="btn btn-sm btn-light border payout-grid-save-btn" type="submit" form="{{ $formId }}" @disabled($locked)>Save</button>
+                <div class="d-flex flex-column gap-2 align-items-stretch">
+                  <button class="btn btn-sm btn-light border payout-grid-save-btn" type="submit" form="{{ $formId }}" @disabled($rowLocked)>Save</button>
+                  <form method="post" action="{{ route('admin.agency-payout-reports.items.transfer-to-wallet', [$report, $item]) }}" onsubmit="return confirm('Transfer {{ number_format($item->total_coins) }} coins to User ID {{ $item->host?->user_id ?? '—' }} wallet? This cannot be undone.');">
+                    @csrf
+                    <button class="btn btn-sm btn-success w-100" type="submit" @disabled($rowLocked || $item->total_coins <= 0 || !$item->host?->user_id)>{{ $transferred ? 'Transferred' : 'Transfer to Wallet' }}</button>
+                  </form>
+                  <form method="post" action="{{ route('admin.agency-payout-reports.items.destroy', [$report, $item]) }}" onsubmit="return confirm('Delete User ID {{ $item->host?->user_id ?? '—' }} from this payout report?');">
+                    @csrf
+                    @method('DELETE')
+                    <button class="btn btn-sm btn-danger w-100" type="submit" @disabled($rowLocked)>Delete</button>
+                  </form>
+                  @if($transferred)
+                    <div class="small text-success">{{ number_format((int) data_get($walletTransfer, 'coins', 0)) }} coins transferred · Tx #{{ data_get($walletTransfer, 'transaction_id') }}</div>
+                  @endif
+                </div>
               </td>
             </tr>
           @empty
