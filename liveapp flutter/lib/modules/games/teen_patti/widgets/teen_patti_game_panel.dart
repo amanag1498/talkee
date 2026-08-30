@@ -11,12 +11,13 @@ import '../../../../app/widgets/haptics.dart';
 import '../../../../services/app_settings_service.dart';
 import '../../../../services/storage_service.dart';
 import '../../fortune_wheel/services/fortune_wheel_preload_service.dart';
-import '../../fortune_wheel/widgets/fortune_wheel_panel.dart';
 import '../../greedy/widgets/greedy_game_panel.dart';
 import '../../../wallet/widgets/recharge_bottom_sheet.dart';
 import '../models/teen_patti_models.dart';
 import '../services/teen_patti_api.dart';
 import '../services/teen_patti_socket_service.dart';
+
+enum LiveRoomGamesSheetResult { fortuneWheel }
 
 class TeenPattiGamesSheet extends StatefulWidget {
   const TeenPattiGamesSheet({super.key});
@@ -27,14 +28,6 @@ class TeenPattiGamesSheet extends StatefulWidget {
 
 class _TeenPattiGamesSheetState extends State<TeenPattiGamesSheet> {
   String? _selectedGame;
-
-  Future<void> _openFortuneWheel() async {
-    final rootNavigator = Navigator.of(context, rootNavigator: true);
-    Navigator.of(context).pop();
-    await Future<void>.delayed(const Duration(milliseconds: 180));
-    if (!rootNavigator.mounted) return;
-    await showFortuneWheelDialog(rootNavigator.context);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -242,7 +235,9 @@ class _TeenPattiGamesSheetState extends State<TeenPattiGamesSheet> {
                             setState(() => _selectedGame = 'greedy');
                           },
                           onOpenFortuneWheel: () {
-                            unawaited(_openFortuneWheel());
+                            Navigator.of(context).pop(
+                              LiveRoomGamesSheetResult.fortuneWheel,
+                            );
                           },
                         ),
               ),

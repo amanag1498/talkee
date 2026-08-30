@@ -64,18 +64,7 @@ class _EntryPackCatalogPageState extends State<EntryPackCatalogPage> {
   UserEntryPackDto? _latestOwnedForPackFrom(
     EntryPackStateDto state,
     int packId,
-  ) {
-    final matches =
-        state.owned.where((owned) => owned.entryPackId == packId).toList()
-          ..sort((a, b) {
-            final aTime =
-                a.purchasedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-            final bTime =
-                b.purchasedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-            return bTime.compareTo(aTime);
-          });
-    return matches.isEmpty ? null : matches.first;
-  }
+  ) => preferredOwnedEntryPack(state.owned, packId);
 
   UserEntryPackDto? _latestOwnedForPack(int packId) {
     final state = _state;

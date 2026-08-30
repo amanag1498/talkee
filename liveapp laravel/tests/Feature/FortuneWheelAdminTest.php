@@ -204,6 +204,25 @@ class FortuneWheelAdminTest extends TestCase
             ->assertSessionHasErrors('date_to');
     }
 
+    public function test_entry_pack_report_separates_ownerships_from_wheel_grants(): void
+    {
+        $user = User::factory()->create();
+        $spin = $this->spin($user, [
+            'reward_type' => FortuneWheelSegment::REWARD_ENTRY_PACK,
+            'reward_duration_hours' => 24,
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->get(route('admin.entry-packs.reports'));
+
+        $response->assertOk()
+            ->assertSee('Ownership Records')
+            ->assertSee('Paid Purchase History')
+            ->assertSee('Fortune Wheel Grant History')
+            ->assertSee('#'.$spin->id)
+            ->assertSee('24 hours');
+    }
+
     private function coinSegment(string $label, int $coins, int $weight = 1): FortuneWheelSegment
     {
         return FortuneWheelSegment::query()->create([

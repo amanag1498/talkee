@@ -284,6 +284,45 @@ class EntryPackApiTest extends TestCase
         ]);
     }
 
+    public function test_activate_entry_pack_uses_valid_ownership_when_newer_duplicate_is_expired(): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole('user');
+        $pack = EntryPack::query()->create([
+            'name' => 'Dragon',
+            'price_coins' => 6000,
+            'svg_url' => 'https://cdn.example.com/dragon.svg',
+            'animation_style' => 'fullscreen',
+            'priority' => 5,
+            'duration_ms' => 3000,
+            'is_active' => true,
+            'sort_order' => 1,
+        ]);
+        $valid = UserEntryPack::query()->create([
+            'user_id' => $user->id,
+            'entry_pack_id' => $pack->id,
+            'is_active' => false,
+            'purchased_at' => now()->subDays(2),
+            'expires_at' => now()->addDay(),
+            'source' => 'fortune_wheel',
+        ]);
+        UserEntryPack::query()->create([
+            'user_id' => $user->id,
+            'entry_pack_id' => $pack->id,
+            'is_active' => false,
+            'purchased_at' => now()->subHour(),
+            'expires_at' => now()->subMinute(),
+            'source' => 'fortune_wheel',
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $this->postJson("/api/me/entry-pack/{$pack->id}/activate")
+            ->assertOk()
+            ->assertJsonPath('data.id', $valid->id)
+            ->assertJsonPath('data.is_active', true);
+    }
+
     public function test_live_room_join_triggers_entry_effect_and_cooldown_suppresses_repeat(): void
     {
         [, $room] = $this->makeLiveRoom('audio');

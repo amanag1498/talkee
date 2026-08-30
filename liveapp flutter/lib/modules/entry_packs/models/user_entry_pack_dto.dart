@@ -39,7 +39,40 @@ class UserEntryPackDto {
     );
   }
 
-  bool get isExpired => expiresAt != null && expiresAt!.isBefore(DateTime.now());
+  bool get isExpired => isExpiredAt(DateTime.now());
+
+  bool isExpiredAt(DateTime now) =>
+      expiresAt != null && expiresAt!.isBefore(now);
+}
+
+UserEntryPackDto? preferredOwnedEntryPack(
+  Iterable<UserEntryPackDto> ownerships,
+  int packId, {
+  DateTime? now,
+}) {
+  final referenceTime = now ?? DateTime.now();
+  final matches = ownerships.where((owned) => owned.entryPackId == packId).toList()
+    ..sort((a, b) {
+      final aExpired = a.isExpiredAt(referenceTime);
+      final bExpired = b.isExpiredAt(referenceTime);
+      if (aExpired != bExpired) return aExpired ? 1 : -1;
+
+      if (a.expiresAt == null && b.expiresAt != null) return -1;
+      if (a.expiresAt != null && b.expiresAt == null) return 1;
+
+      final expiryOrder = (b.expiresAt ?? DateTime(9999)).compareTo(
+        a.expiresAt ?? DateTime(9999),
+      );
+      if (expiryOrder != 0) return expiryOrder;
+
+      final aPurchased =
+          a.purchasedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bPurchased =
+          b.purchasedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bPurchased.compareTo(aPurchased);
+    });
+
+  return matches.isEmpty ? null : matches.first;
 }
 
 class EntryPackStateDto {

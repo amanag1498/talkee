@@ -35,6 +35,7 @@ import '../../../app/widgets/keep_awake_scope.dart';
 import '../../../services/app_settings_service.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/live_rooms_ws_service.dart';
+import '../../games/fortune_wheel/widgets/fortune_wheel_panel.dart';
 import '../../games/teen_patti/widgets/teen_patti_game_panel.dart';
 import '../../profile/widgets/public_profile_card_sheet.dart';
 import '../../wallet/services/wallet_api.dart';
@@ -174,7 +175,7 @@ class _VideoCallPageState extends State<VideoCallPage>
       ValueNotifier<List<LiveRoomChatMessage>>(const <LiveRoomChatMessage>[]);
   Worker? _themeSyncWorker;
   bool _handlingBackNavigation = false;
-  bool _gamesSheetOpen = false;
+  bool _gameSurfaceOpen = false;
   bool _audioRouteSyncInFlight = false;
 
   final _emojiKey = GlobalKey<_EmojiBurstState>();
@@ -1029,6 +1030,7 @@ class _VideoCallPageState extends State<VideoCallPage>
   }
 
   Future<bool> _handleBackNavigation() async {
+    if (_gameSurfaceOpen) return false;
     if (_handlingBackNavigation) return false;
     _handlingBackNavigation = true;
     try {
@@ -1890,20 +1892,30 @@ class _VideoCallPageState extends State<VideoCallPage>
   }
 
   Future<void> _openGamesSheet() async {
-    if (_gamesSheetOpen || !_showTeenPattiInVideoRoom) {
+    if (_gameSurfaceOpen || !_showTeenPattiInVideoRoom) {
       return;
     }
 
-    setState(() => _gamesSheetOpen = true);
-    await showModalBottomSheet<void>(
-      context: context,
-      useRootNavigator: false,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => const TeenPattiGamesSheet(),
-    );
-    if (!mounted) return;
-    setState(() => _gamesSheetOpen = false);
+    setState(() => _gameSurfaceOpen = true);
+    try {
+      final result = await showModalBottomSheet<LiveRoomGamesSheetResult>(
+        context: context,
+        useRootNavigator: false,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => const TeenPattiGamesSheet(),
+      );
+      if (!mounted) return;
+      if (result == LiveRoomGamesSheetResult.fortuneWheel) {
+        // Wait for the games sheet route to finish before opening Fortune so
+        // its dialog never inherits the sheet context or reverse transition.
+        await showFortuneWheelDialog(context, playSounds: false);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _gameSurfaceOpen = false);
+      }
+    }
   }
 
   void _appendChatMessage(LiveRoomChatMessage message) {

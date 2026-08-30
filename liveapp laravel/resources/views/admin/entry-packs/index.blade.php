@@ -5,13 +5,13 @@
 <div class="admin-section-stack">
   <div class="row g-3">
     <div class="col-md-3">
-      <div class="card"><div class="card-body"><div class="text-muted small">Purchases</div><div class="h3 mb-0">{{ number_format($report['purchases'] ?? 0) }}</div></div></div>
+      <div class="card"><div class="card-body"><div class="text-muted small">Ownership Records</div><div class="h3 mb-0">{{ number_format($report['ownerships'] ?? 0) }}</div></div></div>
     </div>
     <div class="col-md-3">
-      <div class="card"><div class="card-body"><div class="text-muted small">Coins Spent</div><div class="h3 mb-0">{{ number_format($report['coins_spent'] ?? 0) }}</div></div></div>
+      <div class="card"><div class="card-body"><div class="text-muted small">Paid Purchases</div><div class="h3 mb-0">{{ number_format($report['paid_purchases'] ?? 0) }}</div></div></div>
     </div>
     <div class="col-md-3">
-      <div class="card"><div class="card-body"><div class="text-muted small">Active Users</div><div class="h3 mb-0">{{ number_format($report['active_users'] ?? 0) }}</div></div></div>
+      <div class="card"><div class="card-body"><div class="text-muted small">Wheel Grants</div><div class="h3 mb-0">{{ number_format($report['wheel_grants'] ?? 0) }}</div></div></div>
     </div>
     <div class="col-md-3">
       <div class="card"><div class="card-body d-flex justify-content-between align-items-center"><div><div class="text-muted small">Reports</div><div class="fw-semibold">Usage and purchases</div></div><a class="btn btn-light border" href="{{ route('admin.entry-packs.reports') }}">Open</a></div></div>

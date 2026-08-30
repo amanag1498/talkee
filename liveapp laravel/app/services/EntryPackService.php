@@ -3,10 +3,12 @@
 namespace App\Services;
 
 use App\Models\EntryPack;
+use App\Models\FortuneWheelSpin;
 use App\Models\LiveRoom;
 use App\Models\User;
 use App\Models\UserEntryPack;
 use App\Models\WalletTransaction;
+use Carbon\CarbonInterface;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +20,61 @@ class EntryPackService
     private const ENTRY_EFFECT_CHANNEL = 'rooms:entry-effects';
     private const ENTRY_COOLDOWN_SECONDS = 0;
     private const ENTRY_EVENT_MAX_AGE_SECONDS = 8;
+
+    public function grantTimedReward(
+        User $user,
+        EntryPack $pack,
+        int $durationHours,
+        string $purchaseKey,
+        ?CarbonInterface $grantedAt = null,
+    ): UserEntryPack {
+        $grantedAt ??= now();
+        $durationHours = max(1, $durationHours);
+
+        return DB::transaction(function () use ($user, $pack, $durationHours, $purchaseKey, $grantedAt) {
+            $existing = UserEntryPack::query()
+                ->where('user_id', $user->id)
+                ->where('entry_pack_id', $pack->id)
+                ->orderByRaw('expires_at IS NULL DESC')
+                ->orderByDesc('expires_at')
+                ->orderByDesc('id')
+                ->lockForUpdate()
+                ->first();
+
+            UserEntryPack::query()
+                ->where('user_id', $user->id)
+                ->where('is_active', true)
+                ->when($existing, fn ($query) => $query->whereKeyNot($existing->id))
+                ->update(['is_active' => false]);
+
+            if ($existing) {
+                $expiresAt = $existing->expires_at === null
+                    ? null
+                    : ($existing->expires_at->gt($grantedAt) ? $existing->expires_at->copy() : $grantedAt->copy())
+                        ->addHours($durationHours);
+
+                $existing->update([
+                    'is_active' => true,
+                    'expires_at' => $expiresAt,
+                ]);
+
+                return $existing->fresh('entryPack');
+            }
+
+            return UserEntryPack::query()->create([
+                'user_id' => $user->id,
+                'entry_pack_id' => $pack->id,
+                'is_active' => true,
+                'purchased_at' => $grantedAt,
+                'expires_at' => $grantedAt->copy()->addHours($durationHours),
+                'purchase_key' => $purchaseKey,
+                'source' => 'fortune_wheel',
+                'charged' => false,
+                'price_coins' => 0,
+                'purchase_reference' => str_replace('fortune_wheel:', 'fortune_wheel_spin:', $purchaseKey),
+            ])->load('entryPack');
+        });
+    }
 
     public function listForUser(?User $user): array
     {
@@ -152,21 +209,28 @@ class EntryPackService
                 ->with('entryPack')
                 ->where('user_id', $user->id)
                 ->where('entry_pack_id', $pack->id)
-                ->latest('id')
+                ->where(function ($query) {
+                    $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                })
+                ->orderByRaw('expires_at IS NULL DESC')
+                ->orderByDesc('expires_at')
+                ->orderByDesc('id')
                 ->lockForUpdate()
                 ->first();
 
-            if (!$userPack) {
-                throw $this->error('ENTRY_PACK_NOT_OWNED', 'Purchase the entry pack before activating it.', 404);
+            if (! $userPack) {
+                $hasExpiredOwnership = UserEntryPack::query()
+                    ->where('user_id', $user->id)
+                    ->where('entry_pack_id', $pack->id)
+                    ->exists();
+
+                throw $hasExpiredOwnership
+                    ? $this->error('ENTRY_PACK_EXPIRED', 'This entry pack has expired.', 409)
+                    : $this->error('ENTRY_PACK_NOT_OWNED', 'Purchase the entry pack before activating it.', 404);
             }
 
             if (!$pack->is_active) {
                 throw $this->error('ENTRY_PACK_INACTIVE', 'This entry pack is unavailable.', 409);
-            }
-
-            if ($userPack->expires_at && $userPack->expires_at->isPast()) {
-                $userPack->update(['is_active' => false]);
-                throw $this->error('ENTRY_PACK_EXPIRED', 'This entry pack has expired.', 409);
             }
 
             UserEntryPack::query()
@@ -239,13 +303,18 @@ class EntryPackService
         $coinsSpent = (int) WalletTransaction::query()
             ->where('category', 'other')
             ->where('type', 'debit')
-            ->where(function ($query) {
-                $query->where('reference', 'like', 'ENTRY_PACK_PURCHASE:%')
-                    ->orWhere('reference', 'like', 'ENTRY_PACK_ADMIN:%');
-            })
+            ->where('reference', 'like', 'ENTRY_PACK_PURCHASE:%')
             ->sum('coins');
 
-        $purchases = UserEntryPack::query()->count();
+        $ownerships = UserEntryPack::query()->count();
+        $paidPurchases = WalletTransaction::query()
+            ->where('category', 'other')
+            ->where('type', 'debit')
+            ->where('reference', 'like', 'ENTRY_PACK_PURCHASE:%')
+            ->count();
+        $wheelGrants = FortuneWheelSpin::query()
+            ->where('reward_type', 'entry_pack')
+            ->whereNotNull('user_entry_pack_id');
         $activeUsers = UserEntryPack::query()
             ->where('is_active', true)
             ->where(function ($query) {
@@ -263,6 +332,7 @@ class EntryPackService
             ->map(fn (EntryPack $pack) => [
                 'id' => (int) $pack->id,
                 'name' => (string) $pack->name,
+                'ownerships' => (int) $pack->user_packs_count,
                 'purchases' => (int) $pack->user_packs_count,
                 'price_coins' => (int) $pack->price_coins,
             ])
@@ -270,7 +340,11 @@ class EntryPackService
             ->all();
 
         return [
-            'purchases' => $purchases,
+            'ownerships' => $ownerships,
+            'purchases' => $ownerships,
+            'paid_purchases' => $paidPurchases,
+            'wheel_grants' => (clone $wheelGrants)->count(),
+            'wheel_grant_hours' => (int) (clone $wheelGrants)->sum('reward_duration_hours'),
             'coins_spent' => $coinsSpent,
             'active_users' => $activeUsers,
             'most_used_packs' => $topPacks,

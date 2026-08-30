@@ -7,7 +7,6 @@ use App\Models\FortuneWheelSegment;
 use App\Models\FortuneWheelSpin;
 use App\Models\SubscriptionPlan;
 use App\Models\User;
-use App\Models\UserEntryPack;
 use App\Models\UserSubscription;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
@@ -114,12 +113,13 @@ class FortuneWheelService
                 }
             }
 
+            User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+
             $segments = $this->activeSegments()->lockForUpdate()->get();
             if ($segments->isEmpty()) {
                 throw new HttpException(409, 'Fortune Wheel has no active rewards configured.');
             }
 
-            User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
             WalletService::getOrCreate($user);
             $wallet = Wallet::query()->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
 
@@ -476,27 +476,13 @@ class FortuneWheelService
 
     private function applyEntryPackReward(User $user, FortuneWheelSegment $segment, FortuneWheelSpin $spin): array
     {
-        $durationHours = max(1, (int) $segment->reward_duration_hours);
-        $alreadyActive = UserEntryPack::query()
-            ->where('user_id', $user->id)
-            ->where('is_active', true)
-            ->where(function ($query) {
-                $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
-            })
-            ->exists();
-
-        $userPack = UserEntryPack::query()->create([
-            'user_id' => $user->id,
-            'entry_pack_id' => (int) $segment->entry_pack_id,
-            'is_active' => ! $alreadyActive,
-            'purchased_at' => now(),
-            'expires_at' => now()->addHours($durationHours),
-            'purchase_key' => 'fortune_wheel:'.$spin->id,
-            'source' => 'fortune_wheel',
-            'charged' => false,
-            'price_coins' => 0,
-            'purchase_reference' => 'fortune_wheel_spin:'.$spin->id,
-        ]);
+        $pack = EntryPack::query()->findOrFail($segment->entry_pack_id);
+        $userPack = app(EntryPackService::class)->grantTimedReward(
+            user: $user,
+            pack: $pack,
+            durationHours: (int) $segment->reward_duration_hours,
+            purchaseKey: 'fortune_wheel:'.$spin->id,
+        );
 
         return ['user_entry_pack_id' => $userPack->id];
     }
@@ -507,14 +493,18 @@ class FortuneWheelService
         $now = now();
         $active = UserSubscription::query()
             ->where('user_id', $user->id)
-            ->where('subscription_plan_id', $segment->subscription_plan_id)
             ->where('status', 'active')
+            ->where(function ($query) use ($now) {
+                $query->whereNull('starts_at')->orWhere('starts_at', '<=', $now);
+            })
+            ->whereNotNull('ends_at')
+            ->where('ends_at', '>', $now)
+            ->orderByDesc('ends_at')
+            ->orderByDesc('id')
             ->lockForUpdate()
             ->first();
 
-        $base = ($active && $active->ends_at && $active->ends_at->gt($now))
-            ? $active->ends_at->clone()
-            : $now->clone();
+        $base = $active ? $active->ends_at->clone() : $now->clone();
         $endsAt = $base->addHours($durationHours);
         $meta = [
             'source' => 'fortune_wheel',
@@ -526,11 +516,19 @@ class FortuneWheelService
         ];
 
         if ($active) {
+            $existingMeta = $active->meta ?? [];
             $active->update([
                 'ends_at' => $endsAt,
                 'last_purchased_at' => $now,
                 'status' => 'active',
-                'meta' => array_merge($active->meta ?? [], $meta),
+                'meta' => array_merge($existingMeta, [
+                    'initial_source' => $existingMeta['initial_source'] ?? ($existingMeta['source'] ?? null),
+                    'last_extension_source' => 'fortune_wheel',
+                    'last_extension_spin_id' => $spin->id,
+                    'last_extension_segment_id' => $segment->id,
+                    'last_extension_duration_hours' => $durationHours,
+                    'last_extended_at' => $now->toIso8601String(),
+                ]),
             ]);
 
             return ['user_subscription_id' => $active->id];

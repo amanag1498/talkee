@@ -4,9 +4,9 @@
 @section('content')
 <div class="admin-section-stack">
   <div class="row g-3">
-    <div class="col-md-4"><div class="card"><div class="card-body"><div class="text-muted small">Ownerships</div><div class="h3 mb-0">{{ number_format($report['purchases'] ?? 0) }}</div></div></div></div>
-    <div class="col-md-4"><div class="card"><div class="card-body"><div class="text-muted small">Coins Spent</div><div class="h3 mb-0">{{ number_format($report['coins_spent'] ?? 0) }}</div></div></div></div>
-    <div class="col-md-4"><div class="card"><div class="card-body"><div class="text-muted small">Active Users</div><div class="h3 mb-0">{{ number_format($report['active_users'] ?? 0) }}</div></div></div></div>
+    <div class="col-md-4"><div class="card"><div class="card-body"><div class="text-muted small">Ownership Records</div><div class="h3 mb-0">{{ number_format($report['ownerships'] ?? 0) }}</div></div></div></div>
+    <div class="col-md-4"><div class="card"><div class="card-body"><div class="text-muted small">Paid Purchases</div><div class="h3 mb-0">{{ number_format($report['paid_purchases'] ?? 0) }}</div><div class="small text-muted">{{ number_format($report['coins_spent'] ?? 0) }} coins spent</div></div></div></div>
+    <div class="col-md-4"><div class="card"><div class="card-body"><div class="text-muted small">Wheel Grants</div><div class="h3 mb-0">{{ number_format($report['wheel_grants'] ?? 0) }}</div><div class="small text-muted">{{ number_format($report['wheel_grant_hours'] ?? 0) }} hours granted</div></div></div></div>
     <div class="col-md-3"><div class="card"><div class="card-body"><div class="text-muted small">Purchased</div><div class="h3 mb-0">{{ number_format($report['purchased'] ?? 0) }}</div></div></div></div>
     <div class="col-md-3"><div class="card"><div class="card-body"><div class="text-muted small">Gifted</div><div class="h3 mb-0">{{ number_format($report['gifted'] ?? 0) }}</div></div></div></div>
     <div class="col-md-3"><div class="card"><div class="card-body"><div class="text-muted small">Admin Grants</div><div class="h3 mb-0">{{ number_format($report['admin_grant'] ?? 0) }}</div></div></div></div>
@@ -16,13 +16,13 @@
   </div>
 
   <div class="card">
-    <div class="card-header"><h5 class="mb-0">Most Used Packs</h5></div>
+    <div class="card-header"><h5 class="mb-0">Most Owned Packs</h5></div>
     <div class="card-body table-responsive">
       <table class="table align-middle">
-        <thead class="table-light"><tr><th>#</th><th>Name</th><th>Purchases</th><th>Price</th></tr></thead>
+        <thead class="table-light"><tr><th>#</th><th>Name</th><th>Ownerships</th><th>Price</th></tr></thead>
         <tbody>
           @forelse(($report['most_used_packs'] ?? []) as $pack)
-            <tr><td>{{ $pack['id'] }}</td><td>{{ $pack['name'] }}</td><td>{{ number_format($pack['purchases']) }}</td><td>{{ number_format($pack['price_coins']) }}</td></tr>
+            <tr><td>{{ $pack['id'] }}</td><td>{{ $pack['name'] }}</td><td>{{ number_format($pack['ownerships']) }}</td><td>{{ number_format($pack['price_coins']) }}</td></tr>
           @empty
             <tr><td colspan="4" class="text-center text-muted py-4">No pack usage yet.</td></tr>
           @endforelse
@@ -105,6 +105,61 @@
       </table>
     </div>
     <div class="card-footer d-flex justify-content-end">{{ $recentPurchases->links() }}</div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h5 class="mb-1">Paid Purchase History</h5>
+      <div class="small text-muted">Wallet-backed entry-pack purchases only. Fortune Wheel grants are excluded.</div>
+    </div>
+    <div class="card-body table-responsive">
+      <table class="table align-middle">
+        <thead class="table-light"><tr><th>Transaction</th><th>User</th><th>Pack</th><th>Coins</th><th>Created</th></tr></thead>
+        <tbody>
+          @forelse($paidPurchases as $purchaseEvent)
+            @php($purchasePack = $purchasePacks->get((int) data_get($purchaseEvent->meta, 'entry_pack_id')))
+            <tr>
+              <td class="fw-semibold">#{{ $purchaseEvent->id }}</td>
+              <td>{{ $purchaseEvent->wallet?->user?->name ?? 'User' }}<div class="small text-muted">#{{ $purchaseEvent->wallet?->user?->id }} · {{ $purchaseEvent->wallet?->user?->email }}</div></td>
+              <td>{{ $purchasePack?->name ?? data_get($purchaseEvent->meta, 'entry_pack_name', 'Pack') }}</td>
+              <td>{{ number_format((int) $purchaseEvent->coins) }}</td>
+              <td>{{ optional($purchaseEvent->created_at)->format('d M Y H:i:s') }}</td>
+            </tr>
+          @empty
+            <tr><td colspan="5" class="text-center text-muted py-4">No paid purchases yet.</td></tr>
+          @endforelse
+        </tbody>
+      </table>
+    </div>
+    <div class="card-footer d-flex justify-content-end">{{ $paidPurchases->links() }}</div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h5 class="mb-1">Fortune Wheel Grant History</h5>
+      <div class="small text-muted">One immutable row per winning spin, even when repeated wins extend the same ownership.</div>
+    </div>
+    <div class="card-body table-responsive">
+      <table class="table align-middle">
+        <thead class="table-light"><tr><th>Spin</th><th>User</th><th>Pack</th><th>Ownership</th><th>Duration</th><th>Business Date</th><th>Created</th></tr></thead>
+        <tbody>
+          @forelse($wheelGrants as $grant)
+            <tr>
+              <td class="fw-semibold">#{{ $grant->id }}</td>
+              <td>{{ $grant->user?->name ?? 'User' }}<div class="small text-muted">#{{ $grant->user_id }} · {{ $grant->user?->email }}</div></td>
+              <td>{{ $grant->entryPack?->name ?? 'Pack' }}</td>
+              <td>#{{ $grant->user_entry_pack_id }}<div class="small text-muted">Expires {{ optional($grant->userEntryPack?->expires_at)->format('d M Y H:i') ?: 'not set' }}</div></td>
+              <td>{{ number_format((int) $grant->reward_duration_hours) }} hours</td>
+              <td>{{ optional($grant->spun_for_date)->format('Y-m-d') }}</td>
+              <td>{{ optional($grant->created_at)->format('d M Y H:i:s') }}</td>
+            </tr>
+          @empty
+            <tr><td colspan="7" class="text-center text-muted py-4">No Fortune Wheel entry-pack grants yet.</td></tr>
+          @endforelse
+        </tbody>
+      </table>
+    </div>
+    <div class="card-footer d-flex justify-content-end">{{ $wheelGrants->links() }}</div>
   </div>
 </div>
 @endsection

@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\EntryPack;
+use App\Models\FortuneWheelSpin;
 use App\Models\UserEntryPack;
+use App\Models\WalletTransaction;
 use App\Services\AdminAuditService;
 use App\Services\EntryPackService;
 use Illuminate\Http\Request;
@@ -106,10 +108,43 @@ class EntryPackAdminController extends Controller
                 $inner->whereNull('expires_at')->orWhere('expires_at', '>', now());
             }))
             ->latest('id')
-            ->paginate(25)
+            ->paginate(25, ['*'], 'ownerships_page')
             ->withQueryString();
 
-        return view('admin.entry-packs.reports', compact('report', 'recentPurchases', 'origin', 'status'));
+        $paidPurchases = WalletTransaction::query()
+            ->with('wallet.user:id,name,email')
+            ->where('category', 'other')
+            ->where('type', 'debit')
+            ->where('reference', 'like', 'ENTRY_PACK_PURCHASE:%')
+            ->latest('id')
+            ->paginate(25, ['*'], 'purchases_page')
+            ->withQueryString();
+        $purchasePacks = EntryPack::query()
+            ->whereIn('id', $paidPurchases->getCollection()->pluck('meta.entry_pack_id')->filter()->unique())
+            ->get(['id', 'name'])
+            ->keyBy('id');
+
+        $wheelGrants = FortuneWheelSpin::query()
+            ->with([
+                'user:id,name,email',
+                'entryPack:id,name',
+                'userEntryPack:id,expires_at,is_active',
+            ])
+            ->where('reward_type', 'entry_pack')
+            ->whereNotNull('user_entry_pack_id')
+            ->latest('id')
+            ->paginate(25, ['*'], 'grants_page')
+            ->withQueryString();
+
+        return view('admin.entry-packs.reports', compact(
+            'report',
+            'recentPurchases',
+            'origin',
+            'status',
+            'paidPurchases',
+            'purchasePacks',
+            'wheelGrants',
+        ));
     }
 
     public function editPurchase(UserEntryPack $userEntryPack)

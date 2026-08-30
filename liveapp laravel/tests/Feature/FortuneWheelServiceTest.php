@@ -14,6 +14,7 @@ use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\FortuneWheelService;
 use App\Services\GameAccessService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -182,6 +183,94 @@ class FortuneWheelServiceTest extends TestCase
         $this->assertTrue($userPack->expires_at->between(now()->addHours(23), now()->addHours(25)));
     }
 
+    public function test_repeat_entry_pack_reward_adds_duration_to_one_ownership_record(): void
+    {
+        Carbon::setTestNow('2026-08-29 10:00:00');
+        config(['games.fortune_wheel.free_spins_per_day' => 2]);
+
+        $user = User::factory()->create();
+        Wallet::query()->updateOrCreate(['user_id' => $user->id], ['balance' => 0]);
+        $pack = EntryPack::query()->create([
+            'name' => 'CAR 2',
+            'price_coins' => 3000,
+            'svg_url' => 'https://cdn.example.com/car-2.svg',
+            'animation_style' => 'fullscreen',
+            'priority' => 5,
+            'duration_ms' => 3000,
+            'is_active' => true,
+            'sort_order' => 1,
+        ]);
+        FortuneWheelSegment::query()->create([
+            'label' => 'CAR 2 1 Day',
+            'reward_type' => FortuneWheelSegment::REWARD_ENTRY_PACK,
+            'entry_pack_id' => $pack->id,
+            'reward_duration_hours' => 24,
+            'weight' => 1,
+            'is_active' => true,
+        ]);
+
+        $service = app(FortuneWheelService::class);
+        $service->spin($user, 'repeat-pack-1');
+        Carbon::setTestNow('2026-08-29 11:00:00');
+        $service->spin($user, 'repeat-pack-2');
+
+        $ownerships = UserEntryPack::query()
+            ->where('user_id', $user->id)
+            ->where('entry_pack_id', $pack->id)
+            ->get();
+
+        $this->assertCount(1, $ownerships);
+        $this->assertSame(1, FortuneWheelSpin::query()->distinct()->count('user_entry_pack_id'));
+        $this->assertSame('2026-08-31 10:00:00', $ownerships->first()->expires_at->format('Y-m-d H:i:s'));
+        $this->assertSame('fortune_wheel', $ownerships->first()->source);
+        Carbon::setTestNow();
+    }
+
+    public function test_entry_pack_reward_adds_time_without_shortening_purchased_ownership(): void
+    {
+        Carbon::setTestNow('2026-08-29 10:00:00');
+
+        $user = User::factory()->create();
+        Wallet::query()->updateOrCreate(['user_id' => $user->id], ['balance' => 0]);
+        $pack = EntryPack::query()->create([
+            'name' => 'CAR 2',
+            'price_coins' => 3000,
+            'svg_url' => 'https://cdn.example.com/car-2.svg',
+            'animation_style' => 'fullscreen',
+            'priority' => 5,
+            'duration_ms' => 3000,
+            'is_active' => true,
+            'sort_order' => 1,
+        ]);
+        $ownership = UserEntryPack::query()->create([
+            'user_id' => $user->id,
+            'entry_pack_id' => $pack->id,
+            'is_active' => true,
+            'purchased_at' => now()->subDay(),
+            'expires_at' => now()->addDays(3),
+            'purchase_key' => 'existing-three-day-pack',
+            'source' => 'USER_PURCHASE',
+            'charged' => true,
+            'price_coins' => 3000,
+        ]);
+        FortuneWheelSegment::query()->create([
+            'label' => 'CAR 2 1 Day',
+            'reward_type' => FortuneWheelSegment::REWARD_ENTRY_PACK,
+            'entry_pack_id' => $pack->id,
+            'reward_duration_hours' => 24,
+            'weight' => 1,
+            'is_active' => true,
+        ]);
+
+        app(FortuneWheelService::class)->spin($user, 'extend-three-day-pack');
+
+        $this->assertDatabaseCount('user_entry_packs', 1);
+        $this->assertSame('2026-09-02 10:00:00', $ownership->fresh()->expires_at->format('Y-m-d H:i:s'));
+        $this->assertSame('USER_PURCHASE', $ownership->fresh()->source);
+        $this->assertTrue($ownership->fresh()->charged);
+        Carbon::setTestNow();
+    }
+
     public function test_subscription_reward_creates_and_extends_active_plan(): void
     {
         $user = User::factory()->create();
@@ -217,6 +306,90 @@ class FortuneWheelServiceTest extends TestCase
         $this->assertTrue($subscription->ends_at->greaterThan(now()->addHours(47)));
         $this->assertSame('fortune_wheel', data_get($subscription->meta, 'source'));
         $this->assertFalse(data_get($subscription->meta, 'charged'));
+        $this->assertContains(
+            FortuneWheelSegment::REWARD_SUBSCRIPTION,
+            collect(data_get($first, 'segments'))->pluck('reward_type')->all(),
+        );
+    }
+
+    public function test_subscription_reward_extends_current_plan_without_downgrading_it(): void
+    {
+        $user = User::factory()->create();
+        Wallet::query()->updateOrCreate(['user_id' => $user->id], ['balance' => 0]);
+        $platinum = SubscriptionPlan::query()->create([
+            'name' => 'Platinum',
+            'price_coins' => 3000,
+            'duration_days' => 30,
+            'is_active' => true,
+        ]);
+        $base = SubscriptionPlan::query()->create([
+            'name' => 'Base',
+            'price_coins' => 300,
+            'duration_days' => 1,
+            'is_active' => true,
+        ]);
+        $subscription = UserSubscription::query()->create([
+            'user_id' => $user->id,
+            'subscription_plan_id' => $platinum->id,
+            'status' => 'active',
+            'starts_at' => now()->subDay(),
+            'ends_at' => now()->addDays(20),
+            'meta' => ['source' => 'USER_PURCHASE', 'charged' => true],
+        ]);
+        FortuneWheelSegment::query()->create([
+            'label' => 'Base 1 Day',
+            'reward_type' => FortuneWheelSegment::REWARD_SUBSCRIPTION,
+            'subscription_plan_id' => $base->id,
+            'reward_duration_hours' => 24,
+            'weight' => 1,
+            'is_active' => true,
+        ]);
+
+        $result = app(FortuneWheelService::class)->spin($user, 'active-subscription-spin');
+
+        $this->assertSame(1, UserSubscription::query()->where('user_id', $user->id)->count());
+        $this->assertSame($platinum->id, $subscription->fresh()->subscription_plan_id);
+        $this->assertTrue($subscription->fresh()->ends_at->between(now()->addDays(20)->addHours(23), now()->addDays(20)->addHours(25)));
+        $this->assertSame($base->id, data_get($result, 'spin.subscription_plan_id'));
+        $this->assertSame('USER_PURCHASE', data_get($subscription->fresh()->meta, 'source'));
+        $this->assertSame('fortune_wheel', data_get($subscription->fresh()->meta, 'last_extension_source'));
+    }
+
+    public function test_subscription_reward_creates_new_record_when_previous_subscription_expired(): void
+    {
+        $user = User::factory()->create();
+        Wallet::query()->updateOrCreate(['user_id' => $user->id], ['balance' => 0]);
+        $plan = SubscriptionPlan::query()->create([
+            'name' => 'Base',
+            'price_coins' => 300,
+            'duration_days' => 1,
+            'is_active' => true,
+        ]);
+        $expired = UserSubscription::query()->create([
+            'user_id' => $user->id,
+            'subscription_plan_id' => $plan->id,
+            'status' => 'active',
+            'starts_at' => now()->subDays(2),
+            'ends_at' => now()->subDay(),
+        ]);
+        FortuneWheelSegment::query()->create([
+            'label' => 'Base 1 Day',
+            'reward_type' => FortuneWheelSegment::REWARD_SUBSCRIPTION,
+            'subscription_plan_id' => $plan->id,
+            'reward_duration_hours' => 24,
+            'weight' => 1,
+            'is_active' => true,
+        ]);
+
+        $result = app(FortuneWheelService::class)->spin($user, 'expired-subscription-spin');
+
+        $this->assertSame(FortuneWheelSegment::REWARD_SUBSCRIPTION, data_get($result, 'spin.reward_type'));
+        $this->assertSame(2, UserSubscription::query()->where('user_id', $user->id)->count());
+        $this->assertSame($expired->ends_at->toDateTimeString(), $expired->fresh()->ends_at->toDateTimeString());
+        $this->assertNotSame(
+            $expired->id,
+            FortuneWheelSpin::query()->where('user_id', $user->id)->value('user_subscription_id'),
+        );
     }
 
     public function test_paid_spin_requires_sufficient_wallet_balance(): void
