@@ -643,6 +643,8 @@ class FortuneWheelService
             'subscription_plan_id' => $spin->subscription_plan_id,
             'subscription_plan_name' => $spin->subscriptionPlan?->name,
             'reward_duration_hours' => $spin->reward_duration_hours,
+            'user_entry_pack_id' => $spin->user_entry_pack_id,
+            'user_subscription_id' => $spin->user_subscription_id,
             'segment' => $spin->segment ? $this->segmentPayload($spin->segment) : null,
             'spun_for_date' => optional($spin->spun_for_date)->toDateString(),
             'created_at' => optional($spin->created_at)->toIso8601String(),

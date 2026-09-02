@@ -158,6 +158,8 @@ class FortuneWheelSpin {
     required this.subscriptionPlanId,
     required this.subscriptionPlanName,
     required this.rewardDurationHours,
+    required this.userEntryPackId,
+    required this.userSubscriptionId,
     required this.segment,
     required this.spunForDate,
     required this.createdAt,
@@ -173,6 +175,8 @@ class FortuneWheelSpin {
   final int? subscriptionPlanId;
   final String? subscriptionPlanName;
   final int? rewardDurationHours;
+  final int? userEntryPackId;
+  final int? userSubscriptionId;
   final FortuneWheelSegment? segment;
   final String spunForDate;
   final DateTime? createdAt;
@@ -189,6 +193,8 @@ class FortuneWheelSpin {
       subscriptionPlanId: _toNullableInt(json['subscription_plan_id']),
       subscriptionPlanName: json['subscription_plan_name']?.toString(),
       rewardDurationHours: _toNullableInt(json['reward_duration_hours']),
+      userEntryPackId: _toNullableInt(json['user_entry_pack_id']),
+      userSubscriptionId: _toNullableInt(json['user_subscription_id']),
       segment:
           json['segment'] is Map
               ? FortuneWheelSegment.fromJson(

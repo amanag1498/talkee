@@ -7,6 +7,7 @@ import 'package:get/get.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../../app/routes/app_routes.dart';
 import '../../../../app/widgets/coin_lottie.dart';
 import '../../../../app/widgets/haptics.dart';
 import '../../../wallet/widgets/recharge_bottom_sheet.dart';
@@ -301,6 +302,18 @@ class _FortuneWheelPanelState extends State<FortuneWheelPanel>
     widget.onRechargeRequired?.call();
   }
 
+  void _openRewardEntitlement(FortuneWheelSpin spin) {
+    final route = switch (spin.rewardType) {
+      'entry_pack' => Routes.entryCatalog,
+      'subscription' => Routes.subscriptions,
+      _ => null,
+    };
+    if (route == null) return;
+
+    _dismissReward();
+    Get.toNamed(route);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Obx(() {
@@ -405,6 +418,7 @@ class _FortuneWheelPanelState extends State<FortuneWheelPanel>
                               child: _FortuneRewardSheet(
                                 spin: _visibleReward!,
                                 onClose: _dismissReward,
+                                onManageReward: _openRewardEntitlement,
                               ),
                             ),
                           ),
@@ -1804,10 +1818,15 @@ class _LatestWinCard extends StatelessWidget {
 }
 
 class _FortuneRewardSheet extends StatefulWidget {
-  const _FortuneRewardSheet({required this.spin, required this.onClose});
+  const _FortuneRewardSheet({
+    required this.spin,
+    required this.onClose,
+    required this.onManageReward,
+  });
 
   final FortuneWheelSpin spin;
   final VoidCallback onClose;
+  final ValueChanged<FortuneWheelSpin> onManageReward;
 
   @override
   State<_FortuneRewardSheet> createState() => _PremiumRewardDialogState();
@@ -1837,6 +1856,11 @@ class _PremiumRewardDialogState extends State<_FortuneRewardSheet>
     final isZeroCoins =
         widget.spin.rewardType == 'coins' && widget.spin.rewardValueCoins == 0;
     final title = isZeroCoins ? 'SPIN COMPLETE' : 'YOU WON!';
+    final entitlementAction = switch (widget.spin.rewardType) {
+      'entry_pack' => 'VIEW ACTIVE ENTRY',
+      'subscription' => 'VIEW MEMBERSHIP',
+      _ => null,
+    };
 
     return SafeArea(
       child: AnimatedBuilder(
@@ -1978,6 +2002,26 @@ class _PremiumRewardDialogState extends State<_FortuneRewardSheet>
                                   ),
                                   const SizedBox(height: 10),
                                   _PremiumRewardStatus(spin: widget.spin),
+                                  if (entitlementAction != null) ...[
+                                    const SizedBox(height: 8),
+                                    TextButton.icon(
+                                      onPressed:
+                                          () => widget.onManageReward(widget.spin),
+                                      icon: const Icon(
+                                        Icons.visibility_rounded,
+                                        size: 16,
+                                      ),
+                                      label: Text(entitlementAction),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: const Color(0xFFFFE28A),
+                                        textStyle: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: .6,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                   const SizedBox(height: 10),
                                   _PremiumImageActionButton(
                                     label: 'COLLECT',
@@ -2175,12 +2219,13 @@ class _PremiumRewardStatus extends StatelessWidget {
   Widget build(BuildContext context) {
     final isZero = spin.rewardType == 'coins' && spin.rewardValueCoins == 0;
     final isCoin = spin.rewardType == 'coins';
-    final label =
-        isZero
-            ? 'ROUND COMPLETE'
-            : isCoin
-            ? 'CREDITED TO YOUR WALLET'
-            : 'ACTIVATED INSTANTLY';
+    final label = isZero
+        ? 'ROUND COMPLETE'
+        : isCoin
+        ? 'CREDITED TO YOUR WALLET'
+        : spin.rewardType == 'entry_pack'
+        ? 'ENTRY EFFECT ACTIVATED'
+        : 'MEMBERSHIP ACTIVATED';
     final icon =
         isZero
             ? Icons.auto_awesome_rounded

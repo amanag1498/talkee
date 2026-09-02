@@ -192,6 +192,7 @@ class FortuneWheelServiceTest extends TestCase
         $userPack = UserEntryPack::query()->where('user_id', $user->id)->where('entry_pack_id', $pack->id)->first();
         $this->assertNotNull($userPack);
         $this->assertTrue($userPack->is_active);
+        $this->assertSame($userPack->id, data_get($result, 'spin.user_entry_pack_id'));
         $this->assertSame('fortune_wheel:'.data_get($result, 'spin.id'), $userPack->purchase_key);
         $this->assertSame('fortune_wheel', $userPack->source);
         $this->assertFalse($userPack->charged);
@@ -323,6 +324,7 @@ class FortuneWheelServiceTest extends TestCase
         $this->assertTrue($subscription->ends_at->greaterThan(now()->addHours(47)));
         $this->assertSame('fortune_wheel', data_get($subscription->meta, 'source'));
         $this->assertFalse(data_get($subscription->meta, 'charged'));
+        $this->assertSame($subscription->id, data_get($second, 'spin.user_subscription_id'));
         $this->assertContains(
             FortuneWheelSegment::REWARD_SUBSCRIPTION,
             collect(data_get($first, 'segments'))->pluck('reward_type')->all(),
