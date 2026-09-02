@@ -36,7 +36,20 @@ class FortuneWheelAdminTest extends TestCase
             'games.fortune_wheel.enabled' => true,
             'games.fortune_wheel.paid_spins_enabled' => true,
             'games.fortune_wheel.paid_spin_cost_coins' => 50,
+            'app_features.platform.android.fortune_wheel_enabled' => true,
         ]);
+    }
+
+    public function test_dashboard_exposes_platform_activation_mismatch(): void
+    {
+        config(['app_features.platform.android.fortune_wheel_enabled' => false]);
+        $this->coinSegment('Ready Reward', 10);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.games.fortune-wheel.dashboard'))
+            ->assertOk()
+            ->assertSee('Unavailable')
+            ->assertSee('Android platform feature is disabled');
     }
 
     public function test_dashboard_shows_runtime_odds_and_seeded_catalog_rewards(): void
@@ -67,7 +80,7 @@ class FortuneWheelAdminTest extends TestCase
             ->from(route('admin.games.fortune-wheel.dashboard'))
             ->post(route('admin.games.fortune-wheel.segments.store'), [
                 '_segment_context' => 'new',
-                'label' => 'Existing Reward',
+                'label' => ' Existing Reward ',
                 'reward_type' => FortuneWheelSegment::REWARD_COINS,
                 'reward_value_coins' => 20,
                 'weight' => 1,

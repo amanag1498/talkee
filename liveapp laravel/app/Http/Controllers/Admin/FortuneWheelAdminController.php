@@ -85,6 +85,12 @@ class FortuneWheelAdminController extends Controller
 
     private function validatedSegment(Request $request, ?FortuneWheelSegment $segment): array
     {
+        // Validate the canonical label so surrounding whitespace cannot bypass
+        // the uniqueness rule and create visually duplicate wheel segments.
+        $request->merge([
+            'label' => trim((string) $request->input('label', '')),
+        ]);
+
         $data = $request->validate([
             'label' => [
                 'required',

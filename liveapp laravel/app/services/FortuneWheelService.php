@@ -55,6 +55,7 @@ class FortuneWheelService
     {
         return [
             'enabled' => $this->enabled(),
+            'platform_enabled' => (bool) config('app_features.platform.android.fortune_wheel_enabled', false),
             'visible_in_video_room_strip' => $this->visibleInVideoRoomStrip(),
             'free_spins_per_day' => $this->freeSpinsPerDay(),
             'paid_spin_cost_coins' => $this->paidSpinCostCoins(),
@@ -97,9 +98,16 @@ class FortuneWheelService
             throw new HttpException(403, 'Fortune Wheel is currently unavailable.');
         }
 
-        $normalizedKey = $idempotencyKey ? Str::limit(trim($idempotencyKey), 150, '') : null;
+        $normalizedKey = trim((string) $idempotencyKey);
+        $normalizedKey = $normalizedKey !== '' ? Str::limit($normalizedKey, 150, '') : null;
 
         $spin = DB::transaction(function () use ($user, $normalizedKey) {
+            // Serialize every spin for this user before checking the client key.
+            // Checking first leaves a race where two concurrent requests can both
+            // miss the row and one later fails the unique constraint after the
+            // first request has already committed the authoritative result.
+            User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+
             if ($normalizedKey) {
                 $existing = FortuneWheelSpin::query()
                     ->with(['segment', 'entryPack', 'subscriptionPlan'])
@@ -112,8 +120,6 @@ class FortuneWheelService
                     return $existing;
                 }
             }
-
-            User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
 
             $segments = $this->activeSegments()->lockForUpdate()->get();
             if ($segments->isEmpty()) {
@@ -253,6 +259,12 @@ class FortuneWheelService
 
         if ($this->enabled() && $eligibleSegments->isEmpty()) {
             $healthWarnings[] = 'The game is enabled but has no selectable reward segments.';
+        }
+        if ($this->enabled() && ! (bool) config('app_features.platform.android.fortune_wheel_enabled', false)) {
+            $healthWarnings[] = 'The game master switch is enabled, but the Android platform feature is disabled, so players cannot access it.';
+        }
+        if (! $this->enabled() && (bool) config('app_features.platform.android.fortune_wheel_enabled', false)) {
+            $healthWarnings[] = 'The Android platform feature is enabled, but the game master switch is disabled.';
         }
         if ($ineligibleActive->isNotEmpty()) {
             $healthWarnings[] = $ineligibleActive->count().' active segment(s) are excluded because their linked catalog reward is missing or inactive.';

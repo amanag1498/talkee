@@ -125,6 +125,23 @@ class FortuneWheelServiceTest extends TestCase
         $this->assertSame(100, (int) Wallet::query()->where('user_id', $user->id)->value('balance'));
     }
 
+    public function test_whitespace_idempotency_key_is_treated_as_missing(): void
+    {
+        config(['games.fortune_wheel.free_spins_per_day' => 2]);
+
+        $user = User::factory()->create();
+        Wallet::query()->updateOrCreate(['user_id' => $user->id], ['balance' => 0]);
+        $this->coinSegment('No Key Reward', 0);
+
+        $service = app(FortuneWheelService::class);
+        $first = $service->spin($user, '   ');
+        $second = $service->spin($user, "\t");
+
+        $this->assertNotSame(data_get($first, 'spin.id'), data_get($second, 'spin.id'));
+        $this->assertSame(2, FortuneWheelSpin::query()->where('user_id', $user->id)->count());
+        $this->assertSame(0, FortuneWheelSpin::query()->whereNotNull('idempotency_key')->count());
+    }
+
     public function test_zero_coin_segment_is_a_valid_reward_without_credit_transaction(): void
     {
         $user = User::factory()->create();

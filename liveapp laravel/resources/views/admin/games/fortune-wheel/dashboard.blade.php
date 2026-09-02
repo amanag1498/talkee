@@ -59,7 +59,7 @@
 
   <div class="row g-3 mb-4">
     @foreach([
-      ['Status', !empty($settings['enabled']) ? 'Enabled' : 'Disabled', number_format((int) ($summary['eligible_segments'] ?? 0)).' selectable of '.number_format((int) ($summary['configured_segments'] ?? 0)).' configured'],
+      ['Status', !empty($settings['enabled']) && !empty($settings['platform_enabled']) ? 'Available' : 'Unavailable', (!empty($settings['enabled']) ? 'Master on' : 'Master off').' · '.(!empty($settings['platform_enabled']) ? 'Android on' : 'Android off').' · '.number_format((int) ($summary['eligible_segments'] ?? 0)).' selectable'],
       ['Spins Today', number_format((int) ($summary['spins_today'] ?? 0)), number_format((int) ($summary['free_spins_today'] ?? 0)).' free, '.number_format((int) ($summary['paid_spins_today'] ?? 0)).' paid'],
       ['Net Coin Flow', ($netCoinFlow >= 0 ? '+' : '').number_format($netCoinFlow), number_format($coinsCollected).' collected, '.number_format($coinsRewarded).' rewarded'],
       ['Paid Spin Margin', number_format((float) ($expected['estimated_coin_margin'] ?? 0), 2), number_format((float) ($expected['estimated_coin_margin_percent'] ?? 0), 1).'% before entitlement value'],

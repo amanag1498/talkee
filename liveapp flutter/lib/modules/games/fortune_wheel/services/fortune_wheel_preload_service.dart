@@ -71,7 +71,13 @@ class FortuneWheelPreloadService extends GetxService
       error.value = null;
       _loadedUserId = null;
     }
-    if (snapshot.value != null && !_snapshotLooksStale(snapshot.value!)) {
+    final refreshCurrentSnapshot =
+        reason == 'app_resumed' ||
+        reason == 'panel_open' ||
+        reason == 'settings_changed';
+    if (snapshot.value != null &&
+        !_snapshotLooksStale(snapshot.value!) &&
+        !refreshCurrentSnapshot) {
       return;
     }
     if (loading.value) {

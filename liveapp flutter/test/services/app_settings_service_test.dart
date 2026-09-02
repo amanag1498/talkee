@@ -18,7 +18,7 @@ void main() {
       expect(payload.activePremiumThemeVariant, 'aurora');
     });
 
-    test('falls back to midnight for invalid variant', () {
+    test('accepts a dynamically configured theme key', () {
       final payload = AppSettingsPayload.fromJson({
         'enable_premium_theme_variants': true,
         'premium_theme_variant': 'neon',
@@ -30,7 +30,7 @@ void main() {
         'features': const <String, dynamic>{},
       });
 
-      expect(payload.activePremiumThemeVariant, 'midnight');
+      expect(payload.activePremiumThemeVariant, 'neon');
     });
 
     test('falls back to midnight when variant is missing', () {
@@ -60,6 +60,28 @@ void main() {
       });
 
       expect(payload.activePremiumThemeVariant, 'midnight');
+    });
+  });
+
+  group('Fortune Wheel feature parsing', () {
+    test('keeps global availability separate from room-strip visibility', () {
+      final payload = AppSettingsPayload.fromJson({
+        'features': const <String, dynamic>{
+          'fortune_wheel_enabled': true,
+          'fortune_wheel_visible_in_video_room_strip': false,
+        },
+      });
+
+      expect(payload.features.fortuneWheelEnabled, isTrue);
+      expect(payload.features.fortuneWheelVisibleInVideoRoomStrip, isFalse);
+    });
+
+    test('defaults room-strip visibility on for older app-config payloads', () {
+      final payload = AppSettingsPayload.fromJson({
+        'features': const <String, dynamic>{'fortune_wheel_enabled': true},
+      });
+
+      expect(payload.features.fortuneWheelVisibleInVideoRoomStrip, isTrue);
     });
   });
 }

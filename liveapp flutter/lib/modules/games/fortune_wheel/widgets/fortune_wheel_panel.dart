@@ -1062,7 +1062,7 @@ class _FortuneWheelPainter extends CustomPainter {
     }
     if (segment.rewardType == 'subscription') {
       final name = _shortRewardName(segment.subscriptionPlanName, 'VIP');
-      return '$name\n1 DAY';
+      return '$name\n${_compactDuration(segment.rewardDurationHours)}';
     }
     return segment.label;
   }
@@ -1071,6 +1071,13 @@ class _FortuneWheelPainter extends CustomPainter {
     final name = value?.trim().toUpperCase();
     if (name == null || name.isEmpty) return fallback;
     return name.length <= 8 ? name : '${name.substring(0, 7)}.';
+  }
+
+  String _compactDuration(int? hours) {
+    final value = math.max(1, hours ?? 24);
+    if (value < 24) return '${value}H';
+    if (value % 24 == 0) return '${value ~/ 24}D';
+    return '${value}H';
   }
 
   @override
@@ -1099,14 +1106,23 @@ class _SpinButton extends StatefulWidget {
 class _PremiumSpinButtonState extends State<_SpinButton> {
   bool _pressed = false;
 
-  bool get _enabled => !widget.spinning && widget.snapshot.segments.isNotEmpty;
+  bool get _enabled =>
+      !widget.spinning &&
+      widget.snapshot.segments.isNotEmpty &&
+      (widget.snapshot.canFreeSpin || widget.snapshot.canPaidSpin);
 
   @override
   Widget build(BuildContext context) {
     final isFree = widget.snapshot.canFreeSpin;
     final pulse = .5 + (.5 * math.sin(widget.ambient * math.pi * 2));
     final label =
-        widget.spinning ? 'SPINNING' : (isFree ? 'FREE SPIN' : 'SPIN NOW');
+        widget.spinning
+            ? 'SPINNING'
+            : isFree
+            ? 'FREE SPIN'
+            : widget.snapshot.canPaidSpin
+            ? 'SPIN NOW'
+            : 'COME BACK';
 
     return Center(
       child: Semantics(
@@ -1219,7 +1235,9 @@ class _PremiumSpinButtonState extends State<_SpinButton> {
                                   ),
                                 ),
                               ),
-                              if (!widget.spinning && !isFree) ...[
+                              if (!widget.spinning &&
+                                  !isFree &&
+                                  widget.snapshot.canPaidSpin) ...[
                                 const SizedBox(width: 7),
                                 CoinLottie(size: 19),
                                 const SizedBox(width: 2),

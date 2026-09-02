@@ -1887,7 +1887,8 @@ class _VideoCallPageState extends State<VideoCallPage>
     final settings = Get.find<AppSettingsService>();
     return (settings.teenPattiEnabled ||
             settings.greedyEnabled ||
-            settings.fortuneWheelEnabled) &&
+            (settings.fortuneWheelEnabled &&
+                settings.fortuneWheelVisibleInVideoRoomStrip)) &&
         settings.videoRoomGamesEnabled;
   }
 

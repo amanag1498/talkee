@@ -272,10 +272,13 @@ class _GamesList extends StatelessWidget {
       settings.payload.value;
       final showTeenPatti = settings.teenPattiEnabled;
       final showGreedy = settings.greedyEnabled;
-      final showFortuneWheel = settings.fortuneWheelEnabled;
+      final showFortuneWheel =
+          settings.fortuneWheelEnabled &&
+          settings.fortuneWheelVisibleInVideoRoomStrip;
       final snapshot = fortune?.snapshot.value;
       final freeSpins = snapshot?.freeSpinsRemaining ?? 0;
       final paidCost = snapshot?.settings.paidSpinCostCoins;
+      final paidSpinsEnabled = snapshot?.settings.paidSpinsEnabled ?? true;
 
       return ListView(
       padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
@@ -333,8 +336,15 @@ class _GamesList extends StatelessWidget {
             description:
                 freeSpins > 0
                     ? '$freeSpins free spin ready. Win coins, entry packs, subscriptions, or 0 coins.'
-                    : 'Spin the reward wheel for ${paidCost ?? 'coins'} and collect instant prizes.',
-            chip: freeSpins > 0 ? 'FREE SPIN READY' : 'DAILY REWARD',
+                    : paidSpinsEnabled
+                    ? 'Spin the reward wheel for ${paidCost ?? 'coins'} and collect instant prizes.'
+                    : 'Today\'s free spins are used. Come back after the daily reset.',
+            chip:
+                freeSpins > 0
+                    ? 'FREE SPIN READY'
+                    : paidSpinsEnabled
+                    ? 'DAILY REWARD'
+                    : 'COME BACK TOMORROW',
             accent: const Color(0xFFFFB84D),
             icon: Container(
               width: 76,

@@ -191,7 +191,17 @@ class AppFeatureFlagEnforcementTest extends TestCase
             ->getJson('/api/app-config')
             ->assertOk()
             ->assertJsonPath('data.features.fortune_wheel_enabled', true)
+            ->assertJsonPath('data.features.fortune_wheel_visible_in_video_room_strip', true)
             ->assertJsonPath('data.features.video_room_games_enabled', true);
+
+        config(['games.fortune_wheel.visible_in_video_room_strip' => false]);
+
+        $this->withHeaders($this->androidHeaders())
+            ->getJson('/api/app-config')
+            ->assertOk()
+            ->assertJsonPath('data.features.fortune_wheel_enabled', true)
+            ->assertJsonPath('data.features.fortune_wheel_visible_in_video_room_strip', false)
+            ->assertJsonPath('data.features.video_room_games_enabled', false);
 
         config(['app_features.platform.android.fortune_wheel_enabled' => false]);
 

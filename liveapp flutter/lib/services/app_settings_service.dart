@@ -295,6 +295,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       payload.value?.features.greedyEnabled ?? false;
   bool get fortuneWheelEnabled =>
       payload.value?.features.fortuneWheelEnabled ?? false;
+  bool get fortuneWheelVisibleInVideoRoomStrip =>
+      payload.value?.features.fortuneWheelVisibleInVideoRoomStrip ?? true;
   bool get videoRoomGamesEnabled =>
       payload.value?.features.videoRoomGamesEnabled ?? false;
   AppHostGoalSettings get hostGoals =>
@@ -639,6 +641,7 @@ class AppPlatformFeatureFlags {
     required this.teenPattiEnabled,
     required this.greedyEnabled,
     required this.fortuneWheelEnabled,
+    required this.fortuneWheelVisibleInVideoRoomStrip,
     required this.videoRoomGamesEnabled,
   });
 
@@ -654,6 +657,7 @@ class AppPlatformFeatureFlags {
       teenPattiEnabled = false,
       greedyEnabled = false,
       fortuneWheelEnabled = false,
+      fortuneWheelVisibleInVideoRoomStrip = true,
       videoRoomGamesEnabled = false;
 
   final bool audioRoomsEnabled;
@@ -667,6 +671,7 @@ class AppPlatformFeatureFlags {
   final bool teenPattiEnabled;
   final bool greedyEnabled;
   final bool fortuneWheelEnabled;
+  final bool fortuneWheelVisibleInVideoRoomStrip;
   final bool videoRoomGamesEnabled;
 
   factory AppPlatformFeatureFlags.fromJson(Map<String, dynamic> json) {
@@ -718,6 +723,10 @@ class AppPlatformFeatureFlags {
       fortuneWheelEnabled: toBool(
         json['fortune_wheel_enabled'],
         fallback: false,
+      ),
+      fortuneWheelVisibleInVideoRoomStrip: toBool(
+        json['fortune_wheel_visible_in_video_room_strip'],
+        fallback: true,
       ),
       videoRoomGamesEnabled: toBool(
         json['video_room_games_enabled'],

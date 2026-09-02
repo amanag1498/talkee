@@ -679,10 +679,11 @@ class AppSettingsService
             && (bool) ($access[GameAccessService::GAME_GREEDY] ?? false);
         $fortuneWheelEnabled = (bool) config('app_features.platform.android.fortune_wheel_enabled', false)
             && (bool) config('games.fortune_wheel.enabled', false)
-            && (bool) config('games.fortune_wheel.visible_in_video_room_strip', true)
             && (bool) ($access[GameAccessService::GAME_FORTUNE_WHEEL] ?? false);
+        $fortuneWheelVisibleInVideoRoomStrip = $fortuneWheelEnabled
+            && (bool) config('games.fortune_wheel.visible_in_video_room_strip', true);
         $videoRoomGamesEnabled = (bool) config('app_features.platform.android.video_room_games_enabled', false)
-            && ($teenPattiEnabled || $greedyEnabled || $fortuneWheelEnabled);
+            && ($teenPattiEnabled || $greedyEnabled || $fortuneWheelVisibleInVideoRoomStrip);
 
         return [
             'audio_rooms_enabled' => (bool) config('app_features.platform.android.audio_rooms_enabled', true),
@@ -696,6 +697,7 @@ class AppSettingsService
             'teen_patti_enabled' => $teenPattiEnabled,
             'greedy_enabled' => $greedyEnabled,
             'fortune_wheel_enabled' => $fortuneWheelEnabled,
+            'fortune_wheel_visible_in_video_room_strip' => $fortuneWheelVisibleInVideoRoomStrip,
             'video_room_games_enabled' => $videoRoomGamesEnabled,
         ];
     }
