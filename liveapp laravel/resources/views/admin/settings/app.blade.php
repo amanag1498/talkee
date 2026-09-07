@@ -76,7 +76,7 @@
                       @elseif(($definition['type'] ?? 'boolean') === 'csv_integer_list' || ($definition['type'] ?? 'boolean') === 'string')
                         <div class="flex-shrink-0" style="min-width: 240px;">
                           <input
-                            type="text"
+                            type="{{ $definition['input_type'] ?? 'text' }}"
                             class="form-control form-control-sm @error($key) is-invalid @enderror"
                             name="{{ $inputName }}"
                             value="{{ old($key, $values[$key] ?? $definition['default'] ?? '') }}"

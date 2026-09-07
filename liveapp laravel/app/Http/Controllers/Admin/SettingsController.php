@@ -98,6 +98,11 @@ class SettingsController extends Controller
         $rules = [];
         foreach (AppSettingsService::APP_DEFINITIONS as $key => $definition) {
             $type = $definition['type'] ?? 'boolean';
+            if ($key === 'app_features.demo_login_email') {
+                $rules[$key] = 'nullable|email:rfc|max:255';
+                continue;
+            }
+
             if ($type === 'string' && !empty($definition['options'])) {
                 $options = implode(',', $definition['options'] ?? []);
                 $rules[$key] = 'required|string|in:' . $options;
@@ -130,6 +135,18 @@ class SettingsController extends Controller
         }
 
         $validated = $request->validate($rules);
+        if ((bool) data_get($validated, 'app_features.demo_login_enabled')) {
+            $demoEmail = mb_strtolower(trim((string) data_get($validated, 'app_features.demo_login_email')));
+            $demoUser = \App\Models\User::query()
+                ->whereRaw('LOWER(email) = ?', [$demoEmail])
+                ->first();
+            if (! $demoUser) {
+                throw ValidationException::withMessages([
+                    'app_features.demo_login_email' => 'Choose an existing user email before enabling demo login.',
+                ]);
+            }
+            data_set($validated, 'app_features.demo_login_email', $demoUser->email);
+        }
         $this->settings->updateAppSettings($validated['app_features']);
 
         return redirect()
@@ -181,7 +198,7 @@ class SettingsController extends Controller
     public function updateGames(Request $request)
     {
         $selectedGame = $request->query('game', 'teen_patti');
-        if (!in_array($selectedGame, ['teen_patti', 'greedy', 'fortune_wheel'], true)) {
+        if (!in_array($selectedGame, ['teen_patti', 'greedy', 'seven_up_down', 'fortune_wheel'], true)) {
             $selectedGame = 'teen_patti';
         }
 
@@ -237,6 +254,18 @@ class SettingsController extends Controller
         if ($selectedGame === 'greedy' && (int) data_get($games, 'greedy.betting_lock_seconds') >= (int) data_get($games, 'greedy.round_duration_seconds')) {
             throw ValidationException::withMessages([
                 'games.greedy.betting_lock_seconds' => 'Greedy bet lock seconds must be less than round duration seconds.',
+            ]);
+        }
+
+        if ($selectedGame === 'seven_up_down' && (int) data_get($games, 'seven_up_down.max_bet') < (int) data_get($games, 'seven_up_down.min_bet')) {
+            throw ValidationException::withMessages([
+                'games.seven_up_down.max_bet' => 'Maximum bet must be greater than or equal to minimum bet.',
+            ]);
+        }
+
+        if ($selectedGame === 'seven_up_down' && (int) data_get($games, 'seven_up_down.betting_lock_seconds') >= (int) data_get($games, 'seven_up_down.round_duration_seconds')) {
+            throw ValidationException::withMessages([
+                'games.seven_up_down.betting_lock_seconds' => 'Bet lock seconds must be less than round duration seconds.',
             ]);
         }
 

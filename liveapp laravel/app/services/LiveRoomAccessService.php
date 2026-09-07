@@ -9,10 +9,18 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class LiveRoomAccessService
 {
+    public function __construct(
+        private ModerationService $moderation,
+        private UserBlockService $userBlocks,
+    ) {
+    }
+
     public function assertCanJoin(LiveRoom $room, ?User $authUser, ?int $userId, string $role): void
     {
-        app(ModerationService::class)->assertNotBlockedByHostUserId(
-            optional($room->host)->user_id ? (int) $room->host->user_id : null,
+        $hostUserId = optional($room->host)->user_id ? (int) $room->host->user_id : null;
+
+        $this->moderation->assertNotBlockedByHostUserId(
+            $hostUserId,
             $userId,
         );
 
@@ -31,6 +39,10 @@ class LiveRoomAccessService
 
         if (!$authUser || !$userId) {
             throw new HttpException(401, 'Login is required to join live rooms.');
+        }
+
+        if ($hostUserId && $this->userBlocks->hasBlocked($authUser, $hostUserId)) {
+            throw new HttpException(409, 'You blocked this host. Unblock them to join this room.');
         }
 
         if (($room->room_type ?? 'video') === 'audio') {

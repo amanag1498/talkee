@@ -92,6 +92,7 @@ function defaultAppConfig() {
       host_calling_enabled: true,
       teen_patti_enabled: false,
       greedy_enabled: false,
+      seven_up_down_enabled: false,
       video_room_games_enabled: false,
     },
   };
@@ -135,7 +136,9 @@ async function getAppConfig(force = false) {
   }
 
   try {
-    const { data } = await api.get('/app-config');
+    const { data } = await api.get('/ws/app-config', {
+      headers: internalApiHeaders(),
+    });
     appConfigCache = {
       fetchedAt: now,
       data: normalizeAppConfig(data?.data),
@@ -285,13 +288,39 @@ console.log('[common]  ', nowISO(), `Moderation cache TTL: ${MODERATION_CACHE_TT
 console.log('[common]  ', nowISO(), `Moderation cache poll interval: ${MODERATION_CACHE_POLL_MS}ms`);
 
 // ------------ Auth helpers ------------
-async function verifyUserFromLaravel(token, socket = null) {
+async function verifyUserFromLaravel(token, socket = null, forceRefresh = false) {
   if (!token) return null;
   const publicOrigin = publicApiOriginForSocket(socket);
-  const cacheKey = `${token}|${publicOrigin}`;
+  const clientPlatform = String(
+    socket?.handshake?.auth?.platform
+    || socket?.handshake?.headers?.['x-client-platform']
+    || 'android',
+  ).trim().toLowerCase();
+  const clientVersion = String(
+    socket?.handshake?.auth?.app_version
+    || socket?.handshake?.headers?.['x-app-version']
+    || '',
+  ).trim();
+  const clientVersionCode = String(
+    socket?.handshake?.auth?.app_version_code
+    || socket?.handshake?.headers?.['x-app-version-code']
+    || '',
+  ).trim();
+  const deviceId = String(
+    socket?.handshake?.auth?.device_id
+    || socket?.handshake?.headers?.['x-device-id']
+    || '',
+  ).trim();
+  const cacheKey = [
+    token,
+    publicOrigin,
+    clientPlatform,
+    clientVersionCode,
+    deviceId,
+  ].join('|');
   const cached = verifiedUserCache.get(cacheKey);
   const now = Date.now();
-  if (cached && cached.expiresAt > now) {
+  if (!forceRefresh && cached && cached.expiresAt > now) {
     return cached.user;
   }
   if (cached) {
@@ -301,7 +330,12 @@ async function verifyUserFromLaravel(token, socket = null) {
     const { data } = await api.get('/ws/verify', {
       headers: {
         Authorization: `Bearer ${token}`,
+        ...internalApiHeaders(),
         ...(publicOrigin ? { 'X-Public-Origin': publicOrigin } : {}),
+        ...(clientPlatform ? { 'X-Client-Platform': clientPlatform } : {}),
+        ...(clientVersion ? { 'X-App-Version': clientVersion } : {}),
+        ...(clientVersionCode ? { 'X-App-Version-Code': clientVersionCode } : {}),
+        ...(deviceId ? { 'X-Device-Id': deviceId } : {}),
       },
     });
     if (!data || !data.id) return null;
@@ -315,6 +349,12 @@ async function verifyUserFromLaravel(token, socket = null) {
       is_vip: !!data.is_vip,
       active_theme_key: data.active_theme_key || 'midnight',
       roles: Array.isArray(data.roles) ? data.roles : [],
+      game_access: data.game_access && typeof data.game_access === 'object'
+        ? data.game_access
+        : {},
+      blocked_user_ids: Array.isArray(data.blocked_user_ids)
+        ? data.blocked_user_ids.map(Number).filter(Number.isFinite)
+        : [],
     };
     verifiedUserCache.set(cacheKey, {
       user,
@@ -328,11 +368,15 @@ async function verifyUserFromLaravel(token, socket = null) {
   }
 }
 
-async function refreshSocketUserFromLaravel(socket) {
+async function refreshSocketUserFromLaravel(socket, forceRefresh = false) {
   if (!VERIFY_WITH_LARAVEL || !socket?.authToken) {
     return socket?.user || null;
   }
-  const freshUser = await verifyUserFromLaravel(socket.authToken, socket);
+  const freshUser = await verifyUserFromLaravel(
+    socket.authToken,
+    socket,
+    forceRefresh,
+  );
   if (!freshUser) {
     return socket?.user || null;
   }
@@ -351,7 +395,10 @@ async function moderationJoinCheck(token, roomId) {
     const { data } = await api.post('/ws/rooms/join-check', {
       room_id: String(roomId),
     }, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...internalApiHeaders(),
+      },
     });
     return data || { ok: true, allow: true };
   } catch (e) {
@@ -374,7 +421,10 @@ async function moderationChatCheck(token, roomId, message) {
       room_id: String(roomId),
       message: String(message || ''),
     }, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...internalApiHeaders(),
+      },
     });
     return data || { ok: true, allow: true, message };
   } catch (e) {
@@ -401,6 +451,11 @@ function devUser(socket) {
         is_vip: false,
         active_theme_key: 'midnight',
         roles: [],
+        game_access: {
+          teen_patti: true,
+          greedy: true,
+          seven_up_down: true,
+        },
       }
     : null;
 }
@@ -460,8 +515,9 @@ function makeAuthMiddleware(_namespaceName) {
       }
 
       if (_namespaceName === '/games'
-        && !featureEnabled('teen_patti_enabled')
-        && !featureEnabled('greedy_enabled')) {
+        && !(featureEnabled('teen_patti_enabled') && user.game_access?.teen_patti)
+        && !(featureEnabled('greedy_enabled') && user.game_access?.greedy)
+        && !(featureEnabled('seven_up_down_enabled') && user.game_access?.seven_up_down)) {
         return next(new Error('games_disabled'));
       }
 
@@ -594,7 +650,10 @@ async function syncSocketPresenceWithLaravel(token, status) {
   if (!VERIFY_WITH_LARAVEL || !token) return;
   try {
     await api.post('/ws/presence', { socket_status: status }, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...internalApiHeaders(),
+      },
     });
   } catch (e) {
     console.error('[presence][ERR]', nowISO(), `sync socket_status=${status} failed:`, e.message);
@@ -801,6 +860,8 @@ let teenPattiSnapshotCache = null;
 let teenPattiSnapshotHash = '';
 let greedySnapshotCache = null;
 let greedySnapshotHash = '';
+let sevenUpDownSnapshotCache = null;
+let sevenUpDownSnapshotHash = '';
 
 function hashTeenPattiSnapshot(payload) {
   try {
@@ -879,6 +940,34 @@ async function fetchGreedySnapshotInternal(force = false) {
   } catch (e) {
     console.error('[games][ERR]', nowISO(), `greedy snapshot fetch failed: ${e.message}`);
     return greedySnapshotCache;
+  }
+}
+
+async function fetchSevenUpDownSnapshotInternal(force = false) {
+  await getAppConfig();
+  if (!featureEnabled('seven_up_down_enabled')) {
+    sevenUpDownSnapshotCache = null;
+    sevenUpDownSnapshotHash = '';
+    return null;
+  }
+
+  try {
+    const { data } = await api.get('/ws/games/seven-up-down/snapshot', {
+      headers: internalApiHeaders(),
+    });
+    const payload = data && typeof data === 'object' ? data : null;
+    if (!payload?.ok) return null;
+    const nextHash = hashTeenPattiSnapshot(payload);
+    const changed = force || nextHash !== sevenUpDownSnapshotHash;
+    sevenUpDownSnapshotCache = payload;
+    sevenUpDownSnapshotHash = nextHash;
+    if (changed) {
+      gamesNs.to('game:seven_up_down').emit('seven_up_down:snapshot', payload);
+    }
+    return payload;
+  } catch (e) {
+    console.error('[games][ERR]', nowISO(), `Lucky 7 snapshot fetch failed: ${e.message}`);
+    return sevenUpDownSnapshotCache;
   }
 }
 
@@ -1473,6 +1562,11 @@ sub.subscribe('games:greedy:events', (err) => {
   else console.log('[games][SUB]', nowISO(), 'subscribed channel games:greedy:events');
 });
 
+sub.subscribe('games:seven_up_down:events', (err) => {
+  if (err) console.error('[games][ERR]', nowISO(), 'subscribe games:seven_up_down:events', err.message);
+  else console.log('[games][SUB]', nowISO(), 'subscribed channel games:seven_up_down:events');
+});
+
 sub.on('message', async (channel, message) => {
   await getAppConfig();
   if (channel === 'rooms:events') {
@@ -1755,6 +1849,22 @@ sub.on('message', async (channel, message) => {
     } catch (e) {
       console.error('[games][ERR]', nowISO(), 'games:greedy:events parse', e.message, message);
     }
+  } else if (channel === 'games:seven_up_down:events') {
+    try {
+      const payload = JSON.parse(message || '{}');
+      console.log('[games][EVT]', nowISO(), JSON.stringify({
+        event: payload.event,
+        round_key: payload.round_key || payload.snapshot?.round?.round_key || null,
+        sockets: gamesNs.sockets.size,
+      }));
+      gamesNs.to('game:seven_up_down').emit('games:event', payload);
+      if (payload.event) {
+        gamesNs.to('game:seven_up_down').emit(payload.event, payload);
+      }
+      await fetchSevenUpDownSnapshotInternal(true);
+    } catch (e) {
+      console.error('[games][ERR]', nowISO(), 'games:seven_up_down:events parse', e.message, message);
+    }
   }
 });
 
@@ -1776,8 +1886,17 @@ roomsNs.on('connection', (socket) => {
       ));
       return;
     }
+    await refreshSocketUserFromLaravel(socket, true);
     console.log('[rooms][API ]', nowISO(), `rooms:subscribe by user=${uid}`);
-    const list = await roomsSnapshot();
+    const blockedUserIds = new Set(
+      Array.isArray(socket.user?.blocked_user_ids)
+        ? socket.user.blocked_user_ids.map(Number)
+        : [],
+    );
+    const list = (await roomsSnapshot()).filter((room) => {
+      const hostUserId = Number(room?.host_id || room?.host_user_id || 0);
+      return !hostUserId || !blockedUserIds.has(hostUserId);
+    });
     console.log('[rooms][API ]', nowISO(), `rooms:subscribe -> send ${list.length} rooms`);
     socket.emit('rooms:snapshot', { rooms: list });
   });
@@ -1803,16 +1922,36 @@ roomsNs.on('connection', (socket) => {
       ));
       return;
     }
-    const moderationSnapshot = await getModerationSnapshot();
     const hostUserId = Number(roomDoc?.host_id || 0);
-    const joinBlocked = moderationSnapshot.available
-      ? isUserBlockedByHost(hostUserId, socket.user?.id)
-      : ((await moderationJoinCheck(socket.authToken, room_id))?.allow === false);
-    if (joinBlocked) {
+    const targetUserId = Number(socket.user?.id || 0);
+    let joinDecision;
+    if (VERIFY_WITH_LARAVEL) {
+      joinDecision = await moderationJoinCheck(socket.authToken, room_id);
+    } else {
+      const moderationSnapshot = await getModerationSnapshot();
+      const blockedInSnapshot = moderationSnapshot.available
+        && isUserBlockedByHost(hostUserId, targetUserId);
+      const cachedPersonalBlock = Array.isArray(socket.user?.blocked_user_ids)
+        && socket.user.blocked_user_ids.map(Number).includes(hostUserId);
+      joinDecision = {
+        allow: !(blockedInSnapshot || cachedPersonalBlock),
+        code: blockedInSnapshot
+          ? 'HOST_BLOCKED'
+          : (cachedPersonalBlock ? 'YOU_BLOCKED_HOST' : null),
+        reason: blockedInSnapshot
+          ? 'You were blocked by this host.'
+          : (cachedPersonalBlock
+            ? 'You blocked this host. Unblock them to join this room.'
+            : null),
+      };
+    }
+    if (joinDecision?.allow === false) {
       socket.emit('room:moderation:error', {
         room_id: String(room_id),
-        code: 'HOST_BLOCKED',
-        message: 'You were blocked by this host.',
+        code: joinDecision.code || 'ROOM_JOIN_BLOCKED',
+        message: joinDecision.reason || 'You cannot join this room.',
+        host_user_id: hostUserId || null,
+        target_user_id: targetUserId || null,
         at: nowISO(),
       });
       return;
@@ -2067,7 +2206,7 @@ gamesNs.on('connection', (socket) => {
 
   socket.on('games:teen_patti:subscribe', async () => {
     await getAppConfig();
-    if (!featureEnabled('teen_patti_enabled')) {
+    if (!featureEnabled('teen_patti_enabled') || !socket.user?.game_access?.teen_patti) {
       socket.emit('feature:error', featureErrorPayload(
         'TEEN_PATTI_DISABLED',
         'Teen Patti is currently unavailable.',
@@ -2088,7 +2227,7 @@ gamesNs.on('connection', (socket) => {
 
   socket.on('games:greedy:subscribe', async () => {
     await getAppConfig();
-    if (!featureEnabled('greedy_enabled')) {
+    if (!featureEnabled('greedy_enabled') || !socket.user?.game_access?.greedy) {
       socket.emit('feature:error', featureErrorPayload(
         'GREEDY_DISABLED',
         'Greedy is currently unavailable.',
@@ -2105,6 +2244,25 @@ gamesNs.on('connection', (socket) => {
 
   socket.on('games:greedy:unsubscribe', () => {
     socket.leave('game:greedy');
+  });
+
+  socket.on('games:seven_up_down:subscribe', async () => {
+    await getAppConfig();
+    if (!featureEnabled('seven_up_down_enabled') || !socket.user?.game_access?.seven_up_down) {
+      socket.emit('feature:error', featureErrorPayload(
+        'SEVEN_UP_DOWN_DISABLED',
+        'Lucky 7 is currently unavailable.',
+      ));
+      return;
+    }
+
+    socket.join('game:seven_up_down');
+    const snapshot = await fetchSevenUpDownSnapshotInternal(true);
+    if (snapshot) socket.emit('seven_up_down:snapshot', snapshot);
+  });
+
+  socket.on('games:seven_up_down:unsubscribe', () => {
+    socket.leave('game:seven_up_down');
   });
 
   socket.on('disconnect', (reason) => {
@@ -2182,7 +2340,7 @@ setInterval(async () => {
     );
   }
 
-  if (!latest.features.teen_patti_enabled && !latest.features.greedy_enabled) {
+  if (!latest.features.teen_patti_enabled && !latest.features.greedy_enabled && !latest.features.seven_up_down_enabled) {
     disconnectNamespace(
       gamesNs,
       'games_disabled',
@@ -2204,6 +2362,7 @@ setInterval(async () => {
   }
   await fetchTeenPattiSnapshotInternal(false);
   await fetchGreedySnapshotInternal(false);
+  await fetchSevenUpDownSnapshotInternal(false);
 }, 1000);
 
 // ===================================================================

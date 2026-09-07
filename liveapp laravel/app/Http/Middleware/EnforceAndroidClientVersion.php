@@ -51,11 +51,22 @@ class EnforceAndroidClientVersion
 
     private function shouldBypass(Request $request): bool
     {
-        return $request->is('api/ping')
+        return $this->isTrustedRealtimeServerRequest($request)
+            || $request->is('api/ping')
             || $request->is('api/health/*')
             || $request->is('api/metrics')
             || $request->is('api/app-config')
             || $request->is('api/app/settings');
+    }
+
+    private function isTrustedRealtimeServerRequest(Request $request): bool
+    {
+        $expected = trim((string) config('services.websocket.internal_key', ''));
+        $provided = trim((string) $request->header('X-WS-Internal-Key', ''));
+
+        return $expected !== ''
+            && $provided !== ''
+            && hash_equals($expected, $provided);
     }
 
     private function reject(string $error, string $message, int $minimumVersionCode)

@@ -168,6 +168,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   bool get forceAppUpgradeEnabled =>
       payload.value?.forceAppUpgradeEnabled ?? false;
 
+  bool get demoLoginEnabled => payload.value?.demoLoginEnabled ?? false;
+
   bool get premiumThemeVariantsEnabled =>
       payload.value?.enablePremiumThemeVariants ?? false;
 
@@ -297,6 +299,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       payload.value?.features.fortuneWheelEnabled ?? false;
   bool get fortuneWheelVisibleInVideoRoomStrip =>
       payload.value?.features.fortuneWheelVisibleInVideoRoomStrip ?? true;
+  bool get sevenUpDownEnabled =>
+      payload.value?.features.sevenUpDownEnabled ?? false;
   bool get videoRoomGamesEnabled =>
       payload.value?.features.videoRoomGamesEnabled ?? false;
   AppHostGoalSettings get hostGoals =>
@@ -417,6 +421,7 @@ class AppSettingsPayload {
     required this.enableThemeEnvironmentEffects,
     required this.maintenanceModeEnabled,
     required this.forceAppUpgradeEnabled,
+    required this.demoLoginEnabled,
     required this.premiumThemeVariant,
     required this.activeThemeKey,
     required this.fallbackThemeKey,
@@ -435,6 +440,7 @@ class AppSettingsPayload {
   final bool enableThemeEnvironmentEffects;
   final bool maintenanceModeEnabled;
   final bool forceAppUpgradeEnabled;
+  final bool demoLoginEnabled;
   final String premiumThemeVariant;
   final String activeThemeKey;
   final String fallbackThemeKey;
@@ -453,6 +459,7 @@ class AppSettingsPayload {
     bool? enableThemeEnvironmentEffects,
     bool? maintenanceModeEnabled,
     bool? forceAppUpgradeEnabled,
+    bool? demoLoginEnabled,
     String? premiumThemeVariant,
     String? activeThemeKey,
     String? fallbackThemeKey,
@@ -476,6 +483,7 @@ class AppSettingsPayload {
           maintenanceModeEnabled ?? this.maintenanceModeEnabled,
       forceAppUpgradeEnabled:
           forceAppUpgradeEnabled ?? this.forceAppUpgradeEnabled,
+      demoLoginEnabled: demoLoginEnabled ?? this.demoLoginEnabled,
       premiumThemeVariant: premiumThemeVariant ?? this.premiumThemeVariant,
       activeThemeKey: activeThemeKey ?? this.activeThemeKey,
       fallbackThemeKey: fallbackThemeKey ?? this.fallbackThemeKey,
@@ -520,6 +528,7 @@ class AppSettingsPayload {
           : true,
       maintenanceModeEnabled: _toBool(json['maintenance_mode_enabled']),
       forceAppUpgradeEnabled: _toBool(json['force_app_upgrade_enabled']),
+      demoLoginEnabled: _toBool(json['demo_login_enabled']),
       premiumThemeVariant:
           (json['premium_theme_variant']?.toString().trim().isNotEmpty ?? false)
               ? json['premium_theme_variant'].toString().trim()
@@ -642,6 +651,7 @@ class AppPlatformFeatureFlags {
     required this.greedyEnabled,
     required this.fortuneWheelEnabled,
     required this.fortuneWheelVisibleInVideoRoomStrip,
+    required this.sevenUpDownEnabled,
     required this.videoRoomGamesEnabled,
   });
 
@@ -658,6 +668,7 @@ class AppPlatformFeatureFlags {
       greedyEnabled = false,
       fortuneWheelEnabled = false,
       fortuneWheelVisibleInVideoRoomStrip = true,
+      sevenUpDownEnabled = false,
       videoRoomGamesEnabled = false;
 
   final bool audioRoomsEnabled;
@@ -672,6 +683,7 @@ class AppPlatformFeatureFlags {
   final bool greedyEnabled;
   final bool fortuneWheelEnabled;
   final bool fortuneWheelVisibleInVideoRoomStrip;
+  final bool sevenUpDownEnabled;
   final bool videoRoomGamesEnabled;
 
   factory AppPlatformFeatureFlags.fromJson(Map<String, dynamic> json) {
@@ -727,6 +739,10 @@ class AppPlatformFeatureFlags {
       fortuneWheelVisibleInVideoRoomStrip: toBool(
         json['fortune_wheel_visible_in_video_room_strip'],
         fallback: true,
+      ),
+      sevenUpDownEnabled: toBool(
+        json['seven_up_down_enabled'],
+        fallback: false,
       ),
       videoRoomGamesEnabled: toBool(
         json['video_room_games_enabled'],

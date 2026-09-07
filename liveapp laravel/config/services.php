@@ -72,4 +72,8 @@ return [
         'ttl' => (int) env('LK_TTL', 3600),
     ],
 
+    'websocket' => [
+        'internal_key' => env('WS_INTERNAL_KEY', ''),
+    ],
+
 ];

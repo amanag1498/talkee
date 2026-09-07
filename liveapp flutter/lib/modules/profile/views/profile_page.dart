@@ -413,6 +413,14 @@ class _ProfilePageState extends State<ProfilePage>
                                 'Track application status and review notes',
                             onTap: () => showMyApplicationsSheet(),
                           ),
+                          _DividerLine(),
+                          _ProfileActionTile(
+                            icon: Icons.person_off_rounded,
+                            title: 'People you blocked',
+                            subtitle: 'Review or unblock people privately',
+                            onTap: () =>
+                                Get.toNamed(Routes.personalBlockedUsers),
+                          ),
                           if (profile.isNormalUser) ...[
                             _DividerLine(),
                             _ProfileActionTile(

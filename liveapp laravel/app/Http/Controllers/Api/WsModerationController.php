@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\UserReport;
 use App\Services\AutoModerationService;
 use App\Services\ModerationService;
+use App\Services\UserBlockService;
 use Illuminate\Http\Request;
 
 class WsModerationController extends Controller
@@ -15,12 +16,13 @@ class WsModerationController extends Controller
     public function __construct(
         private ModerationService $moderation,
         private AutoModerationService $autoModeration,
+        private UserBlockService $userBlocks,
     ) {
     }
 
     private function assertInternal(Request $request): void
     {
-        $expected = trim((string) env('WS_INTERNAL_KEY', ''));
+        $expected = trim((string) config('services.websocket.internal_key', ''));
         $provided = trim((string) $request->header('X-WS-Internal-Key', ''));
 
         if ($expected !== '') {
@@ -49,14 +51,27 @@ class WsModerationController extends Controller
 
         $room = LiveRoom::query()->where('room_id', $data['room_id'])->firstOrFail();
         $hostUserId = $this->moderation->hostUserIdForRoom($room);
-        if (!$this->moderation->isBlockedByHostUserId($hostUserId, $user->id)) {
+        $isBlocked = $this->moderation->isBlockedByHostUserId($hostUserId, $user->id);
+        $blockedHost = $hostUserId && $this->userBlocks->hasBlocked($user, $hostUserId);
+        if (!$isBlocked && !$blockedHost) {
             $this->autoModeration->clearChatState($room, $user);
+        }
+
+        if ($blockedHost) {
+            return response()->json([
+                'ok' => true,
+                'allow' => false,
+                'code' => 'YOU_BLOCKED_HOST',
+                'reason' => 'You blocked this host. Unblock them to join this room.',
+                'host_user_id' => $hostUserId,
+                'target_user_id' => (int) $user->id,
+            ]);
         }
 
         return response()->json([
             'ok' => true,
-            'allow' => !$this->moderation->isBlockedByHostUserId($hostUserId, $user->id),
-            'reason' => $this->moderation->isBlockedByHostUserId($hostUserId, $user->id)
+            'allow' => !$isBlocked,
+            'reason' => $isBlocked
                 ? 'You were blocked by this host.'
                 : null,
         ]);

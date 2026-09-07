@@ -57,6 +57,12 @@
     <div class="col-xl-2 col-md-4">
       <div class="card"><div class="card-body"><div class="text-muted small">Gift Spend</div><div class="h4 mb-0">{{ number_format($overviewStats['gifts_sent']) }}</div></div></div>
     </div>
+    <div class="col-xl-2 col-md-4">
+      <div class="card"><div class="card-body"><div class="text-muted small">Personal Blocks</div><div class="h4 mb-0">{{ number_format($overviewStats['personal_blocks_given']) }}</div></div></div>
+    </div>
+    <div class="col-xl-2 col-md-4">
+      <div class="card"><div class="card-body"><div class="text-muted small">Blocked By</div><div class="h4 mb-0">{{ number_format($overviewStats['personal_blocks_received']) }}</div></div></div>
+    </div>
   </div>
 
   <div class="row g-3">
@@ -177,6 +183,20 @@
                   <div class="form-check form-switch m-0">
                     <input type="hidden" name="greedy" value="0">
                     <input class="form-check-input" type="checkbox" name="greedy" value="1" id="game_access_greedy" @checked($gameAccessMap['greedy'] ?? false)>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="border rounded-3 p-3">
+                <div class="d-flex justify-content-between align-items-center gap-3">
+                  <div>
+                    <div class="fw-semibold">Lucky 7</div>
+                    <div class="text-muted small">Unlock dice game access for user #{{ $user->id }}</div>
+                  </div>
+                  <div class="form-check form-switch m-0">
+                    <input type="hidden" name="seven_up_down" value="0">
+                    <input class="form-check-input" type="checkbox" name="seven_up_down" value="1" id="game_access_seven_up_down" @checked($gameAccessMap['seven_up_down'] ?? false)>
                   </div>
                 </div>
               </div>

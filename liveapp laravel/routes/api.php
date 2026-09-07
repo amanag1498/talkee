@@ -4,7 +4,10 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\{PlanController, SubscriptionController, LiveRoomController, LiveRoomSeatRequestController, LiveRoomGiftController, ProfileController, ApplicationApiController, WalletApiController, RechargePlanController, RechargeOrderController, NotificationApiController, PushTokenController, LiveRoomIngestController, OpsController, BannerController, BannerTrackingController, LiveUsersController, CallController, CallReportApiController, LevelController, HostFollowController, EntryPackController, LiveRoomPkController, ThemeController, HostModerationController, UserReportController, UnblockRequestController, AdminModerationController, WsModerationController, DashboardLeaderboardController, RazorpayWebhookController, MetaAppEventController, AccountDeletionController, AppleIapNotificationController, FortuneWheelController};
 use App\Http\Controllers\Api\TeenPattiController;
 use App\Http\Controllers\Api\GreedyGameController;
+use App\Http\Controllers\Api\SevenUpDownController;
 use App\Http\Controllers\Auth\FirebaseAuthApiController;
+use App\Http\Controllers\Auth\DemoAuthApiController;
+use App\Http\Controllers\Api\UserBlockController;
 use App\Models\UserSubscription;
 use App\Services\AppSettingsService;
 use App\Services\ThemeUnlockService;
@@ -34,6 +37,7 @@ Route::get('/metrics', [OpsController::class, 'metrics']);
 Route::get('/recharge/plans', [RechargePlanController::class, 'index'])->middleware('feature_enabled:wallet_recharge_enabled');
 Route::get('/games/teen-patti/public-snapshot', [TeenPattiController::class, 'publicSnapshot']);
 Route::get('/games/greedy/public-snapshot', [GreedyGameController::class, 'publicSnapshot']);
+Route::get('/games/seven-up-down/public-snapshot', [SevenUpDownController::class, 'publicSnapshot']);
 Route::get('/levels', [LevelController::class, 'index']);
 
 // host/admin only
@@ -98,6 +102,9 @@ Route::middleware(['auth:sanctum','throttle:240,1'])->group(function () {
     Route::post('/themes/select', [ThemeController::class, 'select']);
     Route::get('/me/following', [HostFollowController::class, 'following']);
     Route::get('/me/followers', [HostFollowController::class, 'followers']);
+    Route::get('/me/blocked-users', [UserBlockController::class, 'index']);
+    Route::post('/me/blocked-users/{user}', [UserBlockController::class, 'store']);
+    Route::delete('/me/blocked-users/{user}', [UserBlockController::class, 'destroy']);
     Route::get('/hosts/{host}/follow-state', [HostFollowController::class, 'state']);
     Route::get('/hosts/by-user/{user}/follow-state', [HostFollowController::class, 'stateByUser']);
     Route::post('/hosts/{host}/follow', [HostFollowController::class, 'follow']);
@@ -114,6 +121,9 @@ Route::middleware(['auth:sanctum','throttle:240,1'])->group(function () {
     Route::get('/games/greedy', [GreedyGameController::class, 'snapshot'])->middleware('feature_enabled:greedy_enabled');
     Route::get('/games/greedy/history', [GreedyGameController::class, 'history'])->middleware('feature_enabled:greedy_enabled');
     Route::post('/games/greedy/bets', [GreedyGameController::class, 'placeBet'])->middleware('feature_enabled:greedy_enabled');
+    Route::get('/games/seven-up-down', [SevenUpDownController::class, 'snapshot'])->middleware('feature_enabled:seven_up_down_enabled');
+    Route::get('/games/seven-up-down/history', [SevenUpDownController::class, 'history'])->middleware('feature_enabled:seven_up_down_enabled');
+    Route::post('/games/seven-up-down/bets', [SevenUpDownController::class, 'placeBet'])->middleware('feature_enabled:seven_up_down_enabled');
     Route::get('/games/fortune-wheel', [FortuneWheelController::class, 'snapshot'])->middleware('feature_enabled:fortune_wheel_enabled');
     Route::post('/games/fortune-wheel/spin', [FortuneWheelController::class, 'spin'])->middleware('feature_enabled:fortune_wheel_enabled');
     Route::get('/games/fortune-wheel/history', [FortuneWheelController::class, 'history'])->middleware('feature_enabled:fortune_wheel_enabled');
@@ -166,6 +176,8 @@ Route::middleware(['auth:sanctum','throttle:240,1'])->group(function () {
     Route::get('/host/calls/summary', [CallReportApiController::class, 'hostSummary']);
     Route::get('/admin/blocked-users', [AdminModerationController::class, 'blockedUsers']);
     Route::post('/admin/unblock-user', [AdminModerationController::class, 'unblockUser']);
+    Route::get('/admin/personal-blocks', [AdminModerationController::class, 'personalBlocks']);
+    Route::delete('/admin/personal-blocks/{id}', [AdminModerationController::class, 'destroyPersonalBlock']);
     Route::get('/admin/reports', [AdminModerationController::class, 'reports']);
     Route::post('/admin/reports/{id}/review', [AdminModerationController::class, 'reviewReport']);
     Route::get('/admin/moderation-history', [AdminModerationController::class, 'history']);
@@ -196,6 +208,7 @@ Route::middleware('throttle:240,1')->group(function () {
 
 
 Route::post('/auth/firebase/login', [FirebaseAuthApiController::class, 'login']);
+Route::post('/auth/demo/login', DemoAuthApiController::class)->middleware('throttle:5,1');
 Route::post('/payments/razorpay/webhook', RazorpayWebhookController::class)->middleware('throttle:120,1');
 Route::post('/payments/apple/notifications', AppleIapNotificationController::class)->middleware('throttle:120,1');
 Route::middleware('auth:sanctum')->post('/auth/logout', [FirebaseAuthApiController::class, 'logout']);
@@ -244,7 +257,22 @@ Route::middleware('auth:sanctum')->get('/ws/verify', function (\Illuminate\Http\
             (($code = (int) $r->header('X-App-Version-Code', 0)) > 0 ? $code : null),
         ),
         'roles' => method_exists($u, 'getRoleNames') ? $u->getRoleNames()->values()->all() : [],
+        'game_access' => app(\App\Services\GameAccessService::class)->userAccessMap($u),
+        'blocked_user_ids' => app(\App\Services\UserBlockService::class)->blockedUserIds($u),
     ];
+});
+Route::middleware('throttle:240,1')->get('/ws/app-config', function (Request $request, AppSettingsService $settings) {
+    $expected = trim((string) config('services.websocket.internal_key', ''));
+    $provided = trim((string) $request->header('X-WS-Internal-Key', ''));
+
+    if ($expected !== '') {
+        abort_unless(hash_equals($expected, $provided), 403);
+    }
+
+    return response()->json([
+        'ok' => true,
+        'data' => $settings->websocketServerPayload(),
+    ]);
 });
 Route::middleware('auth:sanctum')->post('/ws/rooms/join-check', [WsModerationController::class, 'joinCheck']);
 Route::middleware('auth:sanctum')->post('/ws/rooms/chat-check', [WsModerationController::class, 'chatCheck']);
@@ -252,3 +280,4 @@ Route::middleware('throttle:240,1')->get('/ws/moderation/snapshot', [WsModeratio
 Route::middleware('throttle:240,1')->post('/ws/moderation/persist-chat-action', [WsModerationController::class, 'persistChatAction']);
 Route::middleware('throttle:240,1')->get('/ws/games/teen-patti/snapshot', [TeenPattiController::class, 'internalSnapshot']);
 Route::middleware('throttle:240,1')->get('/ws/games/greedy/snapshot', [GreedyGameController::class, 'internalSnapshot']);
+Route::middleware('throttle:240,1')->get('/ws/games/seven-up-down/snapshot', [SevenUpDownController::class, 'internalSnapshot']);

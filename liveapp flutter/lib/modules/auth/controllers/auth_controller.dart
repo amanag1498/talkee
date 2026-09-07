@@ -7,6 +7,7 @@ import '../../../services/auth_exception.dart';
 import '../../../services/app_settings_service.dart';
 import '../../../modules/calls/controllers/call_controller.dart';
 import '../../../modules/home/controllers/live_room_controller.dart';
+import '../../../modules/profile/controllers/user_block_controller.dart';
 import '../../../app/routes/app_routes.dart';
 
 class AuthController extends GetxController {
@@ -17,6 +18,7 @@ class AuthController extends GetxController {
   final RxBool loading = false.obs;
   final RxString activeProvider = ''.obs;
   final RxString error = ''.obs;
+  final DemoLogoTapTracker _demoLogoTapTracker = DemoLogoTapTracker();
 
   bool get isLoggedIn => auth.isLoggedIn;
 
@@ -36,6 +38,19 @@ class AuthController extends GetxController {
     await _login('apple', auth.signInWithAppleAndBackend);
   }
 
+  Future<void> loginWithDemo(String email) async {
+    await _login('demo', () => auth.signInWithDemoEmail(email));
+  }
+
+  bool registerLogoTap({DateTime? at}) {
+    if (!Get.isRegistered<AppSettingsService>() ||
+        !Get.find<AppSettingsService>().demoLoginEnabled) {
+      _demoLogoTapTracker.clear();
+      return false;
+    }
+    return _demoLogoTapTracker.register(at ?? DateTime.now());
+  }
+
   Future<void> _login(
     String provider,
     Future<UserModel> Function() signIn,
@@ -52,6 +67,9 @@ class AuthController extends GetxController {
       }
       if (Get.isRegistered<AppCallController>()) {
         await Get.find<AppCallController>().restartSocket();
+      }
+      if (Get.isRegistered<UserBlockController>()) {
+        await Get.find<UserBlockController>().refreshForCurrentAuth();
       }
       if (Get.isRegistered<LiveRoomsController>()) {
         await Get.find<LiveRoomsController>().refreshForCurrentAuth();
@@ -88,6 +106,9 @@ class AuthController extends GetxController {
 
   Future<void> logout() async {
     await auth.logout();
+    if (Get.isRegistered<UserBlockController>()) {
+      await Get.find<UserBlockController>().refreshForCurrentAuth();
+    }
     if (Get.isRegistered<LiveRoomsController>()) {
       await Get.find<LiveRoomsController>().refreshForCurrentAuth();
     }
@@ -113,4 +134,22 @@ class AuthController extends GetxController {
       duration: const Duration(seconds: 4),
     );
   }
+}
+
+@visibleForTesting
+class DemoLogoTapTracker {
+  final List<DateTime> _taps = <DateTime>[];
+
+  bool register(DateTime at) {
+    _taps.removeWhere(
+      (tap) => at.difference(tap) > const Duration(milliseconds: 1200),
+    );
+    _taps.add(at);
+    if (_taps.length < 3) return false;
+
+    clear();
+    return true;
+  }
+
+  void clear() => _taps.clear();
 }

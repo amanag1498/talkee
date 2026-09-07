@@ -421,6 +421,12 @@
               </a>
             </li>
             <li class="pc-item">
+              <a href="{{ route('admin.games.seven-up-down.dashboard') }}" class="pc-link {{ request()->routeIs('admin.games.seven-up-down.*') ? 'active' : '' }}">
+                <span class="pc-micon"><i class="ti ti-dice"></i></span>
+                <span class="pc-mtext">Lucky 7</span>
+              </a>
+            </li>
+            <li class="pc-item">
               <a href="{{ route('admin.games.fortune-wheel.dashboard') }}" class="pc-link {{ request()->routeIs('admin.games.fortune-wheel.*') ? 'active' : '' }}">
                 <span class="pc-micon"><i class="ti ti-wheel"></i></span>
                 <span class="pc-mtext">Fortune Wheel</span>
@@ -511,7 +517,13 @@
             <li class="pc-item">
               <a href="{{ route('admin.moderation.blocked-users') }}" class="pc-link {{ request()->routeIs('admin.moderation.blocked-users') ? 'active' : '' }}">
                 <span class="pc-micon"><i class="ti ti-user-off"></i></span>
-                <span class="pc-mtext">Blocked Users</span>
+                <span class="pc-mtext">Host Blocks</span>
+              </a>
+            </li>
+            <li class="pc-item">
+              <a href="{{ route('admin.moderation.personal-blocks') }}" class="pc-link {{ request()->routeIs('admin.moderation.personal-blocks*') ? 'active' : '' }}">
+                <span class="pc-micon"><i class="ti ti-user-cancel"></i></span>
+                <span class="pc-mtext">Personal Blocks</span>
               </a>
             </li>
             <li class="pc-item">

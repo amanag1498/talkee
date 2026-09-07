@@ -105,6 +105,10 @@ class LiveRoomController extends Controller
 
         $rooms = $this->discoverRoomsQuery($request->boolean('include_scheduled'))
             ->whereIn('room_type', $enabledTypes->all())
+            ->whereDoesntHave(
+                'host.user.personallyBlockedBy',
+                fn ($query) => $query->where('blocker_user_id', $viewer->id),
+            )
             ->when($request->filled('room_type'), fn ($q) => $q->where('room_type', $request->string('room_type')->trim()->toString()))
             ->paginate(20);
 

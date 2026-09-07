@@ -18,6 +18,7 @@ class CallSessionService
         private CallBillingService $billingService,
         private LiveRoomSeatService $liveRoomSeatService,
         private ModerationService $moderation,
+        private UserBlockService $userBlocks,
     ) {
     }
 
@@ -42,6 +43,10 @@ class CallSessionService
 
             if ($this->moderation->isBlockedByHostUserId($receiver->id, $caller->id)) {
                 throw new InvalidArgumentException('You were blocked by this host.');
+            }
+
+            if ($this->userBlocks->hasBlockBetween($caller, $receiver)) {
+                throw new InvalidArgumentException('Unblock this user before starting a call.');
             }
 
             $existing = CallSession::query()
@@ -163,6 +168,10 @@ class CallSessionService
             }
             if (!in_array($call->status, ['requested', 'ringing'], true)) {
                 throw new InvalidArgumentException('Call cannot be accepted.');
+            }
+
+            if ($this->userBlocks->hasBlockBetween((int) $call->caller_id, (int) $call->receiver_id)) {
+                throw new InvalidArgumentException('Unblock this user before accepting the call.');
             }
 
             $call->update([
@@ -391,6 +400,10 @@ class CallSessionService
         }
         if ($call->status !== 'accepted' || !$call->livekit_room_name) {
             throw new InvalidArgumentException('Call room is not ready.');
+        }
+
+        if ($this->userBlocks->hasBlockBetween((int) $call->caller_id, (int) $call->receiver_id)) {
+            throw new InvalidArgumentException('Unblock this user before joining the call.');
         }
 
         $role = 'host';

@@ -30,6 +30,10 @@ class AppMaintenanceMode
 
     private function shouldBypass(Request $request): bool
     {
+        if ($this->isTrustedRealtimeServerRequest($request)) {
+            return true;
+        }
+
         if ($request->is('admin') || $request->is('admin/*')) {
             return true;
         }
@@ -47,5 +51,15 @@ class AppMaintenanceMode
         }
 
         return false;
+    }
+
+    private function isTrustedRealtimeServerRequest(Request $request): bool
+    {
+        $expected = trim((string) config('services.websocket.internal_key', ''));
+        $provided = trim((string) $request->header('X-WS-Internal-Key', ''));
+
+        return $expected !== ''
+            && $provided !== ''
+            && hash_equals($expected, $provided);
     }
 }

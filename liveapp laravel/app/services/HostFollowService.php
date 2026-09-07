@@ -14,6 +14,7 @@ class HostFollowService
 {
     public function __construct(
         private ProfileFrameService $frames,
+        private UserBlockService $userBlocks,
     ) {
     }
 
@@ -21,6 +22,10 @@ class HostFollowService
     {
         if ((int) $host->user_id === (int) $user->id) {
             throw new InvalidArgumentException('You cannot follow your own host profile.');
+        }
+
+        if ($this->userBlocks->hasBlockBetween($user, (int) $host->user_id)) {
+            throw new InvalidArgumentException('Unblock this user before following.');
         }
 
         return HostFollower::query()->updateOrCreate(

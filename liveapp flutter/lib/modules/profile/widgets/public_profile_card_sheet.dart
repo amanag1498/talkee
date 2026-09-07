@@ -10,10 +10,11 @@ import '../../../services/app_settings_service.dart';
 import '../../../services/auth_service.dart';
 import '../../Live/widgets/themed_room_frame.dart';
 import '../controllers/host_follow_controller.dart';
+import '../controllers/user_block_controller.dart';
 import '../models/profile_dto.dart';
 import '../services/profile_api.dart';
 
-Future<void> showPublicProfileCardSheet(
+Future<bool?> showPublicProfileCardSheet(
   BuildContext context, {
   required int userId,
   String? initialName,
@@ -26,7 +27,7 @@ Future<void> showPublicProfileCardSheet(
   String? initialAvatarUrl,
   String? initialProfileFrameUrl,
 }) {
-  return showGeneralDialog<void>(
+  return showGeneralDialog<bool>(
     context: context,
     barrierLabel: 'Profile Card',
     barrierDismissible: true,
@@ -161,15 +162,18 @@ class _PublicProfileCardSheet extends StatefulWidget {
 class _PublicProfileCardSheetState extends State<_PublicProfileCardSheet> {
   late final ProfileApi _profiles;
   late final HostFollowController _follows;
+  late final UserBlockController _blocks;
   ProfileDto? _profile;
   String? _error;
   bool _loading = true;
+  bool _blockBusy = false;
 
   @override
   void initState() {
     super.initState();
     _profiles = Get.find<ProfileApi>();
     _follows = Get.find<HostFollowController>();
+    _blocks = Get.find<UserBlockController>();
     _load();
   }
 
@@ -371,9 +375,13 @@ class _PublicProfileCardSheetState extends State<_PublicProfileCardSheet> {
                               ),
                               if (profile != null) ...[
                                 const SizedBox(height: 14),
-                                _HostFollowSection(
-                                  profile: profile,
-                                  follows: _follows,
+                                Obx(
+                                  () => _blocks.isBlocked(widget.userId)
+                                      ? const SizedBox.shrink()
+                                      : _HostFollowSection(
+                                          profile: profile,
+                                          follows: _follows,
+                                        ),
                                 ),
                               ],
                               const SizedBox(height: 16),
@@ -414,6 +422,31 @@ class _PublicProfileCardSheetState extends State<_PublicProfileCardSheet> {
                                 const SizedBox(height: 12),
                                 _ProfileInlineError(tokens: tokens, message: _error!),
                               ],
+                              if (widget.userId !=
+                                  Get.find<AuthService>().currentUser?.id) ...[
+                                const SizedBox(height: 14),
+                                Obx(() {
+                                  final blocked = _blocks.isBlocked(widget.userId);
+                                  return SizedBox(
+                                    width: double.infinity,
+                                    child: OutlinedButton.icon(
+                                      onPressed: _blockBusy
+                                          ? null
+                                          : () => _toggleBlock(blocked),
+                                      icon: Icon(
+                                        blocked
+                                            ? Icons.lock_open_rounded
+                                            : Icons.person_off_rounded,
+                                      ),
+                                      label: Text(
+                                        blocked
+                                            ? 'Unblock for me'
+                                            : 'Block for me',
+                                      ),
+                                    ),
+                                  );
+                                }),
+                              ],
                             ],
                           ],
                         ),
@@ -442,6 +475,56 @@ class _PublicProfileCardSheetState extends State<_PublicProfileCardSheet> {
     if (profile.isAgency) return 'Agency member';
     if (profile.isVip) return 'VIP member';
     return fallback?.isNotEmpty == true ? fallback! : 'Room participant';
+  }
+
+  Future<void> _toggleBlock(bool currentlyBlocked) async {
+    if (currentlyBlocked) {
+      setState(() => _blockBusy = true);
+      try {
+        await _blocks.unblock(widget.userId);
+      } catch (exception) {
+        _showBlockError(exception);
+      } finally {
+        if (mounted) setState(() => _blockBusy = false);
+      }
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Block user?'),
+        content: const Text('Do you really want to block this user?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Block'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _blockBusy = true);
+    try {
+      await _blocks.block(widget.userId);
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (exception) {
+      _showBlockError(exception);
+      if (mounted) setState(() => _blockBusy = false);
+    }
+  }
+
+  void _showBlockError(Object exception) {
+    Get.snackbar(
+      'Privacy action failed',
+      exception.toString().replaceFirst('Exception: ', ''),
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
 }
 

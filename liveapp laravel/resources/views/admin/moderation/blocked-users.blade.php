@@ -1,11 +1,11 @@
 @extends('layouts.admin-berry')
-@section('title','Blocked Users')
+@section('title','Host Blocks')
 @section('content')
 <div class="card">
   <div class="card-header d-flex align-items-center justify-content-between">
     <div>
-      <h5 class="mb-0"><i class="ti ti-shield-lock me-2"></i>Blocked Users</h5>
-      <div class="text-muted small">Permanent host-user blocks across all rooms.</div>
+      <h5 class="mb-0"><i class="ti ti-shield-lock me-2"></i>Host Blocks</h5>
+      <div class="text-muted small">Host moderation blocks across rooms. Personal user blocks are managed separately.</div>
     </div>
     <form method="get" class="d-flex gap-2">
       <select name="host_user_id" class="form-select">

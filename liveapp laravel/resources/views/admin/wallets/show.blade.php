@@ -27,6 +27,7 @@
       $gameLabel = match ($game) {
           'teen_patti' => 'Teen Patti',
           'greedy' => 'Greedy',
+          'seven_up_down' => 'Lucky 7',
           'fortune_wheel' => 'Fortune Wheel',
           default => 'Game',
       };

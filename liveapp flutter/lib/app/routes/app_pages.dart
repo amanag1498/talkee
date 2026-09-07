@@ -22,10 +22,13 @@ import '../../modules/home/controllers/live_room_controller.dart';
 import '../../modules/home/views/home_view.dart';
 import '../../modules/profile/controllers/profile_controller.dart';
 import '../../modules/profile/controllers/host_follow_controller.dart';
+import '../../modules/profile/controllers/user_block_controller.dart';
 import '../../modules/profile/services/profile_api.dart';
 import '../../modules/profile/services/host_follow_api.dart';
+import '../../modules/profile/services/user_block_api.dart';
 import '../../modules/profile/views/edit_profile_page.dart';
 import '../../modules/profile/views/blocked_users_page.dart';
+import '../../modules/profile/views/personal_blocked_users_page.dart';
 import '../../modules/profile/views/followers_page.dart';
 import '../../modules/profile/views/following_page.dart';
 import '../../modules/profile/views/host_scheduled_lives_page.dart';
@@ -116,6 +119,14 @@ class AppPages {
     Get.put<CallSocketService>(CallSocketService(), permanent: true);
     Get.put<ProfileApi>(ProfileApi(api), permanent: true);
     Get.put<HostFollowApi>(HostFollowApi(api), permanent: true);
+    final userBlockApi = Get.put<UserBlockApi>(
+      UserBlockApi(api),
+      permanent: true,
+    );
+    final userBlocks = Get.put<UserBlockController>(
+      UserBlockController(userBlockApi, authService),
+      permanent: true,
+    );
     Get.put<ApplicationsApi>(ApplicationsApi(api), permanent: true);
     final walletApi = Get.put<WalletApi>(WalletApi(api), permanent: true);
     Get.put<TeenPattiApi>(TeenPattiApi(api), permanent: true);
@@ -225,6 +236,7 @@ class AppPages {
         Get.find<AuthService>(),
         Get.find<RoomsSocketService>(),
         Get.find<LiveService>(),
+        userBlocks,
       ),
       permanent: true,
     );
@@ -256,6 +268,7 @@ class AppPages {
                 Get.find<AuthService>(),
                 Get.find<RoomsSocketService>(),
                 Get.find<LiveService>(),
+                Get.find<UserBlockController>(),
               ),
             );
           }
@@ -387,6 +400,11 @@ class AppPages {
       GetPage(
         name: Routes.profileBlockedUsers,
         page: () => const BlockedUsersPage(),
+        middlewares: [AuthMiddleware(Get.find<AuthService>())],
+      ),
+      GetPage(
+        name: Routes.personalBlockedUsers,
+        page: () => const PersonalBlockedUsersPage(),
         middlewares: [AuthMiddleware(Get.find<AuthService>())],
       ),
       GetPage(

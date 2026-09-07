@@ -26,6 +26,6 @@ class AppSettingsSeeder extends Seeder
         }
 
         Cache::forget('app_settings:all:v1');
-        Cache::forget('app_config:public:v2');
+        Cache::forget('app_config:public:v3');
     }
 }

@@ -129,12 +129,27 @@ class _LoginDarkOnly extends GetView<AuthController> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               const SizedBox(height: 10),
-                              const Hero(
-                                tag: 'brand.logo',
-                                child: TalkeeLogo(
-                                  size: 112,
-                                  showWordmark: true,
-                                  wordmarkBelow: true,
+                              GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () {
+                                  if (controller.registerLogoTap()) {
+                                    _showDemoLoginDialog(
+                                      context,
+                                      controller,
+                                      tokens,
+                                    );
+                                  }
+                                },
+                                child: const Padding(
+                                  padding: EdgeInsets.all(8),
+                                  child: Hero(
+                                    tag: 'brand.logo',
+                                    child: TalkeeLogo(
+                                      size: 112,
+                                      showWordmark: true,
+                                      wordmarkBelow: true,
+                                    ),
+                                  ),
                                 ),
                               ),
                               const SizedBox(height: 14),
@@ -302,6 +317,89 @@ class _LoginDarkOnly extends GetView<AuthController> {
           ],
         ),
       ),
+    );
+  }
+}
+
+Future<void> _showDemoLoginDialog(
+  BuildContext context,
+  AuthController controller,
+  PremiumThemeTokens tokens,
+) async {
+  final email = await showDialog<String>(
+    context: context,
+    builder: (_) => _DemoLoginDialog(tokens: tokens),
+  );
+
+  if (email != null && email.isNotEmpty) {
+    await controller.loginWithDemo(email);
+  }
+}
+
+class _DemoLoginDialog extends StatefulWidget {
+  const _DemoLoginDialog({required this.tokens});
+
+  final PremiumThemeTokens tokens;
+
+  @override
+  State<_DemoLoginDialog> createState() => _DemoLoginDialogState();
+}
+
+class _DemoLoginDialogState extends State<_DemoLoginDialog> {
+  final _emailController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (_formKey.currentState?.validate() ?? false) {
+      Navigator.of(context).pop(_emailController.text.trim());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Reviewer sign in'),
+      content: Form(
+        key: _formKey,
+        child: TextFormField(
+          controller: _emailController,
+          autofocus: true,
+          keyboardType: TextInputType.emailAddress,
+          textInputAction: TextInputAction.done,
+          autocorrect: false,
+          decoration: const InputDecoration(
+            labelText: 'Demo account email',
+            hintText: 'reviewer@example.com',
+          ),
+          validator: (value) {
+            final normalized = value?.trim() ?? '';
+            if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(normalized)) {
+              return 'Enter a valid email address.';
+            }
+            return null;
+          },
+          onFieldSubmitted: (_) => _submit(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: widget.tokens.primaryButtonGradient.first,
+          ),
+          onPressed: _submit,
+          child: const Text('Sign in'),
+        ),
+      ],
     );
   }
 }

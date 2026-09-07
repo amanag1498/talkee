@@ -213,6 +213,16 @@ class User extends Authenticatable
         return $this->hasMany(HostUserBlock::class, 'blocked_user_id')->latest('id');
     }
 
+    public function personalBlocks(): HasMany
+    {
+        return $this->hasMany(UserBlock::class, 'blocker_user_id')->latest('id');
+    }
+
+    public function personallyBlockedBy(): HasMany
+    {
+        return $this->hasMany(UserBlock::class, 'blocked_user_id')->latest('id');
+    }
+
     public function moderationActionsTargeted(): HasMany
     {
         return $this->hasMany(ModerationAction::class, 'target_user_id')->latest('id');

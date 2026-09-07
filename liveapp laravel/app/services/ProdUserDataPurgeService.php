@@ -36,6 +36,7 @@ class ProdUserDataPurgeService
         'host_followers',
         'host_availabilities',
         'host_user_blocks',
+        'user_blocks',
         'room_user_kicks',
         'user_reports',
         'moderation_actions',

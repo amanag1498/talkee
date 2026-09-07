@@ -18,6 +18,7 @@ class LiveRoomGiftService
     public function __construct(
         private LiveRoomPkService $pk,
         private ModerationService $moderation,
+        private UserBlockService $userBlocks,
     )
     {
     }
@@ -61,6 +62,10 @@ class LiveRoomGiftService
             $sender->id,
             'You were blocked by this host.',
         );
+
+        if ($this->userBlocks->hasBlockBetween($sender, $hostUser)) {
+            throw new HttpException(409, 'Unblock this user before sending gifts.');
+        }
 
         $participant = LiveRoomParticipant::query()
             ->where('live_room_id', $room->id)

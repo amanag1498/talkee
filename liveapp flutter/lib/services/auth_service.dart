@@ -285,6 +285,114 @@ class AuthService {
     }
   }
 
+  Future<UserModel> signInWithDemoEmail(String email) async {
+    try {
+      final response = await api.post<Map<String, dynamic>>(
+        'auth/demo/login',
+        data: {'email': email.trim(), 'device_name': 'flutter-demo'},
+      );
+      return _completeDemoBackendLogin(
+        response.statusCode ?? 0,
+        response.data ?? const <String, dynamic>{},
+      );
+    } on DioException catch (error) {
+      final status = error.response?.statusCode;
+      final body = error.response?.data;
+      if (status == 423 ||
+          body == 'blocked' ||
+          (body is Map &&
+              (body['blocked'] == true || body['error'] == 'blocked'))) {
+        await _signOutLocalOnly();
+        throw Exception('Your account has been blocked.');
+      }
+      if (_isUpgradeRequiredResponse(status, body)) {
+        throw AppUpgradeRequiredException(
+          _upgradeRequiredMessageFromBody(body),
+        );
+      }
+      if (body is Map) {
+        throw Exception(
+          _friendlyAuthMessage(
+            status ?? 0,
+            (body['msg'] ?? error.message ?? 'Login failed').toString(),
+            (body['code'] ?? '').toString(),
+          ),
+        );
+      }
+      throw Exception('Login failed. ${error.message ?? 'Please try again.'}');
+    }
+  }
+
+  Future<UserModel> _completeDemoBackendLogin(
+    int status,
+    Map<String, dynamic> data,
+  ) async {
+    if (status != 200 || data['ok'] != true) {
+      throw Exception(
+        _friendlyAuthMessage(
+          status,
+          (data['msg'] ?? 'Login failed').toString(),
+          (data['code'] ?? '').toString(),
+        ),
+      );
+    }
+
+    final token = (data['token'] as String?) ?? '';
+    final userMap = Map<String, dynamic>.from(data['user'] as Map);
+    final model = UserModel.fromJson(userMap);
+    if (token.isEmpty ||
+        userMap['is_blocked'] == true ||
+        data['blocked'] == true ||
+        data['error'] == 'blocked') {
+      await _signOutLocalOnly();
+      throw Exception('Your account has been blocked.');
+    }
+
+    await storage.saveAuth(token, model.toJson());
+    if (Get.isRegistered<MetaAttributionService>()) {
+      final attribution = Get.find<MetaAttributionService>();
+      await attribution.requestTrackingConsent();
+      await attribution.logLifecycleEvent(
+        'login',
+        provider: 'demo',
+        isNewUser: false,
+      );
+    }
+    try {
+      await PushService.instance.init(api: api);
+      await PushService.instance.requestPermissionAndRegister();
+    } catch (error) {
+      debugPrint('[push] registration after demo login failed: $error');
+    }
+
+    try {
+      final verification = await api.get<Map<String, dynamic>>('ws/verify');
+      final verificationData = verification.data ?? {};
+      if ((verification.statusCode ?? 0) != 200 ||
+          verificationData['blocked'] == true) {
+        if (_isUpgradeRequiredResponse(
+          verification.statusCode,
+          verificationData,
+        )) {
+          return model;
+        }
+        await _signOutLocalOnly();
+        throw Exception('Your account has been blocked.');
+      }
+    } on DioException catch (error) {
+      if (_isUpgradeRequiredResponse(
+        error.response?.statusCode,
+        error.response?.data,
+      )) {
+        return model;
+      }
+      await _signOutLocalOnly();
+      rethrow;
+    }
+
+    return model;
+  }
+
   Future<UserModel> _completeAppleFirebaseLogin(fb.User firebaseUser) async {
     final idToken = await firebaseUser.getIdToken(true);
     final res = await api.post<Map<String, dynamic>>(

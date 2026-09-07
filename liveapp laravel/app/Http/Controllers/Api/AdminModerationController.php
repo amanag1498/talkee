@@ -3,20 +3,21 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\HostUserBlock;
-use App\Models\ModerationAction;
 use App\Models\ModerationRule;
 use App\Models\User;
+use App\Models\UserBlock;
 use App\Models\UserReport;
 use App\Services\ModerationService;
+use App\Services\UserBlockService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class AdminModerationController extends Controller
 {
-    public function __construct(private ModerationService $moderation)
-    {
-    }
+    public function __construct(
+        private ModerationService $moderation,
+        private UserBlockService $userBlocks,
+    ) {}
 
     private function assertAdmin(Request $request): void
     {
@@ -52,6 +53,72 @@ class AdminModerationController extends Controller
         $hostUser = User::query()->findOrFail((int) $data['host_user_id']);
         $blockedUser = User::query()->findOrFail((int) $data['blocked_user_id']);
         $this->moderation->unblockUserForHost($hostUser, $blockedUser, $request->user(), 'Admin override');
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function personalBlocks(Request $request)
+    {
+        $this->assertAdmin($request);
+        $search = trim((string) $request->input('q', ''));
+        $rows = UserBlock::query()
+            ->with(['blocker.host', 'blockedUser.host'])
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($query) use ($search) {
+                    $query
+                        ->whereHas('blocker', fn ($userQuery) => $userQuery
+                            ->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%"))
+                        ->orWhereHas('blockedUser', fn ($userQuery) => $userQuery
+                            ->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%"));
+
+                    if (ctype_digit($search)) {
+                        $query->orWhere('blocker_user_id', (int) $search)
+                            ->orWhere('blocked_user_id', (int) $search);
+                    }
+                });
+            })
+            ->when($request->filled('blocker_user_id'), fn ($query) => $query->where('blocker_user_id', $request->integer('blocker_user_id')))
+            ->when($request->filled('blocked_user_id'), fn ($query) => $query->where('blocked_user_id', $request->integer('blocked_user_id')))
+            ->latest('id')
+            ->paginate(30);
+
+        return response()->json([
+            'ok' => true,
+            'data' => collect($rows->items())->map(fn (UserBlock $block) => [
+                'id' => (int) $block->id,
+                'blocker' => [
+                    'id' => (int) $block->blocker_user_id,
+                    'name' => $block->blocker?->name,
+                    'email' => $block->blocker?->email,
+                    'is_host' => $block->blocker?->host !== null,
+                ],
+                'blocked_user' => [
+                    'id' => (int) $block->blocked_user_id,
+                    'name' => $block->blockedUser?->name,
+                    'email' => $block->blockedUser?->email,
+                    'is_host' => $block->blockedUser?->host !== null,
+                ],
+                'blocked_at' => optional($block->created_at)->toIso8601String(),
+            ])->values(),
+            'meta' => [
+                'current_page' => $rows->currentPage(),
+                'per_page' => $rows->perPage(),
+                'has_more' => $rows->hasMorePages(),
+                'total' => $rows->total(),
+            ],
+        ]);
+    }
+
+    public function destroyPersonalBlock(Request $request, int $id)
+    {
+        $this->assertAdmin($request);
+        $data = $request->validate([
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+        $block = UserBlock::query()->findOrFail($id);
+        $this->userBlocks->removeByAdmin($block, $request->user(), $data['reason'] ?? null);
 
         return response()->json(['ok' => true]);
     }

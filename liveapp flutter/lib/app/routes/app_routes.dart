@@ -16,6 +16,7 @@ abstract class Routes {
   static const profile = '/profile';
   static const editProfile = '/profile/edit';
   static const profileBlockedUsers = '/profile/blocked-users';
+  static const personalBlockedUsers = '/profile/personal-blocked-users';
   static const profileUnblockRequests = '/profile/unblock-requests';
   static const profileModerationHistory = '/profile/moderation-history';
   static const profileScheduledLives = '/profile/scheduled-lives';

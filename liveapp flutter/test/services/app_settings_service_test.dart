@@ -84,4 +84,41 @@ void main() {
       expect(payload.features.fortuneWheelVisibleInVideoRoomStrip, isTrue);
     });
   });
+
+  group('Lucky 7 feature parsing', () {
+    test('reads explicit availability from app config', () {
+      final payload = AppSettingsPayload.fromJson({
+        'features': const <String, dynamic>{'seven_up_down_enabled': true},
+      });
+
+      expect(payload.features.sevenUpDownEnabled, isTrue);
+    });
+
+    test('defaults availability off for older app config payloads', () {
+      final payload = AppSettingsPayload.fromJson({
+        'features': const <String, dynamic>{},
+      });
+
+      expect(payload.features.sevenUpDownEnabled, isFalse);
+    });
+  });
+
+  group('Demo login feature parsing', () {
+    test('reads the public enable flag without requiring an email', () {
+      final payload = AppSettingsPayload.fromJson({
+        'demo_login_enabled': true,
+        'features': const <String, dynamic>{},
+      });
+
+      expect(payload.demoLoginEnabled, isTrue);
+    });
+
+    test('defaults the hidden review flow off', () {
+      final payload = AppSettingsPayload.fromJson({
+        'features': const <String, dynamic>{},
+      });
+
+      expect(payload.demoLoginEnabled, isFalse);
+    });
+  });
 }

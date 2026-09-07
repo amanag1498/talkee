@@ -6,16 +6,19 @@ use App\Http\Controllers\Controller;
 use App\Models\ModerationRule;
 use App\Models\UnblockRequest;
 use App\Models\User;
+use App\Models\UserBlock;
 use App\Models\UserReport;
 use App\Services\ModerationService;
+use App\Services\UserBlockService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class ModerationController extends Controller
 {
-    public function __construct(private ModerationService $moderation)
-    {
-    }
+    public function __construct(
+        private ModerationService $moderation,
+        private UserBlockService $userBlocks,
+    ) {}
 
     public function blockedUsers(Request $request)
     {
@@ -44,6 +47,53 @@ class ModerationController extends Controller
         $this->moderation->unblockUserForHost($hostUser, $blockedUser, $request->user(), 'Admin override');
 
         return back()->with('ok', 'User unblocked.');
+    }
+
+    public function personalBlocks(Request $request)
+    {
+        $search = trim((string) $request->input('q', ''));
+        $query = UserBlock::query()
+            ->with(['blocker.host', 'blockedUser.host'])
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($query) use ($search) {
+                    $query
+                        ->whereHas('blocker', fn ($userQuery) => $userQuery
+                            ->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%"))
+                        ->orWhereHas('blockedUser', fn ($userQuery) => $userQuery
+                            ->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%"));
+
+                    if (ctype_digit($search)) {
+                        $query->orWhere('blocker_user_id', (int) $search)
+                            ->orWhere('blocked_user_id', (int) $search);
+                    }
+                });
+            })
+            ->when($request->filled('blocker_user_id'), fn ($query) => $query->where('blocker_user_id', $request->integer('blocker_user_id')))
+            ->when($request->filled('blocked_user_id'), fn ($query) => $query->where('blocked_user_id', $request->integer('blocked_user_id')))
+            ->when($request->filled('from'), fn ($query) => $query->where('created_at', '>=', $request->date('from')->startOfDay()))
+            ->when($request->filled('to'), fn ($query) => $query->where('created_at', '<=', $request->date('to')->endOfDay()));
+
+        return view('admin.moderation.personal-blocks', [
+            'rows' => $query->latest('id')->paginate(25),
+            'summary' => [
+                'total' => UserBlock::query()->count(),
+                'blockers' => UserBlock::query()->distinct()->count('blocker_user_id'),
+                'blocked_users' => UserBlock::query()->distinct()->count('blocked_user_id'),
+                'host_targets' => UserBlock::query()->whereHas('blockedUser.host')->count(),
+            ],
+        ]);
+    }
+
+    public function destroyPersonalBlock(Request $request, UserBlock $userBlock)
+    {
+        $data = $request->validate([
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+        $this->userBlocks->removeByAdmin($userBlock, $request->user(), $data['reason'] ?? null);
+
+        return back()->with('ok', 'Personal block removed by admin override.');
     }
 
     public function reports(Request $request)

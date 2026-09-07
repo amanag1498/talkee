@@ -16,6 +16,7 @@ import '../../../services/auth_service.dart';
 import '../../../services/live_rooms_ws_service.dart';
 import '../../games/teen_patti/widgets/teen_patti_game_panel.dart';
 import '../../profile/controllers/host_follow_controller.dart';
+import '../../profile/controllers/user_block_controller.dart';
 import '../../profile/widgets/public_profile_card_sheet.dart';
 import '../../wallet/services/wallet_api.dart';
 import '../../wallet/widgets/recharge_bottom_sheet.dart';
@@ -288,6 +289,10 @@ class _AudioRoomPageState extends State<AudioRoomPage>
       l.on<ParticipantConnectedEvent>((event) {
         if (!mounted) return;
         _handleParticipantConnected(event.participant, room);
+        final userId = _participantUserId(event.participant);
+        if (_personalBlocks.isBlocked(userId)) {
+          unawaited(_setParticipantMediaEnabled(userId!, false));
+        }
         setState(() {});
       });
       l.on<ParticipantDisconnectedEvent>((_) {
@@ -295,8 +300,12 @@ class _AudioRoomPageState extends State<AudioRoomPage>
         _syncJoinAnimations(room, animate: false);
         setState(() {});
       });
-      l.on<TrackSubscribedEvent>((_) {
+      l.on<TrackSubscribedEvent>((event) {
         if (!mounted) return;
+        final userId = _participantUserId(event.participant);
+        if (_personalBlocks.isBlocked(userId)) {
+          unawaited(event.publication.disable());
+        }
         setState(() {});
       });
       l.on<TrackUnsubscribedEvent>((_) {
@@ -414,7 +423,12 @@ class _AudioRoomPageState extends State<AudioRoomPage>
             requests
                 .where((e) => e['status']?.toString() == 'pending')
                 .toList();
-        _speakers = speakers;
+        _speakers = speakers
+            .where(
+              (speaker) =>
+                  !_personalBlocks.isBlocked(_safeInt(speaker['user_id'])),
+            )
+            .toList(growable: false);
         _pendingRequestId = pendingRequestId;
         _requestStatus = requestStatus;
         _speakerCount =
@@ -600,6 +614,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
       final expectedRoomType = _normalizeGiftRoomType(widget.room.roomType);
       if (eventRoomId != widget.room.roomId) return;
       if (eventRoomType.isNotEmpty && eventRoomType != expectedRoomType) return;
+      if (_personalBlocks.isBlocked(_safeInt(event['sender_user_id']))) return;
       final sender = event['sender_name']?.toString() ?? 'Someone';
       final gift = event['gift_name']?.toString() ?? 'gift';
       _giftAnimationOverlay.handleSocketGiftEvent(
@@ -668,6 +683,11 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     _chatEventsSub = rooms.messageEvents.listen((event) {
       if (!mounted) return;
       if ((event['room_id'] ?? '').toString() != widget.room.roomId) return;
+      if (_personalBlocks.isBlocked(
+        _safeInt(event['sender_id'] ?? event['sender_user_id']),
+      )) {
+        return;
+      }
       _appendChatMessage(LiveRoomChatMessage.fromSocketJson(event));
     });
     _chatErrorsSub = rooms.messageErrors.listen((event) {
@@ -872,6 +892,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
             : null;
     final name = event['name']?.toString().trim() ?? '';
     if (userId == null || name.isEmpty) return;
+    if (_personalBlocks.isBlocked(_safeInt(userId))) return;
 
     final request = RoomJoinAnimationRequest(
       userId: userId,
@@ -927,6 +948,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     Participant participant,
   ) {
     final metadata = _participantMetadata(participant);
+    if (_personalBlocks.isBlocked(_participantUserId(participant))) return null;
     final name = _joinParticipantName(participant, metadata);
     if (name.isEmpty) return null;
 
@@ -1726,7 +1748,8 @@ class _AudioRoomPageState extends State<AudioRoomPage>
 
     for (final participant
         in _room?.remoteParticipants.values ?? const <RemoteParticipant>[]) {
-      final participantUserId = _userIdFromIdentity(participant.identity);
+      final participantUserId = _participantUserId(participant);
+      if (_personalBlocks.isBlocked(participantUserId)) continue;
       if (userId != null && participantUserId == userId) return participant;
       if (participant.name.trim().isNotEmpty &&
           participant.name.trim() == name?.trim()) {
@@ -2308,7 +2331,8 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     }
 
     for (final participant in remote) {
-      final userId = _userIdFromIdentity(participant.identity);
+      final userId = _participantUserId(participant);
+      if (_personalBlocks.isBlocked(userId)) continue;
       final isHostParticipant = participant.identity.startsWith('host-');
       if (isHostParticipant) continue;
       if (userId != null && speakerIds.contains(userId)) continue;
@@ -2543,6 +2567,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
         _myUserId != null &&
         userId != _myUserId;
     var isBlocked = false;
+    final personallyBlocked = _personalBlocks.isBlocked(userId);
     if (canModerate) {
       try {
         final rows = await widget.live.fetchHostBlockedUsers();
@@ -2595,6 +2620,26 @@ class _AudioRoomPageState extends State<AudioRoomPage>
                           );
                         },
               ),
+              if (userId != null && userId > 0 && userId != _myUserId)
+                _buildParticipantActionTile(
+                  icon: personallyBlocked
+                      ? Icons.lock_open_rounded
+                      : Icons.person_off_rounded,
+                  title:
+                      personallyBlocked ? 'Unblock for me' : 'Block for me',
+                  subtitle: personallyBlocked
+                      ? 'Restore messages and direct interactions'
+                      : 'Block this user permanently',
+                  destructive: !personallyBlocked,
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    if (personallyBlocked) {
+                      _unblockForMe(userId, name);
+                    } else {
+                      _blockForMe(userId);
+                    }
+                  },
+                ),
               if (canModerate)
                 _buildParticipantActionTile(
                   icon: Icons.person_remove_rounded,
@@ -2646,7 +2691,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     String? avatarUrl,
   }) async {
     if (!widget.devMode && userId != null && userId > 0) {
-      await showPublicProfileCardSheet(
+      final blocked = await showPublicProfileCardSheet(
         context,
         userId: userId,
         initialName: name,
@@ -2658,6 +2703,17 @@ class _AudioRoomPageState extends State<AudioRoomPage>
         initialLevel: level,
         initialAvatarUrl: avatarUrl,
       );
+      if (blocked == true) {
+        await _applyPersonalBlockLocally(userId);
+        if (!_isHost && userId == _hostUserId) {
+          await _handleModerationTargetExit(
+            blocked: true,
+            message: 'You blocked this host.',
+          );
+        } else if (mounted) {
+          setState(() {});
+        }
+      }
       return;
     }
 
@@ -2678,6 +2734,104 @@ class _AudioRoomPageState extends State<AudioRoomPage>
             avatarUrl: avatarUrl,
           ),
     );
+  }
+
+  UserBlockController get _personalBlocks => Get.find<UserBlockController>();
+
+  Future<void> _blockForMe(int userId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Block user?'),
+        content: const Text('Do you really want to block this user?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Block'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _personalBlocks.block(userId);
+      await _applyPersonalBlockLocally(userId);
+      if (!_isHost && userId == _hostUserId) {
+        await _handleModerationTargetExit(
+          blocked: true,
+          message: 'You blocked this host.',
+        );
+      } else if (mounted) {
+        setState(() {});
+      }
+    } catch (exception) {
+      Get.snackbar(
+        'Could not block user',
+        exception.toString().replaceFirst('Exception: ', ''),
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  Future<void> _unblockForMe(int userId, String name) async {
+    try {
+      await _personalBlocks.unblock(userId);
+      await _setParticipantMediaEnabled(userId, true);
+      if (mounted) setState(() {});
+      Get.snackbar(
+        'Privacy',
+        '$name was unblocked.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } catch (exception) {
+      Get.snackbar(
+        'Could not unblock user',
+        exception.toString().replaceFirst('Exception: ', ''),
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  Future<void> _setParticipantMediaEnabled(int userId, bool enabled) async {
+    for (final targetRoom in <Room?>[_room, _opponentRoom]) {
+      if (targetRoom == null) continue;
+      for (final participant in targetRoom.remoteParticipants.values) {
+        if (_participantUserId(participant) != userId) continue;
+        for (final publication in participant.trackPublications.values) {
+          if (enabled) {
+            await publication.enable();
+          } else {
+            await publication.disable();
+          }
+        }
+      }
+    }
+  }
+
+  int? _participantUserId(Participant participant) {
+    final metadataUserId = _safeInt(
+      _participantMetadata(participant)['user_id'],
+    );
+    if (metadataUserId != null && metadataUserId > 0) return metadataUserId;
+    return _userIdFromIdentity(participant.identity);
+  }
+
+  Future<void> _applyPersonalBlockLocally(int userId) async {
+    _chatMessages.value = _chatMessages.value
+        .where((message) => message.isSystem || message.senderId != userId)
+        .toList(growable: false);
+    _recentGiftTimer?.cancel();
+    _recentGiftMessage = null;
+    _recentGiftEmoji = null;
+    _speakers = _speakers
+        .where((speaker) => _safeInt(speaker['user_id']) != userId)
+        .toList(growable: false);
+    _giftAnimationOverlay.clear();
+    await _setParticipantMediaEnabled(userId, false);
   }
 
   Widget _buildParticipantActionTile({

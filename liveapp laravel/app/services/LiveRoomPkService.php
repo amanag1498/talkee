@@ -23,7 +23,10 @@ class LiveRoomPkService
     private const ACTIVE_STATUSES = ['active'];
     private const OPEN_STATUSES = ['pending', 'active'];
 
-    public function __construct(private ModerationService $moderation)
+    public function __construct(
+        private ModerationService $moderation,
+        private UserBlockService $userBlocks,
+    )
     {
     }
 
@@ -40,6 +43,10 @@ class LiveRoomPkService
         if ($this->moderation->isBlockedByHostUserId($targetHostUserId, $sourceHostUserId)
             || $this->moderation->isBlockedByHostUserId($sourceHostUserId, $targetHostUserId)) {
             throw new HttpException(403, 'PK is not allowed because one host blocked the other.');
+        }
+        if ($sourceHostUserId && $targetHostUserId
+            && $this->userBlocks->hasBlockBetween($sourceHostUserId, $targetHostUserId)) {
+            throw new HttpException(409, 'Unblock this host before starting a PK battle.');
         }
         if ($room->id === $targetRoom->id) {
             throw new HttpException(409, 'Cannot invite your own room.');
@@ -120,6 +127,13 @@ class LiveRoomPkService
 
             if ((int) $battle->host_b_id !== (int) $host->id) {
                 throw new HttpException(403, 'Only the invited host can accept this PK invite.');
+            }
+
+            $hostAUserId = $battle->hostA?->user_id;
+            $hostBUserId = $battle->hostB?->user_id;
+            if ($hostAUserId && $hostBUserId
+                && $this->userBlocks->hasBlockBetween($hostAUserId, $hostBUserId)) {
+                throw new HttpException(409, 'Unblock this host before accepting the PK battle.');
             }
 
             $roomA = LiveRoom::query()->whereKey($battle->room_a_id)->lockForUpdate()->firstOrFail();

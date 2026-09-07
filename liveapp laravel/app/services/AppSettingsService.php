@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Schema;
 class AppSettingsService
 {
     private const SETTINGS_CACHE_KEY = 'app_settings:all:v1';
-    private const PUBLIC_APP_CONFIG_CACHE_KEY = 'app_config:public:v2';
+    private const PUBLIC_APP_CONFIG_CACHE_KEY = 'app_config:public:v3';
 
     public const APP_DEFINITIONS = [
         'app_features.enable_premium_theme_variants' => [
@@ -41,6 +41,21 @@ class AppSettingsService
             'group' => 'general',
             'default' => false,
             'hint' => 'Signals clients that a mandatory upgrade flow should be enforced.',
+        ],
+        'app_features.demo_login_enabled' => [
+            'label' => 'Demo Account Login',
+            'type' => 'boolean',
+            'group' => 'general',
+            'default' => false,
+            'hint' => 'Allows the configured review account to sign in from the hidden triple-tap logo flow.',
+        ],
+        'app_features.demo_login_email' => [
+            'label' => 'Demo Account Email',
+            'type' => 'string',
+            'input_type' => 'email',
+            'group' => 'general',
+            'default' => '',
+            'hint' => 'Must match an existing user. This email is never included in the public app settings payload.',
         ],
         'app_features.android_min_version_code' => [
             'label' => 'Android Min Version Code',
@@ -147,6 +162,12 @@ class AppSettingsService
         ],
         'app_features.platform.android.fortune_wheel_enabled' => [
             'label' => 'Fortune Wheel',
+            'type' => 'boolean',
+            'group' => 'android',
+            'default' => false,
+        ],
+        'app_features.platform.android.seven_up_down_enabled' => [
+            'label' => 'Lucky 7',
             'type' => 'boolean',
             'group' => 'android',
             'default' => false,
@@ -479,6 +500,72 @@ class AppSettingsService
             'min' => 1,
             'hint' => 'How many weighted wheel sectors map to pot D.',
         ],
+        'games.seven_up_down.enabled' => [
+            'label' => 'Enable Lucky 7 Engine',
+            'type' => 'boolean',
+            'group' => 'availability',
+            'default' => false,
+            'hint' => 'Server-side master switch for rounds, betting, dice results, and settlement.',
+        ],
+        'games.seven_up_down.visible_in_video_room_strip' => [
+            'label' => 'Show In Video Room Strip',
+            'type' => 'boolean',
+            'group' => 'availability',
+            'default' => true,
+        ],
+        'games.seven_up_down.fake_bets_enabled' => [
+            'label' => 'Enable Fake Bets Display',
+            'type' => 'boolean',
+            'group' => 'availability',
+            'default' => false,
+            'hint' => 'Adds display-only volume; fake bets are never stored or settled.',
+        ],
+        'games.seven_up_down.min_bet' => [
+            'label' => 'Minimum Bet', 'type' => 'integer', 'group' => 'limits', 'default' => 10, 'min' => 1,
+        ],
+        'games.seven_up_down.max_bet' => [
+            'label' => 'Maximum Bet', 'type' => 'integer', 'group' => 'limits', 'default' => 5000, 'min' => 1,
+        ],
+        'games.seven_up_down.round_duration_seconds' => [
+            'label' => 'Round Duration Seconds', 'type' => 'integer', 'group' => 'timing', 'default' => 30, 'min' => 10,
+        ],
+        'games.seven_up_down.betting_lock_seconds' => [
+            'label' => 'Dice Roll / Bet Lock Seconds', 'type' => 'integer', 'group' => 'timing', 'default' => 5, 'min' => 2,
+        ],
+        'games.seven_up_down.result_display_seconds' => [
+            'label' => 'Result Display Seconds', 'type' => 'integer', 'group' => 'timing', 'default' => 6, 'min' => 3,
+        ],
+        'games.seven_up_down.winning_strategy_mode' => [
+            'label' => 'Winning Strategy',
+            'type' => 'string',
+            'group' => 'economy',
+            'default' => 'probability',
+            'options' => ['random', 'minimum_bet', 'highest_bet', 'probability', 'treasury_affordable'],
+        ],
+        'games.seven_up_down.multiplier_down' => [
+            'label' => '7 Down Multiplier', 'type' => 'integer', 'group' => 'economy', 'default' => 3, 'min' => 2,
+        ],
+        'games.seven_up_down.multiplier_seven' => [
+            'label' => 'Exact 7 Multiplier', 'type' => 'integer', 'group' => 'economy', 'default' => 4, 'min' => 2,
+        ],
+        'games.seven_up_down.multiplier_up' => [
+            'label' => '7 Up Multiplier', 'type' => 'integer', 'group' => 'economy', 'default' => 3, 'min' => 2,
+        ],
+        'games.seven_up_down.weight_down' => [
+            'label' => 'Probability Mode: 7 Down Weight',
+            'type' => 'integer', 'group' => 'economy', 'default' => 15, 'min' => 1,
+            'hint' => 'Used only by the probability strategy. Treasury Affordable follows the Teen Patti affordability flow.',
+        ],
+        'games.seven_up_down.weight_seven' => [
+            'label' => 'Probability Mode: Exact 7 Weight',
+            'type' => 'integer', 'group' => 'economy', 'default' => 6, 'min' => 1,
+            'hint' => 'Used only by the probability strategy. Treasury Affordable follows the Teen Patti affordability flow.',
+        ],
+        'games.seven_up_down.weight_up' => [
+            'label' => 'Probability Mode: 7 Up Weight',
+            'type' => 'integer', 'group' => 'economy', 'default' => 15, 'min' => 1,
+            'hint' => 'Used only by the probability strategy. Treasury Affordable follows the Teen Patti affordability flow.',
+        ],
         'games.fortune_wheel.enabled' => [
             'label' => 'Enable Fortune Wheel',
             'type' => 'boolean',
@@ -615,6 +702,7 @@ class AppSettingsService
                 'enable_theme_environment_effects' => (bool) config('app_features.enable_theme_environment_effects', true),
                 'maintenance_mode_enabled' => (bool) config('app_features.maintenance_mode_enabled', false),
                 'force_app_upgrade_enabled' => (bool) config('app_features.force_app_upgrade_enabled', false),
+                'demo_login_enabled' => (bool) config('app_features.demo_login_enabled', false),
                 'android_min_version_code' => $this->minimumAndroidVersionCode(),
                 'android_min_version_name' => $this->minimumAndroidVersionName(),
                 'android_update_message' => $this->androidUpdateMessage(),
@@ -672,7 +760,26 @@ class AppSettingsService
     public function androidFeatureFlags(?User $user = null): array
     {
         $games = app(GameAccessService::class);
-        $access = $games->userAccessMap($user);
+
+        return $this->androidFeatureFlagsForAccess($games->userAccessMap($user));
+    }
+
+    public function websocketServerPayload(): array
+    {
+        $games = app(GameAccessService::class);
+        $globalAccess = array_fill_keys($games->supportedGames(), true);
+        $payload = $this->publicAppPayload(
+            null,
+            app(ThemeUnlockService::class),
+        );
+
+        $payload['features'] = $this->androidFeatureFlagsForAccess($globalAccess);
+
+        return $payload;
+    }
+
+    private function androidFeatureFlagsForAccess(array $access): array
+    {
         $teenPattiEnabled = (bool) config('app_features.platform.android.teen_patti_enabled', false)
             && (bool) ($access[GameAccessService::GAME_TEEN_PATTI] ?? false);
         $greedyEnabled = (bool) config('app_features.platform.android.greedy_enabled', false)
@@ -682,8 +789,12 @@ class AppSettingsService
             && (bool) ($access[GameAccessService::GAME_FORTUNE_WHEEL] ?? false);
         $fortuneWheelVisibleInVideoRoomStrip = $fortuneWheelEnabled
             && (bool) config('games.fortune_wheel.visible_in_video_room_strip', true);
+        $sevenUpDownEnabled = (bool) config('app_features.platform.android.seven_up_down_enabled', false)
+            && (bool) config('games.seven_up_down.enabled', false)
+            && (bool) config('games.seven_up_down.visible_in_video_room_strip', true)
+            && (bool) ($access[GameAccessService::GAME_SEVEN_UP_DOWN] ?? false);
         $videoRoomGamesEnabled = (bool) config('app_features.platform.android.video_room_games_enabled', false)
-            && ($teenPattiEnabled || $greedyEnabled || $fortuneWheelVisibleInVideoRoomStrip);
+            && ($teenPattiEnabled || $greedyEnabled || $fortuneWheelVisibleInVideoRoomStrip || $sevenUpDownEnabled);
 
         return [
             'audio_rooms_enabled' => (bool) config('app_features.platform.android.audio_rooms_enabled', true),
@@ -698,6 +809,7 @@ class AppSettingsService
             'greedy_enabled' => $greedyEnabled,
             'fortune_wheel_enabled' => $fortuneWheelEnabled,
             'fortune_wheel_visible_in_video_room_strip' => $fortuneWheelVisibleInVideoRoomStrip,
+            'seven_up_down_enabled' => $sevenUpDownEnabled,
             'video_room_games_enabled' => $videoRoomGamesEnabled,
         ];
     }

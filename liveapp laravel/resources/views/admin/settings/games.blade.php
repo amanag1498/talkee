@@ -5,7 +5,7 @@
 @section('content')
   @php
     $selectedGame = request('game', 'teen_patti');
-    if (!in_array($selectedGame, ['teen_patti', 'greedy', 'fortune_wheel'], true)) {
+    if (!in_array($selectedGame, ['teen_patti', 'greedy', 'seven_up_down', 'fortune_wheel'], true)) {
       $selectedGame = 'teen_patti';
     }
 
@@ -23,6 +23,13 @@
         'dashboard_route' => 'admin.games.greedy.dashboard',
         'settings_route' => route('admin.settings.games.edit', ['game' => 'greedy']),
         'accent' => 'primary',
+      ],
+      'seven_up_down' => [
+        'label' => 'Lucky 7',
+        'subtitle' => 'Three dice-total pots, backend dice results, timing, multipliers, and outcome strategy.',
+        'dashboard_route' => 'admin.games.seven-up-down.dashboard',
+        'settings_route' => route('admin.settings.games.edit', ['game' => 'seven_up_down']),
+        'accent' => 'success',
       ],
       'fortune_wheel' => [
         'label' => 'Fortune Wheel',
@@ -77,13 +84,14 @@
           <span class="admin-page-eyebrow"><i class="ti ti-device-gamepad-2"></i> Real-time Game Controls</span>
           <h1 class="admin-page-title">Game Settings</h1>
           <p class="admin-page-subtitle">
-            Separate controls for Teen Patti, Greedy, and Fortune Wheel. Each tab keeps game availability, room visibility, timing, costs, and reward rules isolated.
+            Separate controls for Teen Patti, Greedy, Lucky 7, and Fortune Wheel. Each tab keeps game availability, room visibility, timing, costs, and reward rules isolated.
           </p>
         </div>
         <div class="col-lg-4">
           <div class="admin-page-actions">
             <a href="{{ route('admin.games.teen-patti.dashboard') }}" class="btn btn-light border">Teen Patti Dashboard</a>
             <a href="{{ route('admin.games.greedy.dashboard') }}" class="btn btn-light border">Greedy Dashboard</a>
+            <a href="{{ route('admin.games.seven-up-down.dashboard') }}" class="btn btn-light border">Lucky 7 Dashboard</a>
             <a href="{{ route('admin.games.fortune-wheel.dashboard') }}" class="btn btn-light border">Fortune Wheel Dashboard</a>
           </div>
         </div>
