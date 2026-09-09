@@ -363,8 +363,8 @@ class AppSettingsService
             'label' => 'Winning Strategy',
             'type' => 'string',
             'group' => 'economy',
-            'default' => 'probability',
-            'options' => ['random', 'minimum_bet', 'highest_bet', 'probability'],
+            'default' => 'treasury_affordable',
+            'options' => ['random', 'minimum_bet', 'highest_bet', 'probability', 'treasury_affordable'],
             'hint' => 'Server-side winner selection strategy for round settlement.',
         ],
         'games.greedy.enabled' => [

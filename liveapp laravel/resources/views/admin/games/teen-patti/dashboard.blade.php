@@ -8,7 +8,9 @@
     $recentRounds = collect($payload['recent_rounds'] ?? []);
     $recentBets = collect($payload['recent_bets'] ?? []);
     $recentPayouts = collect($payload['recent_payouts'] ?? []);
+    $recentFinancialLedgerEntries = collect($payload['recent_financial_ledger_entries'] ?? []);
     $companySummary = $payload['company_summary'] ?? [];
+    $financialAccount = $payload['financial_account'] ?? [];
 
     $currentTotal = (int) data_get($round, 'totals.A', 0)
       + (int) data_get($round, 'totals.B', 0)
@@ -20,6 +22,8 @@
     $openRounds = $recentRounds->whereIn('status', ['open', 'locked'])->count();
     $recentBetVolume = (int) $recentBets->sum('amount');
     $recentPayoutVolume = (int) $recentPayouts->sum('payout_coins');
+    $treasuryBalance = (int) data_get($financialAccount, 'treasury_balance_coins', 0);
+    $companyCommissionBalance = (int) data_get($financialAccount, 'company_commission_balance_coins', 0);
 
     $statusTone = match ($currentStatus) {
       'open' => 'success',
@@ -95,6 +99,45 @@
       </div>
     </div>
 
+    <div class="row g-3 mt-1">
+      <div class="col-md-6 col-xl-3">
+        <div class="card tp-stat-card h-100">
+          <div class="card-body">
+            <span class="tp-stat-label">Teen Patti Treasury</span>
+            <div class="tp-stat-value {{ $treasuryBalance >= 0 ? 'text-success' : 'text-danger' }}">{{ number_format($treasuryBalance) }}</div>
+            <div class="tp-stat-meta">95% bet allocations minus payouts</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-xl-3">
+        <div class="card tp-stat-card h-100">
+          <div class="card-body">
+            <span class="tp-stat-label">Company Commission</span>
+            <div class="tp-stat-value text-primary">{{ number_format($companyCommissionBalance) }}</div>
+            <div class="tp-stat-meta">5% rounded-up bet commission ledger</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-xl-3">
+        <div class="card tp-stat-card h-100">
+          <div class="card-body">
+            <span class="tp-stat-label">Audit Entries</span>
+            <div class="tp-stat-value">{{ number_format($recentFinancialLedgerEntries->count()) }}</div>
+            <div class="tp-stat-meta">Latest financial ledger rows</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-xl-3">
+        <div class="card tp-stat-card h-100">
+          <div class="card-body">
+            <span class="tp-stat-label">Recovery State</span>
+            <div class="tp-stat-value">{{ $treasuryBalance <= 0 ? 'Active' : 'Clear' }}</div>
+            <div class="tp-stat-meta">{{ $treasuryBalance <= 0 ? 'Minimum-bet recovery mode' : 'Treasury-affordable mode' }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     @php $companyProfit = (int) data_get($companySummary, 'profit_amount', 0); @endphp
     <div class="row g-3 mt-1">
       <div class="col-md-6 col-xl-3">
@@ -132,6 +175,54 @@
             <div class="tp-stat-meta">Bet volume - payouts - refunds</div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div class="card mt-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+          <h5 class="mb-0">Financial Ledger Audit</h5>
+          <div class="small text-muted">Treasury and commission movements used by treasury-affordable settlement.</div>
+        </div>
+        <div class="small text-muted">
+          Treasury {{ number_format($treasuryBalance) }} · Commission {{ number_format($companyCommissionBalance) }}
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Event</th>
+              <th>Round</th>
+              <th>References</th>
+              <th class="text-end">Treasury Δ</th>
+              <th class="text-end">Commission Δ</th>
+              <th class="text-end">Treasury After</th>
+              <th>Occurred At</th>
+            </tr>
+          </thead>
+          <tbody>
+            @forelse($recentFinancialLedgerEntries as $entry)
+              <tr>
+                <td>
+                  <div class="fw-semibold">{{ ucfirst(str_replace('_', ' ', $entry->event_type)) }}</div>
+                  <div class="small text-muted">#{{ $entry->id }}</div>
+                </td>
+                <td>{{ $entry->round?->round_key ?? '—' }}</td>
+                <td>
+                  <div class="small">Bet #{{ $entry->teen_patti_bet_id ?? '—' }}</div>
+                  <div class="small text-muted">Payout #{{ $entry->teen_patti_payout_id ?? '—' }}</div>
+                </td>
+                <td class="text-end {{ (int) $entry->treasury_delta_coins >= 0 ? 'text-success' : 'text-danger' }}">{{ number_format((int) $entry->treasury_delta_coins) }}</td>
+                <td class="text-end">{{ number_format((int) $entry->commission_delta_coins) }}</td>
+                <td class="text-end fw-semibold">{{ number_format((int) $entry->treasury_balance_after_coins) }}</td>
+                <td>{{ optional($entry->occurred_at)->format('d M H:i:s') }}</td>
+              </tr>
+            @empty
+              <tr><td colspan="7" class="text-center text-muted py-5">No financial ledger entries yet.</td></tr>
+            @endforelse
+          </tbody>
+        </table>
       </div>
     </div>
 
