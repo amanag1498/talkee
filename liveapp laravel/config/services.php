@@ -66,6 +66,7 @@ return [
 
     'livekit' => [
         'ws_url' => env('LIVEKIT_WS_URL', 'ws://localhost:7880'),
+        'browser_ws_url' => env('LIVEKIT_BROWSER_WS_URL', env('LIVEKIT_WS_URL', 'ws://localhost:7880')),
         'http_url' => env('LIVEKIT_HTTP_URL', ''),
         'api_key' => env('LK_API_KEY', ''),
         'api_secret' => env('LK_API_SECRET', ''),

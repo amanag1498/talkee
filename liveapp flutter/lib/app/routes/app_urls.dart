@@ -5,24 +5,32 @@ class AppUrls {
   );
   static const String socketHost = String.fromEnvironment(
     'APP_SOCKET_HOST',
-    defaultValue: '187.127.162.30',
+    defaultValue: 'socket.talkee.in',
   );
-//   static const String apiHost = String.fromEnvironment(
-//     'APP_API_HOST',
-//     defaultValue: '192.168.29.41',
-//   );
-//   static const String socketHost = String.fromEnvironment(
-//     'APP_SOCKET_HOST',
-//     defaultValue: '192.168.29.41',
-//   );
-  static const int apiPort =
-      int.fromEnvironment('APP_API_PORT', defaultValue: 443);
-  static const int wsPort =
-      int.fromEnvironment('APP_WS_PORT', defaultValue: 3001);
-  static const String apiScheme =
-      String.fromEnvironment('APP_API_SCHEME', defaultValue: 'https');
-  static const String socketScheme =
-      String.fromEnvironment('APP_SOCKET_SCHEME', defaultValue: 'http');
+  //   static const String apiHost = String.fromEnvironment(
+  //     'APP_API_HOST',
+  //     defaultValue: '192.168.29.41',
+  //   );
+  //   static const String socketHost = String.fromEnvironment(
+  //     'APP_SOCKET_HOST',
+  //     defaultValue: '192.168.29.41',
+  //   );
+  static const int apiPort = int.fromEnvironment(
+    'APP_API_PORT',
+    defaultValue: 443,
+  );
+  static const int wsPort = int.fromEnvironment(
+    'APP_WS_PORT',
+    defaultValue: 443,
+  );
+  static const String apiScheme = String.fromEnvironment(
+    'APP_API_SCHEME',
+    defaultValue: 'https',
+  );
+  static const String socketScheme = String.fromEnvironment(
+    'APP_SOCKET_SCHEME',
+    defaultValue: 'https',
+  );
 
   static String get apiOrigin => _buildOrigin(apiScheme, apiHost, apiPort);
   static String get socketOrigin =>
@@ -46,6 +54,8 @@ class AppUrls {
     final omitPort =
         (normalizedScheme == 'https' && port == 443) ||
         (normalizedScheme == 'http' && port == 80);
-    return omitPort ? '$normalizedScheme://$host' : '$normalizedScheme://$host:$port';
+    return omitPort
+        ? '$normalizedScheme://$host'
+        : '$normalizedScheme://$host:$port';
   }
 }

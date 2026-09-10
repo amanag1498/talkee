@@ -659,8 +659,111 @@ class _SettingsPageState extends State<SettingsPage>
     );
 
     if (confirmed == true) {
-      await auth.logout();
+      if (!mounted) return;
+      _showLogoutProgress(tokens);
+      try {
+        await auth.logout();
+      } catch (error) {
+        if (Get.isDialogOpen == true) Get.back<void>();
+        if (!mounted) return;
+        Get.snackbar(
+          'Logout failed',
+          error.toString().replaceFirst('Exception: ', ''),
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      }
     }
+  }
+
+  void _showLogoutProgress(PremiumThemeTokens tokens) {
+    Get.dialog<void>(
+      PopScope(
+        canPop: false,
+        child: Center(
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: 210,
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    tokens.cardGradient.first.withOpacity(.98),
+                    tokens.cardGradient.last.withOpacity(.96),
+                  ],
+                ),
+                border: Border.all(color: tokens.borderColor.withOpacity(.32)),
+                boxShadow: [
+                  BoxShadow(
+                    color: tokens.glowColor.withOpacity(.18),
+                    blurRadius: 26,
+                    offset: const Offset(0, 14),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: .92, end: 1),
+                    duration: const Duration(milliseconds: 650),
+                    curve: Curves.easeInOut,
+                    builder:
+                        (_, scale, child) =>
+                            Transform.scale(scale: scale, child: child),
+                    child: Container(
+                      width: 54,
+                      height: 54,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: tokens.dangerColor.withOpacity(.12),
+                        border: Border.all(
+                          color: tokens.dangerColor.withOpacity(.22),
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: SizedBox(
+                        width: 26,
+                        height: 26,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.6,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            tokens.dangerColor,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Signing out…',
+                    style: TextStyle(
+                      color: tokens.textPrimary,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Clearing this device',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: tokens.textSecondary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+      barrierDismissible: false,
+    );
   }
 
   static String _formatShortDate(DateTime? value) {

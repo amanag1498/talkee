@@ -8,6 +8,8 @@ use App\Models\LiveRoomParticipant;
 use App\Models\SubscriptionPlan;
 use App\Models\User;
 use App\Models\UserSubscription;
+use Firebase\JWT\JWT;
+use Firebase\JWT\Key;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Redis;
@@ -238,6 +240,109 @@ class LiveRoomFlowTest extends TestCase
             ->expectsOutputToContain('live_room_without_host')
             ->expectsOutputToContain('duplicate_open_participants')
             ->assertExitCode(0);
+    }
+
+    public function test_admin_can_open_silent_live_room_observer_page(): void
+    {
+        $admin = User::factory()->create();
+        $admin->assignRole('admin');
+        [, $room] = $this->makeLiveRoom();
+
+        $this->actingAs($admin)
+            ->get(route('admin.live-rooms.watch', $room))
+            ->assertOk()
+            ->assertSee('Start silent watch')
+            ->assertSee('observer-token');
+    }
+
+    public function test_admin_observer_token_is_hidden_subscribe_only_and_does_not_create_participant(): void
+    {
+        config([
+            'app.url' => 'https://talkee.in',
+            'services.livekit.api_key' => 'test-key',
+            'services.livekit.api_secret' => 'test-secret',
+            'services.livekit.ws_url' => 'ws://internal-livekit:7880',
+            'services.livekit.browser_ws_url' => 'wss://livekit.talkee.in',
+        ]);
+
+        $admin = User::factory()->create();
+        $admin->assignRole('admin');
+        [, $room] = $this->makeLiveRoom();
+        $beforeParticipants = LiveRoomParticipant::query()
+            ->where('live_room_id', $room->id)
+            ->count();
+
+        $response = $this->actingAs($admin)
+            ->postJson(route('admin.live-rooms.observer-token', $room))
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('room', $room->room_id)
+            ->assertJsonPath('room_type', 'video')
+            ->assertJsonPath('ws_url', 'wss://livekit.talkee.in');
+
+        $payload = (array) JWT::decode($response->json('token'), new Key('test-secret', 'HS256'));
+        $video = (array) $payload['video'];
+
+        $this->assertTrue($video['roomJoin']);
+        $this->assertTrue($video['canSubscribe']);
+        $this->assertFalse($video['canPublish']);
+        $this->assertFalse($video['canPublishData']);
+        $this->assertFalse($video['canUpdateOwnMetadata']);
+        $this->assertTrue($video['hidden']);
+        $this->assertArrayNotHasKey('roomCreate', $video);
+        $this->assertArrayNotHasKey('roomAdmin', $video);
+
+        $this->assertSame($beforeParticipants, LiveRoomParticipant::query()
+            ->where('live_room_id', $room->id)
+            ->count());
+
+        $this->assertDatabaseHas('live_room_admin_audits', [
+            'live_room_id' => $room->id,
+            'admin_id' => $admin->id,
+            'action' => 'admin_observer_token_issued',
+            'reason' => 'silent_watch',
+        ]);
+    }
+
+    public function test_admin_observer_token_supports_audio_rooms(): void
+    {
+        config([
+            'app.url' => 'https://talkee.in',
+            'services.livekit.api_key' => 'test-key',
+            'services.livekit.api_secret' => 'test-secret',
+            'services.livekit.browser_ws_url' => 'wss://livekit.talkee.in',
+        ]);
+
+        $admin = User::factory()->create();
+        $admin->assignRole('admin');
+        [, $room] = $this->makeLiveRoom();
+        $room->forceFill(['room_type' => 'audio'])->save();
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.live-rooms.observer-token', $room))
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('room_type', 'audio');
+    }
+
+    public function test_admin_observer_token_fails_closed_for_https_admin_with_insecure_livekit_url(): void
+    {
+        config([
+            'app.url' => 'https://talkee.in',
+            'services.livekit.api_key' => 'test-key',
+            'services.livekit.api_secret' => 'test-secret',
+            'services.livekit.ws_url' => 'ws://internal-livekit:7880',
+            'services.livekit.browser_ws_url' => null,
+        ]);
+
+        $admin = User::factory()->create();
+        $admin->assignRole('admin');
+        [, $room] = $this->makeLiveRoom();
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.live-rooms.observer-token', $room))
+            ->assertStatus(503)
+            ->assertJsonPath('ok', false);
     }
 
     private function makeLiveRoom(string $status = 'live'): array

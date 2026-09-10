@@ -19,6 +19,7 @@ use App\Http\Controllers\Admin\HostAdminController;
 use App\Http\Controllers\Admin\AgencyAdminController;
 use App\Http\Controllers\Admin\GiftAdminController;
 use App\Http\Controllers\Admin\LiveRoomAdminController;
+use App\Http\Controllers\Admin\LiveRoomObserverController;
 use App\Http\Controllers\Admin\PresenceController;
 use App\Http\Controllers\Admin\ReportsController;
 use App\Http\Controllers\Admin\LeaderboardReportController as AdminLeaderboardReportController;
@@ -290,6 +291,10 @@ Route::middleware(['auth','not_blocked','role:admin'])->prefix('admin')->name('a
   Route::resource('entry-packs', EntryPackAdminController::class)->except(['show']);
   Route::resource('banners', BannerAdminController::class)->except(['show']);
   Route::resource('live-rooms', LiveRoomAdminController::class)->except(['destroy']);
+  Route::get('live-rooms/{live_room}/watch', [LiveRoomObserverController::class, 'show'])->name('live-rooms.watch');
+  Route::post('live-rooms/{live_room}/observer-token', [LiveRoomObserverController::class, 'token'])
+    ->middleware('throttle:6,1')
+    ->name('live-rooms.observer-token');
   Route::post('live-rooms/{live_room}/end', [LiveRoomAdminController::class,'endRoom'])->name('live-rooms.end');
   Route::post('live-rooms/{live_room}/seat-requests/{seat_request}/reject', [LiveRoomAdminController::class, 'rejectSeatRequest'])->name('live-rooms.seat-requests.reject');
   Route::post('live-rooms/{live_room}/speakers/{user}/remove', [LiveRoomAdminController::class, 'removeSpeaker'])->name('live-rooms.speakers.remove');

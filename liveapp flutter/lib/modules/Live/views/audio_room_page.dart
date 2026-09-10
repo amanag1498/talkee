@@ -25,6 +25,7 @@ import '../models/live_pk_battle_model.dart';
 import '../models/live_room_chat_message.dart';
 import '../models/live_room_model.dart';
 import '../services/live_service.dart';
+import '../../games/fortune_wheel/widgets/fortune_wheel_panel.dart';
 import '../widgets/entry_effect_overlay.dart';
 import '../widgets/gift_animation_overlay_manager.dart';
 import '../widgets/live_room_chat_overlay.dart';
@@ -423,12 +424,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
             requests
                 .where((e) => e['status']?.toString() == 'pending')
                 .toList();
-        _speakers = speakers
-            .where(
-              (speaker) =>
-                  !_personalBlocks.isBlocked(_safeInt(speaker['user_id'])),
-            )
-            .toList(growable: false);
+        _speakers = speakers.toList(growable: false);
         _pendingRequestId = pendingRequestId;
         _requestStatus = requestStatus;
         _speakerCount =
@@ -534,21 +530,20 @@ class _AudioRoomPageState extends State<AudioRoomPage>
                     'id': requestId,
                     'user_id': userId,
                     'status': 'pending',
-                    'user': <String, dynamic>{
-                      'id': userId,
-                      'name': 'Listener',
-                    },
+                    'user': <String, dynamic>{'id': userId, 'name': 'Listener'},
                   },
                 ];
               }
             } else if (name == 'seat:request_accepted' ||
                 name == 'seat:request_rejected' ||
                 name == 'seat:request_cancelled') {
-              _pendingRequests = _pendingRequests
-                  .where(
-                    (row) => (row['request_id'] as num?)?.toInt() != requestId,
-                  )
-                  .toList();
+              _pendingRequests =
+                  _pendingRequests
+                      .where(
+                        (row) =>
+                            (row['request_id'] as num?)?.toInt() != requestId,
+                      )
+                      .toList();
             }
           }
         });
@@ -864,7 +859,9 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     }
 
     final joinedIds =
-        animate ? currentIds.difference(_trackedParticipantIds).toList() : const <String>[];
+        animate
+            ? currentIds.difference(_trackedParticipantIds).toList()
+            : const <String>[];
     _trackedParticipantIds = currentIds;
 
     if (!animate || joinedIds.isEmpty || !mounted) {
@@ -912,7 +909,9 @@ class _AudioRoomPageState extends State<AudioRoomPage>
 
   void _showJoinAnimationRequest(RoomJoinAnimationRequest request) {
     final knownIdentity = _trackedParticipantIds.contains(request.userId);
-    final knownUserId = _trackedParticipantIds.contains('user-${request.userId}');
+    final knownUserId = _trackedParticipantIds.contains(
+      'user-${request.userId}',
+    );
     if (knownIdentity || knownUserId) return;
     _trackedParticipantIds = {
       ..._trackedParticipantIds,
@@ -929,15 +928,18 @@ class _AudioRoomPageState extends State<AudioRoomPage>
 
     final request = RoomJoinAnimationRequest(
       userId: userId.toString(),
-      name: currentUser.name.trim().isNotEmpty ? currentUser.name.trim() : 'You',
-      avatarUrl: currentUser.avatarUrl?.trim().isNotEmpty == true
-          ? currentUser.avatarUrl!.trim()
-          : null,
+      name:
+          currentUser.name.trim().isNotEmpty ? currentUser.name.trim() : 'You',
+      avatarUrl:
+          currentUser.avatarUrl?.trim().isNotEmpty == true
+              ? currentUser.avatarUrl!.trim()
+              : null,
       frameUrl: currentUser.profileFrame?.assetUrl,
       themeKey: Get.find<AppSettingsService>().activePremiumThemeVariant,
       isHost: _isHost,
       isVip: currentUser.roles.any(
-        (role) => role.toLowerCase() == 'vip' || role.toLowerCase() == 'premium',
+        (role) =>
+            role.toLowerCase() == 'vip' || role.toLowerCase() == 'premium',
       ),
       level: currentUser.level,
     );
@@ -1099,11 +1101,12 @@ class _AudioRoomPageState extends State<AudioRoomPage>
   void _syncOwnChatTheme() {
     final myUserId = _myUserId;
     if (myUserId == null) return;
-    final activeThemeKey = Get.find<AppSettingsService>().activePremiumThemeVariant;
+    final activeThemeKey =
+        Get.find<AppSettingsService>().activePremiumThemeVariant;
     final current = _chatMessages.value;
     var changed = false;
-    final next =
-        current.map((message) {
+    final next = current
+        .map((message) {
           if (message.isSystem || message.senderId != myUserId) {
             return message;
           }
@@ -1112,7 +1115,8 @@ class _AudioRoomPageState extends State<AudioRoomPage>
           }
           changed = true;
           return message.copyWith(senderActiveThemeKey: activeThemeKey);
-        }).toList(growable: false);
+        })
+        .toList(growable: false);
     if (changed) {
       _chatMessages.value = next;
     }
@@ -1126,12 +1130,13 @@ class _AudioRoomPageState extends State<AudioRoomPage>
   }) {
     final current = _chatMessages.value;
     var changed = false;
-    final next =
-        current.map((message) {
+    final next = current
+        .map((message) {
           if (message.isSystem || message.senderId != userId) {
             return message;
           }
-          final resolvedThemeKey = activeThemeKey ?? message.senderActiveThemeKey;
+          final resolvedThemeKey =
+              activeThemeKey ?? message.senderActiveThemeKey;
           final resolvedVip = isVip ?? message.senderIsVip;
           final resolvedLevel = level ?? message.senderLevel;
           if (message.senderActiveThemeKey == resolvedThemeKey &&
@@ -1145,7 +1150,8 @@ class _AudioRoomPageState extends State<AudioRoomPage>
             senderIsVip: resolvedVip,
             senderLevel: resolvedLevel,
           );
-        }).toList(growable: false);
+        })
+        .toList(growable: false);
     if (changed) {
       _chatMessages.value = next;
     }
@@ -1162,7 +1168,8 @@ class _AudioRoomPageState extends State<AudioRoomPage>
   }
 
   bool _currentUserLooksVip() {
-    final roles = Get.find<AuthService>().currentUser?.roles ?? const <String>[];
+    final roles =
+        Get.find<AuthService>().currentUser?.roles ?? const <String>[];
     return roles.any((role) {
       final normalized = role.toLowerCase();
       return normalized.contains('vip') ||
@@ -1360,9 +1367,10 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     if (_seatActionBusy) return;
     setState(() {
       _seatActionBusy = true;
-      _pendingRequests = _pendingRequests
-          .where((row) => (row['request_id'] as num?)?.toInt() != requestId)
-          .toList();
+      _pendingRequests =
+          _pendingRequests
+              .where((row) => (row['request_id'] as num?)?.toInt() != requestId)
+              .toList();
     });
     try {
       await widget.live.acceptSpeakerRequest(widget.room.roomId, requestId);
@@ -1379,9 +1387,10 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     if (_seatActionBusy) return;
     setState(() {
       _seatActionBusy = true;
-      _pendingRequests = _pendingRequests
-          .where((row) => (row['request_id'] as num?)?.toInt() != requestId)
-          .toList();
+      _pendingRequests =
+          _pendingRequests
+              .where((row) => (row['request_id'] as num?)?.toInt() != requestId)
+              .toList();
     });
     try {
       await widget.live.rejectSpeakerRequest(widget.room.roomId, requestId);
@@ -1749,7 +1758,6 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     for (final participant
         in _room?.remoteParticipants.values ?? const <RemoteParticipant>[]) {
       final participantUserId = _participantUserId(participant);
-      if (_personalBlocks.isBlocked(participantUserId)) continue;
       if (userId != null && participantUserId == userId) return participant;
       if (participant.name.trim().isNotEmpty &&
           participant.name.trim() == name?.trim()) {
@@ -2122,7 +2130,10 @@ class _AudioRoomPageState extends State<AudioRoomPage>
       _SpeakerGridEntry(
         key: _giftAnchors.keyFor(GiftAnchorRegistry.audioHostAvatar),
         name: _isHost ? 'You' : (_hostName ?? 'Host'),
-        roleLabel: 'Host',
+        roleLabel:
+            !_isHost && _personalBlocks.isBlocked(_hostUserId)
+                ? 'Blocked for you'
+                : 'Host',
         highlighted: true,
         speaking:
             _room?.activeSpeakers.any(
@@ -2139,6 +2150,13 @@ class _AudioRoomPageState extends State<AudioRoomPage>
         avatarUrl: null,
         frameUrl: null,
         level: null,
+        personallyBlocked: !_isHost && _personalBlocks.isBlocked(_hostUserId),
+        onUnblockTap:
+            !_isHost &&
+                    _hostUserId != null &&
+                    _personalBlocks.isBlocked(_hostUserId)
+                ? () => _unblockForMe(_hostUserId!, _hostName ?? 'Host')
+                : null,
         onProfileTap:
             () => _showParticipantProfileCard(
               name: _isHost ? 'You' : (_hostName ?? 'Host'),
@@ -2162,18 +2180,25 @@ class _AudioRoomPageState extends State<AudioRoomPage>
       final userId = (speaker['user_id'] as num?)?.toInt();
       final isMe = userId != null && userId == _myUserId;
       final mutedByHost = speaker['muted_by_host'] == true;
-      final muted = _isSpeakerUserMuted(
-        userId,
-        speaker['name']?.toString(),
-        mutedByHost: mutedByHost,
-      );
+      final personallyBlocked = _personalBlocks.isBlocked(userId);
+      final muted =
+          personallyBlocked ||
+          _isSpeakerUserMuted(
+            userId,
+            speaker['name']?.toString(),
+            mutedByHost: mutedByHost,
+          );
       entries.add(
         _SpeakerGridEntry(
           key: ValueKey('speaker-${userId ?? speaker['name']}'),
           name: isMe ? 'You' : (speaker['name']?.toString() ?? 'Speaker'),
-          roleLabel: isMe && mutedByHost ? 'Muted by host' : 'Speaker',
+          roleLabel:
+              personallyBlocked
+                  ? 'Blocked for you'
+                  : (isMe && mutedByHost ? 'Muted by host' : 'Speaker'),
           highlighted: isMe,
           speaking:
+              !personallyBlocked &&
               !muted &&
               _isSpeakerUserSpeaking(userId, speaker['name']?.toString()),
           muted: muted,
@@ -2188,9 +2213,18 @@ class _AudioRoomPageState extends State<AudioRoomPage>
           isHost: false,
           userId: userId,
           avatarUrl:
-              speaker['avatar_url']?.toString() ?? speaker['avatar']?.toString(),
+              speaker['avatar_url']?.toString() ??
+              speaker['avatar']?.toString(),
           frameUrl: profileFrameAssetUrlFromPayload(speaker),
           level: _joinSafeInt(speaker['level']),
+          personallyBlocked: personallyBlocked,
+          onUnblockTap:
+              personallyBlocked && userId != null
+                  ? () => _unblockForMe(
+                    userId,
+                    speaker['name']?.toString() ?? 'Speaker',
+                  )
+                  : null,
           onProfileTap:
               () => _showParticipantProfileCard(
                 name: isMe ? 'You' : (speaker['name']?.toString() ?? 'Speaker'),
@@ -2205,6 +2239,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
                         : _speakerIsVip(speaker),
                 isHost: false,
                 speaking:
+                    !personallyBlocked &&
                     !muted &&
                     _isSpeakerUserSpeaking(userId, speaker['name']?.toString()),
                 userId: userId,
@@ -2230,70 +2265,23 @@ class _AudioRoomPageState extends State<AudioRoomPage>
   }
 
   List<_ListenerGridEntry> _buildListenerEntries(List<Participant> listeners) {
-    return listeners
-        .map(
-          (participant) {
-            final metadata = _participantMetadata(participant);
-            final name = _participantLabel(participant);
-            final isMe = participant is LocalParticipant && _isListener;
-            final speaking = _isParticipantSpeaking(participant);
-            final themeKey = _participantThemeKey(participant);
-            final isVip = _participantIsVip(participant);
-            final userId = _joinSafeInt(metadata['user_id']);
-            final level = _joinSafeInt(metadata['level']);
-            final avatarUrl =
-                metadata['avatar_url']?.toString() ??
-                metadata['avatar']?.toString();
-            final frameUrl = profileFrameAssetUrlFromPayload(metadata);
-            return _ListenerGridEntry(
-              key: ValueKey('listener-${participant.identity}'),
-              label: name,
-              speaking: speaking,
-              isMe: isMe,
-              themeKey: themeKey,
-              isVip: isVip,
-              userId: userId,
-              avatarUrl: avatarUrl,
-              frameUrl: frameUrl,
-              level: level,
-              onProfileTap:
-                  () => _showParticipantProfileCard(
-                    name: isMe ? 'You' : name,
-                    subtitle: isVip ? 'VIP Listener' : 'Listener',
-                    themeKey: themeKey,
-                    isVip: isVip,
-                    isHost: false,
-                    speaking: speaking,
-                    userId: userId,
-                    level: level,
-                    avatarUrl: avatarUrl,
-                  ),
-            );
-          },
-        )
-        .toList();
-  }
-
-  List<_ListenerGridEntry> _buildDevListenerEntries() {
-    final raw =
-        widget.room.meta?['dev_listeners'] as List<dynamic>? ?? const <dynamic>[];
-    return raw.whereType<Map>().map((entry) {
-      final data = Map<String, dynamic>.from(entry);
-      final label = data['label']?.toString() ?? 'Listener';
-      final speaking = data['speaking'] == true;
-      final isMe = data['is_me'] == true;
-      final themeKey = normalizePremiumThemeVariant(
-        data['theme_key']?.toString() ?? 'midnight',
-      );
-      final isVip = data['is_vip'] == true;
-      final userId = _joinSafeInt(data['user_id']);
+    return listeners.map((participant) {
+      final metadata = _participantMetadata(participant);
+      final name = _participantLabel(participant);
+      final isMe = participant is LocalParticipant && _isListener;
+      final userId = _joinSafeInt(metadata['user_id']);
+      final personallyBlocked = _personalBlocks.isBlocked(userId);
+      final speaking =
+          !personallyBlocked && _isParticipantSpeaking(participant);
+      final themeKey = _participantThemeKey(participant);
+      final isVip = _participantIsVip(participant);
+      final level = _joinSafeInt(metadata['level']);
       final avatarUrl =
-          data['avatar_url']?.toString() ?? data['avatar']?.toString();
-      final frameUrl = profileFrameAssetUrlFromPayload(data);
-      final level = _joinSafeInt(data['level']);
+          metadata['avatar_url']?.toString() ?? metadata['avatar']?.toString();
+      final frameUrl = profileFrameAssetUrlFromPayload(metadata);
       return _ListenerGridEntry(
-        key: ValueKey('dev-listener-$label'),
-        label: label,
+        key: ValueKey('listener-${participant.identity}'),
+        label: name,
         speaking: speaking,
         isMe: isMe,
         themeKey: themeKey,
@@ -2302,9 +2290,14 @@ class _AudioRoomPageState extends State<AudioRoomPage>
         avatarUrl: avatarUrl,
         frameUrl: frameUrl,
         level: level,
+        personallyBlocked: personallyBlocked,
+        onUnblockTap:
+            personallyBlocked && userId != null
+                ? () => _unblockForMe(userId, name)
+                : null,
         onProfileTap:
             () => _showParticipantProfileCard(
-              name: isMe ? 'You' : label,
+              name: isMe ? 'You' : name,
               subtitle: isVip ? 'VIP Listener' : 'Listener',
               themeKey: themeKey,
               isVip: isVip,
@@ -2315,7 +2308,57 @@ class _AudioRoomPageState extends State<AudioRoomPage>
               avatarUrl: avatarUrl,
             ),
       );
-    }).toList(growable: false);
+    }).toList();
+  }
+
+  List<_ListenerGridEntry> _buildDevListenerEntries() {
+    final raw =
+        widget.room.meta?['dev_listeners'] as List<dynamic>? ??
+        const <dynamic>[];
+    return raw
+        .whereType<Map>()
+        .map((entry) {
+          final data = Map<String, dynamic>.from(entry);
+          final label = data['label']?.toString() ?? 'Listener';
+          final speaking = data['speaking'] == true;
+          final isMe = data['is_me'] == true;
+          final themeKey = normalizePremiumThemeVariant(
+            data['theme_key']?.toString() ?? 'midnight',
+          );
+          final isVip = data['is_vip'] == true;
+          final userId = _joinSafeInt(data['user_id']);
+          final avatarUrl =
+              data['avatar_url']?.toString() ?? data['avatar']?.toString();
+          final frameUrl = profileFrameAssetUrlFromPayload(data);
+          final level = _joinSafeInt(data['level']);
+          return _ListenerGridEntry(
+            key: ValueKey('dev-listener-$label'),
+            label: label,
+            speaking: speaking,
+            isMe: isMe,
+            themeKey: themeKey,
+            isVip: isVip,
+            userId: userId,
+            avatarUrl: avatarUrl,
+            frameUrl: frameUrl,
+            level: level,
+            personallyBlocked: false,
+            onUnblockTap: null,
+            onProfileTap:
+                () => _showParticipantProfileCard(
+                  name: isMe ? 'You' : label,
+                  subtitle: isVip ? 'VIP Listener' : 'Listener',
+                  themeKey: themeKey,
+                  isVip: isVip,
+                  isHost: false,
+                  speaking: speaking,
+                  userId: userId,
+                  level: level,
+                  avatarUrl: avatarUrl,
+                ),
+          );
+        })
+        .toList(growable: false);
   }
 
   List<Participant> _listenerParticipants() {
@@ -2332,7 +2375,6 @@ class _AudioRoomPageState extends State<AudioRoomPage>
 
     for (final participant in remote) {
       final userId = _participantUserId(participant);
-      if (_personalBlocks.isBlocked(userId)) continue;
       final isHostParticipant = participant.identity.startsWith('host-');
       if (isHostParticipant) continue;
       if (userId != null && speakerIds.contains(userId)) continue;
@@ -2465,53 +2507,79 @@ class _AudioRoomPageState extends State<AudioRoomPage>
   }
 
   Future<void> _showListenersSheet() async {
-    final listeners = _listenerParticipants();
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder:
-          (_) => _AudioSheet(
-            title: 'Listeners',
-            subtitle: '${listeners.length} visible here',
-            child:
-                listeners.isEmpty
-                    ? const _ModalEmptyState(
-                      icon: Icons.headphones_rounded,
-                      title: 'No listeners visible',
-                      body:
-                          'Listener previews populate as participants join the room.',
-                    )
-                    : ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: listeners.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder:
-                          (_, i) {
+          (sheetContext) => StatefulBuilder(
+            builder: (sheetContext, refreshSheet) {
+              final listeners = _listenerParticipants();
+              return _AudioSheet(
+                title: 'Listeners',
+                subtitle: '${listeners.length} visible here',
+                child:
+                    listeners.isEmpty
+                        ? const _ModalEmptyState(
+                          icon: Icons.headphones_rounded,
+                          title: 'No listeners visible',
+                          body:
+                              'Listener previews populate as participants join the room.',
+                        )
+                        : ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: listeners.length,
+                          separatorBuilder:
+                              (_, __) => const SizedBox(height: 10),
+                          itemBuilder: (_, i) {
                             final participant = listeners[i];
                             final metadata = _participantMetadata(participant);
+                            final userId = _joinSafeInt(metadata['user_id']);
+                            final personallyBlocked = _personalBlocks.isBlocked(
+                              userId,
+                            );
+                            final label = _participantLabel(participant);
                             return _AudienceTile(
-                              label: _participantLabel(participant),
+                              label: label,
                               subtitle: _sheetSubtitleWithUserId(
-                                'Listening',
-                                _joinSafeInt(metadata['user_id']),
+                                personallyBlocked
+                                    ? 'Blocked for you'
+                                    : 'Listening',
+                                userId,
                               ),
-                              speaking: _isParticipantSpeaking(participant),
+                              speaking:
+                                  !personallyBlocked &&
+                                  _isParticipantSpeaking(participant),
                               avatarUrl:
                                   metadata['avatar_url']?.toString() ??
                                   metadata['avatar']?.toString(),
-                              frameUrl: profileFrameAssetUrlFromPayload(metadata),
+                              frameUrl: profileFrameAssetUrlFromPayload(
+                                metadata,
+                              ),
+                              onUnblockTap:
+                                  personallyBlocked && userId != null
+                                      ? () async {
+                                        await _unblockForMe(userId, label);
+                                        if (sheetContext.mounted) {
+                                          refreshSheet(() {});
+                                        }
+                                      }
+                                      : null,
                               onProfileTap:
                                   () => _showParticipantProfileCard(
-                                    name: _participantLabel(participant),
+                                    name: label,
                                     subtitle: 'Listener',
                                     themeKey: _participantThemeKey(participant),
                                     isVip: _participantIsVip(participant),
                                     isHost:
                                         metadata['is_host'] == true ||
-                                        participant.identity.startsWith('host-'),
-                                    speaking: _isParticipantSpeaking(participant),
+                                        participant.identity.startsWith(
+                                          'host-',
+                                        ),
+                                    speaking: _isParticipantSpeaking(
+                                      participant,
+                                    ),
                                     userId: _joinSafeInt(metadata['user_id']),
                                     level: _joinSafeInt(metadata['level']),
                                     avatarUrl:
@@ -2520,7 +2588,9 @@ class _AudioRoomPageState extends State<AudioRoomPage>
                                   ),
                             );
                           },
-                    ),
+                        ),
+              );
+            },
           ),
     );
   }
@@ -2622,14 +2692,15 @@ class _AudioRoomPageState extends State<AudioRoomPage>
               ),
               if (userId != null && userId > 0 && userId != _myUserId)
                 _buildParticipantActionTile(
-                  icon: personallyBlocked
-                      ? Icons.lock_open_rounded
-                      : Icons.person_off_rounded,
-                  title:
-                      personallyBlocked ? 'Unblock for me' : 'Block for me',
-                  subtitle: personallyBlocked
-                      ? 'Restore messages and direct interactions'
-                      : 'Block this user permanently',
+                  icon:
+                      personallyBlocked
+                          ? Icons.lock_open_rounded
+                          : Icons.person_off_rounded,
+                  title: personallyBlocked ? 'Unblock for me' : 'Block for me',
+                  subtitle:
+                      personallyBlocked
+                          ? 'Restore messages and direct interactions'
+                          : 'Block this user permanently',
                   destructive: !personallyBlocked,
                   onTap: () {
                     Navigator.of(context).pop();
@@ -2654,9 +2725,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
               if (canModerate)
                 _buildParticipantActionTile(
                   icon:
-                      isBlocked
-                          ? Icons.lock_open_rounded
-                          : Icons.block_rounded,
+                      isBlocked ? Icons.lock_open_rounded : Icons.block_rounded,
                   title: isBlocked ? 'Unblock user' : 'Block permanently',
                   subtitle:
                       isBlocked
@@ -2741,20 +2810,21 @@ class _AudioRoomPageState extends State<AudioRoomPage>
   Future<void> _blockForMe(int userId) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Block user?'),
-        content: const Text('Do you really want to block this user?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text('Block user?'),
+            content: const Text('Do you really want to block this user?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Block'),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Block'),
-          ),
-        ],
-      ),
     );
     if (confirmed != true || !mounted) return;
     try {
@@ -2781,7 +2851,10 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     try {
       await _personalBlocks.unblock(userId);
       await _setParticipantMediaEnabled(userId, true);
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {});
+        _speakerSheetTick.value++;
+      }
       Get.snackbar(
         'Privacy',
         '$name was unblocked.',
@@ -2827,9 +2900,6 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     _recentGiftTimer?.cancel();
     _recentGiftMessage = null;
     _recentGiftEmoji = null;
-    _speakers = _speakers
-        .where((speaker) => _safeInt(speaker['user_id']) != userId)
-        .toList(growable: false);
     _giftAnimationOverlay.clear();
     await _setParticipantMediaEnabled(userId, false);
   }
@@ -3017,7 +3087,8 @@ class _AudioRoomPageState extends State<AudioRoomPage>
                           label: Text(reason.replaceAll('_', ' ')),
                           selected: selectedReason == reason,
                           onSelected:
-                              (_) => setModalState(() => selectedReason = reason),
+                              (_) =>
+                                  setModalState(() => selectedReason = reason),
                         ),
                     ],
                   ),
@@ -3106,7 +3177,8 @@ class _AudioRoomPageState extends State<AudioRoomPage>
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+                  onPressed:
+                      () => Navigator.of(context).pop(controller.text.trim()),
                   child: Text(ctaLabel),
                 ),
               ),
@@ -3209,9 +3281,10 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     if (_isSpeaker) {
       actions.add(
         _ChatInputActionPill(
-          icon: _mutedByHost
-              ? Icons.mic_off_rounded
-              : (_micOn ? Icons.mic_rounded : Icons.mic_off_rounded),
+          icon:
+              _mutedByHost
+                  ? Icons.mic_off_rounded
+                  : (_micOn ? Icons.mic_rounded : Icons.mic_off_rounded),
           tokens: tokens,
           accent: const Color(0xFF57E6B1),
           onTap: _mutedByHost || busy ? null : _toggleMic,
@@ -3281,31 +3354,48 @@ class _AudioRoomPageState extends State<AudioRoomPage>
 
   bool get _showGamesInRoom {
     final settings = Get.find<AppSettingsService>();
-    return settings.teenPattiEnabled || settings.greedyEnabled;
+    return (settings.teenPattiEnabled ||
+            settings.greedyEnabled ||
+            settings.sevenUpDownEnabled ||
+            (settings.fortuneWheelEnabled &&
+                settings.fortuneWheelVisibleInVideoRoomStrip)) &&
+        settings.videoRoomGamesEnabled;
   }
 
   Future<void> _openGamesSheet() async {
-    if (_gamesSheetOpen || !_showGamesInRoom) {
+    if (_gamesSheetOpen) {
+      return;
+    }
+
+    await Get.find<AppSettingsService>().refresh();
+    if (!mounted || !_showGamesInRoom) {
       return;
     }
 
     setState(() => _gamesSheetOpen = true);
-    await showModalBottomSheet<void>(
-      context: context,
-      useRootNavigator: false,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => const TeenPattiGamesSheet(),
-    );
-    if (!mounted) return;
-    setState(() => _gamesSheetOpen = false);
+    try {
+      final result = await showModalBottomSheet<LiveRoomGamesSheetResult>(
+        context: context,
+        useRootNavigator: false,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => const TeenPattiGamesSheet(),
+      );
+      if (!mounted) return;
+      if (result == LiveRoomGamesSheetResult.fortuneWheel) {
+        await showFortuneWheelDialog(context, playSounds: false);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _gamesSheetOpen = false);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    final isCompactDevice =
-        media.size.width < 360 || media.size.height < 760;
+    final isCompactDevice = media.size.width < 360 || media.size.height < 760;
     final headerCount =
         _participantCount > 0
             ? _participantCount
@@ -3326,245 +3416,256 @@ class _AudioRoomPageState extends State<AudioRoomPage>
             body: SafeArea(
               child: Stack(
                 children: [
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        _tokens.backgroundGradient.first,
-                        _tokens.cardGradient.first,
-                        _tokens.backgroundGradient.last,
-                      ],
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            _tokens.backgroundGradient.first,
+                            _tokens.cardGradient.first,
+                            _tokens.backgroundGradient.last,
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-              Positioned(
-                top: -60,
-                right: -20,
-                child: Container(
-                  width: 180,
-                  height: 180,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _tokens.primaryButtonGradient.first.withOpacity(.14),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: -40,
-                bottom: 120,
-                child: Container(
-                  width: 160,
-                  height: 160,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _tokens.glowColor.withOpacity(.12),
-                  ),
-                ),
-              ),
-              Positioned.fill(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    isCompactDevice ? 10 : 14,
-                    isCompactDevice ? 8 : 10,
-                    isCompactDevice ? 10 : 14,
-                    0,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _JoinedCountPill(
-                        countText:
-                            '$headerCount/${_maxParticipants > 0 ? _maxParticipants : 50}',
-                        reconnecting: _reconnecting,
-                        speakerCount: speakerEntries.length,
-                        listenerCount: listenerEntries.length,
-                        isHost: _isHost,
-                        onOpenSpeakers: _showSpeakersSheet,
-                        onOpenListeners: _showListenersSheet,
-                        onLeave: _exitRoom,
+                  Positioned(
+                    top: -60,
+                    right: -20,
+                    child: Container(
+                      width: 180,
+                      height: 180,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _tokens.primaryButtonGradient.first.withOpacity(
+                          .14,
+                        ),
                       ),
-                      if (_isHost && _pkCapable)
-                        Padding(
-                          padding: EdgeInsets.only(
-                            top: isCompactDevice ? 6 : 8,
-                          ),
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              _SmallAction(
-                                label: _pkActive ? 'End PK' : 'Start PK',
-                                onTap:
-                                    _pkActive
-                                        ? _endPkBattle
-                                        : _showPkInviteSheet,
-                              ),
-                              _SmallAction(
-                                label: 'Requests',
-                                badgeCount: _pendingRequests.length,
-                                onTap: _showRequestsSheet,
-                              ),
-                            ],
-                          ),
-                        ),
-                      if (_requestStatus == 'pending' ||
-                          _requestStatus == 'accepted' ||
-                          _requestStatus == 'rejected' ||
-                          _requestStatus == 'removed')
-                        Padding(
-                          padding: EdgeInsets.only(
-                            top: isCompactDevice ? 6 : 8,
-                          ),
-                          child: _StateBanner(
-                            status: _requestStatus!,
-                            onDismiss: () => setState(() => _requestStatus = null),
-                          ),
-                        ),
-                      if (_seatError != null || _giftError != null)
-                        Padding(
-                          padding: EdgeInsets.only(
-                            top: isCompactDevice ? 6 : 8,
-                          ),
-                          child: _InlineErrorBanner(
-                            message: _seatError ?? _giftError!,
-                          ),
-                        ),
-                      if (_recentGiftMessage != null)
-                        Padding(
-                          padding: EdgeInsets.only(
-                            top: isCompactDevice ? 6 : 8,
-                          ),
-                          child: _GiftBanner(
-                            message: _recentGiftMessage!,
-                            emoji: _recentGiftEmoji ?? '🎁',
-                            pulse: _giftOverlayPulse,
-                          ),
-                        ),
-                      if (_pkCapable && _pkActive)
-                        Padding(
-                          padding: EdgeInsets.only(top: isCompactDevice ? 6 : 8),
-                          child: _buildPkAudioPanel(),
-                        ),
-                      SizedBox(height: isCompactDevice ? 6 : 10),
-                      Expanded(
-                        child:
-                            _connecting
-                                ? const _AudioRoomLoadingState()
-                                : _error != null
-                                ? _AudioRoomErrorState(
-                                  message: _error!,
-                                  onRetry: _connect,
-                                )
-                                : KeyedSubtree(
-                                  key: _giftAnchors.keyFor(
-                                    GiftAnchorRegistry.stageCenter,
-                                  ),
-                                  child: _AudioParticipantsStage(
-                                    speakerEntries: speakerEntries,
-                                    listenerEntries: listenerEntries,
-                                    onOpenSpeakers: _showSpeakersSheet,
-                                    onOpenListeners: _showListenersSheet,
-                                  ),
-                                ),
-                      ),
-                      const SizedBox.shrink(),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-              Positioned(
-                child: Obx(() {
-                  final viewerThemeKey =
-                      Get.find<AppSettingsService>().activePremiumThemeVariant;
-                  return LiveRoomChatOverlay(
-                    key: ValueKey('audio-room-chat-$viewerThemeKey'),
-                    messagesListenable: _chatMessages,
-                    viewerThemeKey: viewerThemeKey,
-                    roomId: widget.room.roomId,
-                    roomType: widget.room.roomType,
-                    bottomOffset: isCompactDevice ? 12 : 18,
-                    maxHeightFactor: isCompactDevice ? 0.30 : 0.40,
-                    showEmptyPrompt: false,
-                    footerActions: _buildChatFooterActions(),
-                    trailingActions: _buildChatTrailingActions(),
-                    showSendButton: false,
-                    onSend: _sendChatMessage,
-                    onMessageSenderTap: (message) {
-                      if (message.isSystem || message.senderId <= 0) return;
-                      _showParticipantProfileCard(
-                        name: message.senderName,
-                        subtitle: message.senderIsHost
-                            ? 'Host'
-                            : (message.senderIsVip ? 'VIP Participant' : 'Participant'),
-                        themeKey: message.senderActiveThemeKey,
-                        isVip: message.senderIsVip,
-                        isHost: message.senderIsHost,
-                        speaking: false,
-                        userId: message.senderId,
-                        level: message.senderLevel,
-                        avatarUrl: message.senderAvatar,
+                  Positioned(
+                    left: -40,
+                    bottom: 120,
+                    child: Container(
+                      width: 160,
+                      height: 160,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _tokens.glowColor.withOpacity(.12),
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        isCompactDevice ? 10 : 14,
+                        isCompactDevice ? 8 : 10,
+                        isCompactDevice ? 10 : 14,
+                        0,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _JoinedCountPill(
+                            countText:
+                                '$headerCount/${_maxParticipants > 0 ? _maxParticipants : 50}',
+                            reconnecting: _reconnecting,
+                            speakerCount: speakerEntries.length,
+                            listenerCount: listenerEntries.length,
+                            isHost: _isHost,
+                            onOpenSpeakers: _showSpeakersSheet,
+                            onOpenListeners: _showListenersSheet,
+                            onLeave: _exitRoom,
+                          ),
+                          if (_isHost && _pkCapable)
+                            Padding(
+                              padding: EdgeInsets.only(
+                                top: isCompactDevice ? 6 : 8,
+                              ),
+                              child: Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  _SmallAction(
+                                    label: _pkActive ? 'End PK' : 'Start PK',
+                                    onTap:
+                                        _pkActive
+                                            ? _endPkBattle
+                                            : _showPkInviteSheet,
+                                  ),
+                                  _SmallAction(
+                                    label: 'Requests',
+                                    badgeCount: _pendingRequests.length,
+                                    onTap: _showRequestsSheet,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (_requestStatus == 'pending' ||
+                              _requestStatus == 'accepted' ||
+                              _requestStatus == 'rejected' ||
+                              _requestStatus == 'removed')
+                            Padding(
+                              padding: EdgeInsets.only(
+                                top: isCompactDevice ? 6 : 8,
+                              ),
+                              child: _StateBanner(
+                                status: _requestStatus!,
+                                onDismiss:
+                                    () => setState(() => _requestStatus = null),
+                              ),
+                            ),
+                          if (_seatError != null || _giftError != null)
+                            Padding(
+                              padding: EdgeInsets.only(
+                                top: isCompactDevice ? 6 : 8,
+                              ),
+                              child: _InlineErrorBanner(
+                                message: _seatError ?? _giftError!,
+                              ),
+                            ),
+                          if (_recentGiftMessage != null)
+                            Padding(
+                              padding: EdgeInsets.only(
+                                top: isCompactDevice ? 6 : 8,
+                              ),
+                              child: _GiftBanner(
+                                message: _recentGiftMessage!,
+                                emoji: _recentGiftEmoji ?? '🎁',
+                                pulse: _giftOverlayPulse,
+                              ),
+                            ),
+                          if (_pkCapable && _pkActive)
+                            Padding(
+                              padding: EdgeInsets.only(
+                                top: isCompactDevice ? 6 : 8,
+                              ),
+                              child: _buildPkAudioPanel(),
+                            ),
+                          SizedBox(height: isCompactDevice ? 6 : 10),
+                          Expanded(
+                            child:
+                                _connecting
+                                    ? const _AudioRoomLoadingState()
+                                    : _error != null
+                                    ? _AudioRoomErrorState(
+                                      message: _error!,
+                                      onRetry: _connect,
+                                    )
+                                    : KeyedSubtree(
+                                      key: _giftAnchors.keyFor(
+                                        GiftAnchorRegistry.stageCenter,
+                                      ),
+                                      child: _AudioParticipantsStage(
+                                        speakerEntries: speakerEntries,
+                                        listenerEntries: listenerEntries,
+                                        onOpenSpeakers: _showSpeakersSheet,
+                                        onOpenListeners: _showListenersSheet,
+                                      ),
+                                    ),
+                          ),
+                          const SizedBox.shrink(),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    child: Obx(() {
+                      final viewerThemeKey =
+                          Get.find<AppSettingsService>()
+                              .activePremiumThemeVariant;
+                      return LiveRoomChatOverlay(
+                        key: ValueKey('audio-room-chat-$viewerThemeKey'),
+                        messagesListenable: _chatMessages,
+                        viewerThemeKey: viewerThemeKey,
+                        roomId: widget.room.roomId,
+                        roomType: widget.room.roomType,
+                        bottomOffset: isCompactDevice ? 12 : 18,
+                        maxHeightFactor: isCompactDevice ? 0.30 : 0.40,
+                        showEmptyPrompt: false,
+                        footerActions: _buildChatFooterActions(),
+                        trailingActions: _buildChatTrailingActions(),
+                        showSendButton: false,
+                        onSend: _sendChatMessage,
+                        onMessageSenderTap: (message) {
+                          if (message.isSystem || message.senderId <= 0) return;
+                          _showParticipantProfileCard(
+                            name: message.senderName,
+                            subtitle:
+                                message.senderIsHost
+                                    ? 'Host'
+                                    : (message.senderIsVip
+                                        ? 'VIP Participant'
+                                        : 'Participant'),
+                            themeKey: message.senderActiveThemeKey,
+                            isVip: message.senderIsVip,
+                            isHost: message.senderIsHost,
+                            speaking: false,
+                            userId: message.senderId,
+                            level: message.senderLevel,
+                            avatarUrl: message.senderAvatar,
+                          );
+                        },
                       );
-                    },
-                  );
-                }),
-              ),
-              if (_ended) const Positioned.fill(child: _EndedOverlay()),
-              Positioned.fill(
-                child: EntryEffectOverlay(
-                  roomId: widget.room.roomId,
-                  initialEffect: widget.room.entryEffect,
-                  events:
-                      Get.isRegistered<RoomsSocketService>()
-                          ? Get.find<RoomsSocketService>().entryEffectEvents
-                          : null,
-                ),
-              ),
-              Positioned.fill(
-                child: GiftAnimationLayer(
-                  manager: _giftAnimationOverlay,
-                  anchors: _giftAnchors,
-                  currentThemeKey:
-                      Get.find<AppSettingsService>()
-                          .activePremiumThemeVariant,
-                  receiverAnchorName: GiftAnchorRegistry.audioHostAvatar,
-                  stageCenterAnchorName: GiftAnchorRegistry.stageCenter,
-                  pkLeftAnchorName:
-                      _pkCapable && _pkActive ? GiftAnchorRegistry.pkLeft : null,
-                  pkRightAnchorName:
-                      _pkCapable && _pkActive
-                          ? GiftAnchorRegistry.pkRight
-                          : null,
-                ),
-              ),
-              if (_pkCapable && _incomingPkInvite != null)
-                Positioned(
-                  left: 14,
-                  right: 14,
-                  bottom: 110,
-                  child: _PkInvitePrompt(
-                    battle: _incomingPkInvite!,
-                    busy: _pkBusy,
-                    onAccept: () => _respondToIncomingPk(true),
-                    onReject: () => _respondToIncomingPk(false),
+                    }),
                   ),
-                ),
-              if (_pkCapable &&
-                  _pkOverlayTitle != null &&
-                  _pkOverlaySubtitle != null)
-                PkWinnerOverlay(
-                  title: _pkOverlayTitle!,
-                  subtitle: _pkOverlaySubtitle!,
-                ),
-              ],
+                  if (_ended) const Positioned.fill(child: _EndedOverlay()),
+                  Positioned.fill(
+                    child: EntryEffectOverlay(
+                      roomId: widget.room.roomId,
+                      initialEffect: widget.room.entryEffect,
+                      events:
+                          Get.isRegistered<RoomsSocketService>()
+                              ? Get.find<RoomsSocketService>().entryEffectEvents
+                              : null,
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: GiftAnimationLayer(
+                      manager: _giftAnimationOverlay,
+                      anchors: _giftAnchors,
+                      currentThemeKey:
+                          Get.find<AppSettingsService>()
+                              .activePremiumThemeVariant,
+                      receiverAnchorName: GiftAnchorRegistry.audioHostAvatar,
+                      stageCenterAnchorName: GiftAnchorRegistry.stageCenter,
+                      pkLeftAnchorName:
+                          _pkCapable && _pkActive
+                              ? GiftAnchorRegistry.pkLeft
+                              : null,
+                      pkRightAnchorName:
+                          _pkCapable && _pkActive
+                              ? GiftAnchorRegistry.pkRight
+                              : null,
+                    ),
+                  ),
+                  if (_pkCapable && _incomingPkInvite != null)
+                    Positioned(
+                      left: 14,
+                      right: 14,
+                      bottom: 110,
+                      child: _PkInvitePrompt(
+                        battle: _incomingPkInvite!,
+                        busy: _pkBusy,
+                        onAccept: () => _respondToIncomingPk(true),
+                        onReject: () => _respondToIncomingPk(false),
+                      ),
+                    ),
+                  if (_pkCapable &&
+                      _pkOverlayTitle != null &&
+                      _pkOverlaySubtitle != null)
+                    PkWinnerOverlay(
+                      title: _pkOverlayTitle!,
+                      subtitle: _pkOverlaySubtitle!,
+                    ),
+                ],
+              ),
             ),
           ),
         ),
       ),
-    ),
     );
   }
 
@@ -3639,7 +3740,8 @@ class _AudioRoomPageState extends State<AudioRoomPage>
           isHost: false,
           userId: userId,
           avatarUrl:
-              speaker['avatar_url']?.toString() ?? speaker['avatar']?.toString(),
+              speaker['avatar_url']?.toString() ??
+              speaker['avatar']?.toString(),
           level: _joinSafeInt(speaker['level']),
           onProfileTap:
               () => _showParticipantProfileCard(
@@ -3694,6 +3796,8 @@ class _SpeakerGridEntry {
     this.avatarUrl,
     this.frameUrl,
     this.level,
+    this.personallyBlocked = false,
+    this.onUnblockTap,
     this.onProfileTap,
     this.onMute,
     this.muteActionLabel = 'Mute',
@@ -3713,6 +3817,8 @@ class _SpeakerGridEntry {
   final String? avatarUrl;
   final String? frameUrl;
   final int? level;
+  final bool personallyBlocked;
+  final VoidCallback? onUnblockTap;
   final VoidCallback? onProfileTap;
   final VoidCallback? onMute;
   final String muteActionLabel;
@@ -3731,6 +3837,8 @@ class _ListenerGridEntry {
     this.avatarUrl,
     this.frameUrl,
     this.level,
+    this.personallyBlocked = false,
+    this.onUnblockTap,
     this.onProfileTap,
   });
 
@@ -3744,6 +3852,8 @@ class _ListenerGridEntry {
   final String? avatarUrl;
   final String? frameUrl;
   final int? level;
+  final bool personallyBlocked;
+  final VoidCallback? onUnblockTap;
   final VoidCallback? onProfileTap;
 }
 
@@ -3764,6 +3874,8 @@ class _StageGridItem {
     this.avatarUrl,
     this.frameUrl,
     this.level,
+    this.personallyBlocked = false,
+    this.onUnblockTap,
     this.onProfileTap,
     this.onMute,
     this.muteActionLabel = 'Mute',
@@ -3785,6 +3897,8 @@ class _StageGridItem {
   final String? avatarUrl;
   final String? frameUrl;
   final int? level;
+  final bool personallyBlocked;
+  final VoidCallback? onUnblockTap;
   final VoidCallback? onProfileTap;
   final VoidCallback? onMute;
   final String muteActionLabel;
@@ -3976,6 +4090,8 @@ class _AudioParticipantsStage extends StatelessWidget {
           avatarUrl: entry.avatarUrl,
           frameUrl: entry.frameUrl,
           level: entry.level,
+          personallyBlocked: entry.personallyBlocked,
+          onUnblockTap: entry.onUnblockTap,
           onProfileTap: entry.onProfileTap,
           onMute: entry.onMute,
           muteActionLabel: entry.muteActionLabel,
@@ -4145,7 +4261,8 @@ class _UnifiedParticipantsGrid extends StatelessWidget {
         const crossAxisCount = 3;
         const spacing = 10.0;
         final totalSpacing = spacing * (crossAxisCount - 1);
-        final tileWidth = ((constraints.maxWidth - totalSpacing) / crossAxisCount)
+        final tileWidth = ((constraints.maxWidth - totalSpacing) /
+                crossAxisCount)
             .clamp(96.0, 170.0);
         final tileHeight = (tileWidth * 1.18).clamp(122.0, 188.0);
 
@@ -4258,7 +4375,8 @@ class _UnifiedParticipantTile extends StatelessWidget {
                         label: item.roleLabel,
                         highlighted: item.highlighted,
                         themeKey:
-                            Get.find<AppSettingsService>().activePremiumThemeVariant,
+                            Get.find<AppSettingsService>()
+                                .activePremiumThemeVariant,
                       ),
                     ),
                     if (item.isSpeaker) ...[
@@ -4266,12 +4384,27 @@ class _UnifiedParticipantTile extends StatelessWidget {
                       _MicBadge(
                         muted: item.muted,
                         themeKey:
-                            Get.find<AppSettingsService>().activePremiumThemeVariant,
+                            Get.find<AppSettingsService>()
+                                .activePremiumThemeVariant,
                       ),
                     ],
                   ],
                 ),
               ),
+              if (item.personallyBlocked && item.onUnblockTap != null) ...[
+                const SizedBox(height: 5),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _SmallAction(
+                    label: 'Unblock',
+                    onTap: item.onUnblockTap!,
+                    tokens: getPremiumThemeTokens(
+                      Get.find<AppSettingsService>().activePremiumThemeVariant,
+                    ),
+                    compact: true,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -4820,93 +4953,102 @@ class _SpeakerTileWidget extends StatelessWidget {
     );
     final avatarRadius = compact ? 20.0 : 24.0;
     return ThemedRoomFrame(
-        themeKey: entry.themeKey,
-        isHost: entry.isHost,
-        isVip: entry.isVip,
-        isSpeaking: entry.speaking,
-        borderRadius: 18,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          padding: EdgeInsets.all(compact ? 8 : 9),
-          decoration: BoxDecoration(
-            color: surfaceTokens.glassColor.withOpacity(
-              entry.highlighted ? .18 : .10,
-            ),
-            borderRadius: BorderRadius.circular(18),
+      themeKey: entry.themeKey,
+      isHost: entry.isHost,
+      isVip: entry.isVip,
+      isSpeaking: entry.speaking,
+      borderRadius: 18,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        padding: EdgeInsets.all(compact ? 8 : 9),
+        decoration: BoxDecoration(
+          color: surfaceTokens.glassColor.withOpacity(
+            entry.highlighted ? .18 : .10,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: _SpeakingAvatar(
-                  label: entry.name,
-                  radius: avatarRadius,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: _SpeakingAvatar(
+                label: entry.name,
+                radius: avatarRadius,
+                highlighted: entry.highlighted,
+                speaking: entry.speaking,
+                muted: entry.muted,
+                themeKey: entry.themeKey,
+                avatarUrl: entry.avatarUrl,
+                frameUrl: entry.frameUrl,
+                onTap: entry.onProfileTap,
+              ),
+            ),
+            SizedBox(height: compact ? 6 : 7),
+            Text(
+              entry.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: surfaceTokens.textPrimary,
+                fontWeight: FontWeight.w800,
+                fontSize: compact ? 11.5 : 12.5,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                _RoleBadge(
+                  label: entry.roleLabel,
                   highlighted: entry.highlighted,
-                  speaking: entry.speaking,
+                  themeKey:
+                      Get.find<AppSettingsService>().activePremiumThemeVariant,
+                ),
+                _MicBadge(
                   muted: entry.muted,
-                  themeKey: entry.themeKey,
-                  avatarUrl: entry.avatarUrl,
-                  frameUrl: entry.frameUrl,
-                  onTap: entry.onProfileTap,
+                  themeKey:
+                      Get.find<AppSettingsService>().activePremiumThemeVariant,
                 ),
+              ],
+            ),
+            if (entry.personallyBlocked && entry.onUnblockTap != null) ...[
+              const Spacer(),
+              const SizedBox(height: 6),
+              _SmallAction(
+                label: 'Unblock',
+                onTap: entry.onUnblockTap!,
+                tokens: surfaceTokens,
+                compact: true,
               ),
-              SizedBox(height: compact ? 6 : 7),
-              Text(
-                entry.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: surfaceTokens.textPrimary,
-                  fontWeight: FontWeight.w800,
-                  fontSize: compact ? 11.5 : 12.5,
-                ),
-              ),
-              const SizedBox(height: 2),
+            ] else if (entry.onMute != null || entry.onRemove != null) ...[
+              const Spacer(),
+              const SizedBox(height: 6),
               Wrap(
                 spacing: 4,
                 runSpacing: 4,
                 children: [
-                  _RoleBadge(
-                    label: entry.roleLabel,
-                    highlighted: entry.highlighted,
-                    themeKey:
-                        Get.find<AppSettingsService>().activePremiumThemeVariant,
-                  ),
-                  _MicBadge(
-                    muted: entry.muted,
-                    themeKey:
-                        Get.find<AppSettingsService>().activePremiumThemeVariant,
-                  ),
+                  if (entry.onMute != null)
+                    _SmallAction(
+                      label: entry.muteActionLabel,
+                      onTap: entry.onMute!,
+                      tokens: surfaceTokens,
+                      compact: true,
+                    ),
+                  if (entry.onRemove != null)
+                    _SmallAction(
+                      label: 'Remove',
+                      onTap: entry.onRemove!,
+                      tokens: surfaceTokens,
+                      compact: true,
+                    ),
                 ],
               ),
-              if (entry.onMute != null || entry.onRemove != null) ...[
-                const Spacer(),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 4,
-                  runSpacing: 4,
-                  children: [
-                    if (entry.onMute != null)
-                      _SmallAction(
-                        label: entry.muteActionLabel,
-                        onTap: entry.onMute!,
-                        tokens: surfaceTokens,
-                        compact: true,
-                      ),
-                    if (entry.onRemove != null)
-                      _SmallAction(
-                        label: 'Remove',
-                        onTap: entry.onRemove!,
-                        tokens: surfaceTokens,
-                        compact: true,
-                      ),
-                  ],
-                ),
-              ],
             ],
-          ),
+          ],
         ),
-      );
+      ),
+    );
   }
 }
 
@@ -4918,47 +5060,58 @@ class _ListenerTileWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ThemedRoomFrame(
-        themeKey: entry.themeKey,
-        isHost: false,
-        isVip: entry.isVip,
-        isSpeaking: entry.speaking,
-        borderRadius: 18,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(.08),
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _SpeakingAvatar(
-                label: entry.label,
-                radius: 22,
-                highlighted: entry.isMe,
-                speaking: entry.speaking,
-                muted: false,
-                themeKey: entry.themeKey,
-                avatarUrl: entry.avatarUrl,
-                frameUrl: entry.frameUrl,
-                onTap: entry.onProfileTap,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                entry.isMe ? 'You' : entry.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
+      themeKey: entry.themeKey,
+      isHost: false,
+      isVip: entry.isVip,
+      isSpeaking: entry.speaking,
+      borderRadius: 18,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(.08),
+          borderRadius: BorderRadius.circular(18),
         ),
-      );
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _SpeakingAvatar(
+              label: entry.label,
+              radius: 22,
+              highlighted: entry.isMe,
+              speaking: entry.speaking,
+              muted: false,
+              themeKey: entry.themeKey,
+              avatarUrl: entry.avatarUrl,
+              frameUrl: entry.frameUrl,
+              onTap: entry.onProfileTap,
+            ),
+            const SizedBox(height: 8),
+            if (entry.personallyBlocked && entry.onUnblockTap != null) ...[
+              _SmallAction(
+                label: 'Unblock',
+                onTap: entry.onUnblockTap!,
+                tokens: getPremiumThemeTokens(
+                  Get.find<AppSettingsService>().activePremiumThemeVariant,
+                ),
+                compact: true,
+              ),
+              const SizedBox(height: 6),
+            ],
+            Text(
+              entry.isMe ? 'You' : entry.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -5145,7 +5298,9 @@ class _SpeakingAvatarState extends State<_SpeakingAvatar>
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: tokens.cardGradient.last.withOpacity(.96),
-                      border: Border.all(color: tokens.borderColor.withOpacity(.32)),
+                      border: Border.all(
+                        color: tokens.borderColor.withOpacity(.32),
+                      ),
                     ),
                     child: Icon(
                       Icons.mic_off_rounded,
@@ -5399,7 +5554,9 @@ class _SpeakerCard extends StatelessWidget {
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: frameTokens.successColor.withOpacity(.18),
+                                color: frameTokens.successColor.withOpacity(
+                                  .18,
+                                ),
                                 blurRadius: 10,
                               ),
                             ],
@@ -5630,7 +5787,7 @@ class _RequestCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: tokens.borderColor.withOpacity(.22)),
       ),
-        child: Row(
+      child: Row(
         children: [
           SizedBox(
             width: 40,
@@ -5700,10 +5857,7 @@ class _EmptyCard extends StatelessWidget {
 }
 
 class _StateBanner extends StatelessWidget {
-  const _StateBanner({
-    required this.status,
-    this.onDismiss,
-  });
+  const _StateBanner({required this.status, this.onDismiss});
   final String status;
   final VoidCallback? onDismiss;
 
@@ -5775,100 +5929,101 @@ class _GiftBanner extends StatelessWidget {
     );
     return AnimatedBuilder(
       animation: pulse,
-      builder:
-          (_, __) {
-            final lift = (1 - pulse.value) * 2.0;
-            return Transform.translate(
-              offset: Offset(0, -lift),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      tokens.cardGradient.first.withOpacity(.96),
-                      tokens.primaryButtonGradient.last.withOpacity(.34),
-                      tokens.cardGradient.last.withOpacity(.94),
+      builder: (_, __) {
+        final lift = (1 - pulse.value) * 2.0;
+        return Transform.translate(
+          offset: Offset(0, -lift),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  tokens.cardGradient.first.withOpacity(.96),
+                  tokens.primaryButtonGradient.last.withOpacity(.34),
+                  tokens.cardGradient.last.withOpacity(.94),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: tokens.primaryButtonGradient.first.withOpacity(.34),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: tokens.glowColor.withOpacity(
+                    .12 + (pulse.value * .16),
+                  ),
+                  blurRadius: 18 + (pulse.value * 10),
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [
+                        tokens.primaryButtonGradient.first.withOpacity(.92),
+                        tokens.primaryButtonGradient.last.withOpacity(.86),
+                      ],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: tokens.glowColor.withOpacity(.24),
+                        blurRadius: 14,
+                        offset: const Offset(0, 6),
+                      ),
                     ],
                   ),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: tokens.primaryButtonGradient.first.withOpacity(.34),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: tokens.glowColor.withOpacity(.12 + (pulse.value * .16)),
-                      blurRadius: 18 + (pulse.value * 10),
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
+                  alignment: Alignment.center,
+                  child: Text(emoji, style: const TextStyle(fontSize: 17)),
                 ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: LinearGradient(
-                          colors: [
-                            tokens.primaryButtonGradient.first.withOpacity(.92),
-                            tokens.primaryButtonGradient.last.withOpacity(.86),
-                          ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'LIVE GIFT',
+                        style: TextStyle(
+                          color: tokens.textSecondary,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 10.5,
+                          letterSpacing: 1.0,
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: tokens.glowColor.withOpacity(.24),
-                            blurRadius: 14,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
                       ),
-                      alignment: Alignment.center,
-                      child: Text(emoji, style: const TextStyle(fontSize: 17)),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'LIVE GIFT',
-                            style: TextStyle(
-                              color: tokens.textSecondary,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 10.5,
-                              letterSpacing: 1.0,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            message,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: tokens.textPrimary,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 13,
-                              height: 1.15,
-                            ),
-                          ),
-                        ],
+                      const SizedBox(height: 2),
+                      Text(
+                        message,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: tokens.textPrimary,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                          height: 1.15,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Icon(
-                      Icons.auto_awesome_rounded,
-                      color: tokens.primaryButtonGradient.first.withOpacity(.92),
-                      size: 18,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            );
-          },
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.auto_awesome_rounded,
+                  color: tokens.primaryButtonGradient.first.withOpacity(.92),
+                  size: 18,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -6247,10 +6402,7 @@ class _ChatInputActionPill extends StatelessWidget {
 }
 
 class _CountBadge extends StatelessWidget {
-  const _CountBadge({
-    required this.count,
-    required this.backgroundColor,
-  });
+  const _CountBadge({required this.count, required this.backgroundColor});
 
   final int count;
   final Color backgroundColor;
@@ -6759,8 +6911,12 @@ class _ParticipantProfileCardSheet extends StatelessWidget {
                       borderRadius: BorderRadius.circular(24),
                       gradient: LinearGradient(
                         colors: [
-                          frameTokens.primaryButtonGradient.first.withOpacity(.94),
-                          frameTokens.primaryButtonGradient.last.withOpacity(.94),
+                          frameTokens.primaryButtonGradient.first.withOpacity(
+                            .94,
+                          ),
+                          frameTokens.primaryButtonGradient.last.withOpacity(
+                            .94,
+                          ),
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -6933,6 +7089,7 @@ class _AudienceTile extends StatelessWidget {
     required this.speaking,
     this.avatarUrl,
     this.frameUrl,
+    this.onUnblockTap,
     this.onProfileTap,
   });
 
@@ -6941,6 +7098,7 @@ class _AudienceTile extends StatelessWidget {
   final bool speaking;
   final String? avatarUrl;
   final String? frameUrl;
+  final VoidCallback? onUnblockTap;
   final VoidCallback? onProfileTap;
 
   @override
@@ -6975,7 +7133,9 @@ class _AudienceTile extends StatelessWidget {
                 frameUrl: frameUrl,
                 label: label,
                 size: 36,
-                backgroundColor: tokens.primaryButtonGradient.first.withOpacity(.92),
+                backgroundColor: tokens.primaryButtonGradient.first.withOpacity(
+                  .92,
+                ),
               ),
             ),
           ),
@@ -7005,7 +7165,19 @@ class _AudienceTile extends StatelessWidget {
               ],
             ),
           ),
-          if (speaking)
+          if (onUnblockTap != null)
+            TextButton.icon(
+              onPressed: onUnblockTap,
+              icon: const Icon(Icons.lock_open_rounded, size: 15),
+              label: const Text('Unblock'),
+              style: TextButton.styleFrom(
+                foregroundColor: tokens.primaryButtonGradient.first,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            )
+          else if (speaking)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
               decoration: BoxDecoration(

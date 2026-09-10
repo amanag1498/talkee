@@ -45,6 +45,7 @@ class LivekitToken
         ?array $publishSources = null,
         bool $canPublishData = true,
         bool $canUpdateOwnMetadata = true,
+        bool $hidden = false,
     ): string {
         $apiKey    = (string) config('services.livekit.api_key', '');
         $apiSecret = (string) config('services.livekit.api_secret', '');
@@ -77,6 +78,9 @@ class LivekitToken
             'canPublishData'       => $canPublishData,
             'canUpdateOwnMetadata' => $canUpdateOwnMetadata,
         ];
+        if ($hidden) {
+            $videoGrant['hidden'] = true;
+        }
         if ($isPublisher && is_array($publishSources) && !empty($publishSources)) {
             $videoGrant['canPublishSources'] = array_values($publishSources);
         }

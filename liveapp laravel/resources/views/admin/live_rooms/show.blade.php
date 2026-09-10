@@ -23,6 +23,9 @@
         <h6 class="mb-0">Room Overview</h6>
         <div class="d-flex gap-2">
           <a class="btn btn-sm btn-primary" href="{{ route('admin.live-rooms.edit',$live_room) }}">Edit</a>
+          @if($live_room->status === 'live' && !$live_room->ended_at)
+            <a class="btn btn-sm btn-light border" href="{{ route('admin.live-rooms.watch',$live_room) }}" target="_blank" rel="noopener">Watch silently</a>
+          @endif
           @if($live_room->status !== 'ended')
             <form method="post" action="{{ route('admin.live-rooms.end',$live_room) }}">@csrf
               <button class="btn btn-sm btn-danger" onclick="return confirm('Force end this room?')">Force End</button>

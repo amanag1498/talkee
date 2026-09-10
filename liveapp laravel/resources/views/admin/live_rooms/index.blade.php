@@ -96,6 +96,9 @@
           <td>{{ $r->ended_at?->format('d M Y H:i') ?? '—' }}</td>
           <td class="text-end">
             <a class="btn btn-sm btn-light border" href="{{ route('admin.live-rooms.show',$r) }}">View</a>
+            @if($r->status === 'live' && !$r->ended_at)
+              <a class="btn btn-sm btn-light border" href="{{ route('admin.live-rooms.watch',$r) }}" target="_blank" rel="noopener">Watch</a>
+            @endif
             <a class="btn btn-sm btn-primary" href="{{ route('admin.live-rooms.edit',$r) }}">Edit</a>
             @if($r->status!=='ended')
               <form method="post" action="{{ route('admin.live-rooms.end',$r) }}" class="d-inline">@csrf

@@ -164,9 +164,13 @@ function roomTypeFeatureEnabled(roomType) {
   return featureEnabled('video_rooms_enabled');
 }
 
-function isAndroidClientSupported(platform, versionCode) {
-  if (String(platform || '').trim().toLowerCase() !== 'android') {
+function isClientSupported(platform, versionCode) {
+  const normalized = String(platform || '').trim().toLowerCase();
+  if (!['android', 'ios'].includes(normalized)) {
     return false;
+  }
+  if (normalized !== 'android') {
+    return true;
   }
   if (!appConfigCache.data.force_app_upgrade_enabled) {
     return true;
@@ -495,8 +499,8 @@ function makeAuthMiddleware(_namespaceName) {
         return next(new Error('maintenance_mode'));
       }
 
-      if (!isAndroidClientSupported(clientPlatform, clientVersionCode)) {
-        if (clientPlatform !== 'android') {
+      if (!isClientSupported(clientPlatform, clientVersionCode)) {
+        if (!['android', 'ios'].includes(clientPlatform)) {
           return next(new Error('unsupported_client_platform'));
         }
         return next(new Error('force_upgrade'));
@@ -523,6 +527,7 @@ function makeAuthMiddleware(_namespaceName) {
 
       socket.user = user;
       socket.authToken = token;
+      socket.clientPlatform = clientPlatform;
       return next();
     } catch {
       return next(new Error('unauthorized'));
