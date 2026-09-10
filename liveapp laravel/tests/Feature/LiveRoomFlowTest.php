@@ -246,12 +246,15 @@ class LiveRoomFlowTest extends TestCase
     {
         $admin = User::factory()->create();
         $admin->assignRole('admin');
-        [, $room] = $this->makeLiveRoom();
+        [$hostUser, $room] = $this->makeLiveRoom();
 
         $this->actingAs($admin)
             ->get(route('admin.live-rooms.watch', $room))
             ->assertOk()
             ->assertSee('Start silent watch')
+            ->assertSee('Host User ID')
+            ->assertSee((string) $hostUser->id)
+            ->assertSee('User ID: ${userId}', false)
             ->assertSee('observer-token');
     }
 

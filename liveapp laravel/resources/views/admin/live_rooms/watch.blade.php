@@ -138,6 +138,10 @@
           <strong class="text-end">{{ $live_room->host?->user?->name ?? '—' }}</strong>
         </div>
         <div class="d-flex justify-content-between gap-3">
+          <span class="text-muted">Host User ID</span>
+          <code class="text-end">{{ $live_room->host?->user_id ?? '—' }}</code>
+        </div>
+        <div class="d-flex justify-content-between gap-3">
           <span class="text-muted">Type</span>
           <strong>{{ ucfirst($roomType) }}</strong>
         </div>
@@ -185,6 +189,29 @@
     stage.classList.toggle('is-active', trackElements.size > 0);
   };
 
+  const participantUserId = (participant) => {
+    if (!participant) return null;
+
+    try {
+      const metadata = typeof participant.metadata === 'string'
+        ? JSON.parse(participant.metadata || '{}')
+        : (participant.metadata || {});
+      const metadataUserId = Number(metadata.user_id || metadata.userId || 0);
+      if (Number.isInteger(metadataUserId) && metadataUserId > 0) {
+        return metadataUserId;
+      }
+    } catch (_) {}
+
+    const identityMatch = String(participant.identity || '').match(/^user:(\d+)$/);
+    return identityMatch ? Number(identityMatch[1]) : null;
+  };
+
+  const participantLabel = (participant) => {
+    const name = participant?.name || participant?.identity || 'Participant';
+    const userId = participantUserId(participant);
+    return userId ? `${name} · User ID: ${userId}` : name;
+  };
+
   const addTrack = (track, participant) => {
     if (!track || trackElements.has(track.sid)) return;
 
@@ -213,7 +240,8 @@
 
     const label = document.createElement('div');
     label.className = 'observer-track-label';
-    label.textContent = participant?.name || participant?.identity || 'Participant';
+    label.textContent = participantLabel(participant);
+    label.title = participant?.identity || label.textContent;
     wrapper.appendChild(label);
 
     stage.appendChild(wrapper);
