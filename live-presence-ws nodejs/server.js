@@ -9,7 +9,7 @@ const Redis   = require('ioredis');
 const axios   = require('axios');
 // ----- LiveKit token sanity endpoint -----
 const jwt = require('jsonwebtoken');
-const { randomUUID } = require('crypto');
+const { randomUUID, timingSafeEqual } = require('crypto');
 
 
 // ------------ Config ------------
@@ -36,6 +36,7 @@ const WS_INTERNAL_KEY = process.env.WS_INTERNAL_KEY || '';
 
 const app = express();
 app.use(cors());
+app.use(express.json({ limit: '64kb' }));
 const server = http.createServer(app);
 const io     = new Server(server, { cors: { origin: '*', methods: ['GET','POST'] } });
 
@@ -189,6 +190,25 @@ function featureErrorPayload(code, message, extra = {}) {
 
 function internalApiHeaders() {
   return WS_INTERNAL_KEY ? { 'X-WS-Internal-Key': WS_INTERNAL_KEY } : {};
+}
+
+function safeEquals(a, b) {
+  const left = Buffer.from(String(a || ''));
+  const right = Buffer.from(String(b || ''));
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+function requireInternalRequest(req, res) {
+  if (!WS_INTERNAL_KEY) {
+    res.status(503).json({ ok: false, error: 'internal_key_not_configured' });
+    return false;
+  }
+  const provided = String(req.headers['x-ws-internal-key'] || '').trim();
+  if (!safeEquals(provided, WS_INTERNAL_KEY)) {
+    res.status(403).json({ ok: false, error: 'forbidden' });
+    return false;
+  }
+  return true;
 }
 
 function normalizeModerationRule(rule) {
@@ -1572,6 +1592,62 @@ sub.subscribe('games:seven_up_down:events', (err) => {
   else console.log('[games][SUB]', nowISO(), 'subscribed channel games:seven_up_down:events');
 });
 
+async function handleCallEventPayload(payload, source = 'redis') {
+  if (!featureEnabled('host_calling_enabled')) {
+    return { emitted: 0, skipped: 'host_calling_disabled' };
+  }
+
+  const callerId = Number(payload?.caller_id || 0);
+  const receiverId = Number(payload?.receiver_id || 0);
+  const eventName = payload?.event;
+  if (!eventName) return { emitted: 0, skipped: 'missing_event' };
+
+  if (eventName === 'incoming_call' && receiverId) {
+    console.log('[calls][EMIT]', nowISO(), JSON.stringify({
+      event: eventName,
+      call_id: payload.call_id,
+      receiver_id: receiverId,
+      source,
+      target_sockets: callsNs.adapter.rooms.get(`user:${receiverId}`)?.size || 0,
+    }));
+    callsNs.to(`user:${receiverId}`).emit('incoming_call', payload);
+    return {
+      emitted: callsNs.adapter.rooms.get(`user:${receiverId}`)?.size || 0,
+      target: 'receiver',
+    };
+  }
+
+  let emitted = 0;
+  if (callerId) {
+    const sockets = callsNs.adapter.rooms.get(`user:${callerId}`)?.size || 0;
+    console.log('[calls][EMIT]', nowISO(), JSON.stringify({
+      event: eventName,
+      call_id: payload.call_id,
+      user_id: callerId,
+      target: 'caller',
+      source,
+      target_sockets: sockets,
+    }));
+    callsNs.to(`user:${callerId}`).emit(eventName, payload);
+    emitted += sockets;
+  }
+  if (receiverId) {
+    const sockets = callsNs.adapter.rooms.get(`user:${receiverId}`)?.size || 0;
+    console.log('[calls][EMIT]', nowISO(), JSON.stringify({
+      event: eventName,
+      call_id: payload.call_id,
+      user_id: receiverId,
+      target: 'receiver',
+      source,
+      target_sockets: sockets,
+    }));
+    callsNs.to(`user:${receiverId}`).emit(eventName, payload);
+    emitted += sockets;
+  }
+
+  return { emitted };
+}
+
 sub.on('message', async (channel, message) => {
   await getAppConfig();
   if (channel === 'rooms:events') {
@@ -1635,43 +1711,8 @@ sub.on('message', async (channel, message) => {
     }
   } else if (channel === 'calls:events') {
     try {
-      if (!featureEnabled('host_calling_enabled')) {
-        return;
-      }
       const payload = JSON.parse(message || '{}');
-      const callerId = Number(payload.caller_id || 0);
-      const receiverId = Number(payload.receiver_id || 0);
-      const eventName = payload.event;
-      if (!eventName) return;
-
-      if (eventName === 'incoming_call' && receiverId) {
-        console.log('[calls][EMIT]', nowISO(), JSON.stringify({
-          event: eventName,
-          call_id: payload.call_id,
-          receiver_id: receiverId,
-        }));
-        callsNs.to(`user:${receiverId}`).emit('incoming_call', payload);
-        return;
-      }
-
-      if (callerId) {
-        console.log('[calls][EMIT]', nowISO(), JSON.stringify({
-          event: eventName,
-          call_id: payload.call_id,
-          user_id: callerId,
-          target: 'caller',
-        }));
-        callsNs.to(`user:${callerId}`).emit(eventName, payload);
-      }
-      if (receiverId) {
-        console.log('[calls][EMIT]', nowISO(), JSON.stringify({
-          event: eventName,
-          call_id: payload.call_id,
-          user_id: receiverId,
-          target: 'receiver',
-        }));
-        callsNs.to(`user:${receiverId}`).emit(eventName, payload);
-      }
+      await handleCallEventPayload(payload, 'redis');
     } catch (e) {
       console.error('[calls][ERR]', nowISO(), 'calls:events parse', e.message, message);
     }
@@ -2382,9 +2423,41 @@ app.get('/health', async (_req, res) => {
       ts: nowISO(),
       presence_online: online,
       rooms_live: liveRoomsCount,
+      sockets: {
+        presence: presenceNs.sockets.size,
+        rooms: roomsNs.sockets.size,
+        calls: callsNs.sockets.size,
+        games: gamesNs.sockets.size,
+      },
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/internal/realtime-event', async (req, res) => {
+  if (!requireInternalRequest(req, res)) return;
+
+  try {
+    await getAppConfig();
+    const channel = String(req.body?.channel || '').trim();
+    const payload = req.body?.payload && typeof req.body.payload === 'object'
+      ? req.body.payload
+      : {};
+
+    if (channel === 'calls:events') {
+      const result = await handleCallEventPayload(payload, 'http');
+      return res.json({ ok: true, channel, ...result });
+    }
+
+    return res.status(422).json({
+      ok: false,
+      error: 'unsupported_channel',
+      channel,
+    });
+  } catch (e) {
+    console.error('[internal][ERR]', nowISO(), 'realtime-event', e.message);
+    return res.status(500).json({ ok: false, error: 'internal_error' });
   }
 });
 

@@ -75,6 +75,7 @@ return [
 
     'websocket' => [
         'internal_key' => env('WS_INTERNAL_KEY', ''),
+        'event_url' => env('WS_EVENT_URL', ''),
     ],
 
 ];
