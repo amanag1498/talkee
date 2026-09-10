@@ -73,7 +73,14 @@ class CallSocketService {
       await onForceLogout(reason);
     });
 
-    _socket!.on('incoming_call', (data) => onIncomingCall(_map(data)));
+    _socket!.on('incoming_call', (data) {
+      final payload = _map(data);
+      debugPrint(
+        '[calls] incoming_call received call_id=${payload['call_id']} '
+        'receiver_id=${payload['receiver_id']}',
+      );
+      onIncomingCall(payload);
+    });
     _socket!.on(
       'user_availability_updated',
       (data) => onAvailabilityUpdated(_map(data)),

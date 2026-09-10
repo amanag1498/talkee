@@ -52,11 +52,18 @@ class EnforceAndroidClientVersion
     private function shouldBypass(Request $request): bool
     {
         return $this->isTrustedRealtimeServerRequest($request)
+            || $this->isPaymentProviderCallback($request)
             || $request->is('api/ping')
             || $request->is('api/health/*')
             || $request->is('api/metrics')
             || $request->is('api/app-config')
             || $request->is('api/app/settings');
+    }
+
+    private function isPaymentProviderCallback(Request $request): bool
+    {
+        return $request->is('api/payments/razorpay/webhook')
+            || $request->is('api/payments/apple/notifications');
     }
 
     private function isTrustedRealtimeServerRequest(Request $request): bool

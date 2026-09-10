@@ -265,7 +265,7 @@ class RechargeOrderApiTest extends TestCase
                     'entity' => [
                         'id' => 'pay_webhook_1',
                         'order_id' => 'order_test_123',
-                        'amount' => 10000,
+                        'amount' => (int) round(((float) $plan->amount_rupees) * 100),
                         'currency' => 'INR',
                         'status' => 'captured',
                     ],
@@ -432,7 +432,7 @@ class RechargeOrderApiTest extends TestCase
                     'entity' => [
                         'id' => 'pay_webhook_repeat_1',
                         'order_id' => 'order_test_123',
-                        'amount' => 10000,
+                        'amount' => (int) round(((float) $plan->amount_rupees) * 100),
                         'currency' => 'INR',
                         'status' => 'captured',
                     ],
@@ -603,6 +603,8 @@ class RechargeOrderApiTest extends TestCase
                 return $this->state['create_order'] ?? [
                     'id' => 'order_test_123',
                     'status' => 'created',
+                    'receipt' => $payload['receipt'] ?? null,
+                    'notes' => $payload['notes'] ?? [],
                 ];
             }
 

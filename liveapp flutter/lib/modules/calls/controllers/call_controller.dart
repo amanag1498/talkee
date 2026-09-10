@@ -45,7 +45,9 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
 
   Timer? _ticker;
   Timer? _ringingTimer;
+  Timer? _incomingOverlayRetryTimer;
   DateTime? _callClockAnchor;
+  Future<void>? _socketStartInFlight;
   bool _navigationBusy = false;
   bool _terminalHandling = false;
   bool _isExitingCall = false;
@@ -198,6 +200,24 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> _startSocketIfPossible({bool force = false}) async {
+    final inFlight = _socketStartInFlight;
+    if (inFlight != null) {
+      await inFlight;
+      return;
+    }
+
+    final start = _performSocketStart(force: force);
+    _socketStartInFlight = start;
+    try {
+      await start;
+    } finally {
+      if (identical(_socketStartInFlight, start)) {
+        _socketStartInFlight = null;
+      }
+    }
+  }
+
+  Future<void> _performSocketStart({required bool force}) async {
     if (Get.isRegistered<AppSettingsService>() &&
         Get.find<AppSettingsService>().shouldForceUpgrade) {
       await _socketService.stop();
@@ -217,7 +237,9 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
         }
       },
       onIncomingCall: (payload) {
-        if (_seenEvent('incoming:${payload['call_id']}')) return;
+        final callId = (payload['call_id'] as num?)?.toInt() ?? 0;
+        debugPrint('[calls] incoming_call call_id=$callId');
+        if (callId > 0 && _seenEvent('incoming:$callId')) return;
         _prepareForNewCall();
         incomingCall.value = payload;
         callState.value = 'incoming_ringing';
@@ -820,7 +842,23 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
   }
 
   void _showIncomingOverlay() {
-    if (_incomingOverlay != null || Get.overlayContext == null) return;
+    if (_incomingOverlay != null || incomingCall.value == null) return;
+
+    final overlayState =
+        Get.key.currentState?.overlay ??
+        (Get.overlayContext != null
+            ? Overlay.maybeOf(Get.overlayContext!, rootOverlay: true)
+            : null) ??
+        (Get.context != null
+            ? Overlay.maybeOf(Get.context!, rootOverlay: true)
+            : null);
+    if (overlayState == null) {
+      _scheduleIncomingOverlayRetry();
+      return;
+    }
+
+    _incomingOverlayRetryTimer?.cancel();
+    _incomingOverlayRetryTimer = null;
     _incomingOverlay = OverlayEntry(
       builder: (context) => Positioned(
         top: MediaQuery.of(context).padding.top + 4,
@@ -928,7 +966,17 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
         ),
       ),
     );
-    Overlay.of(Get.overlayContext!).insert(_incomingOverlay!);
+    overlayState.insert(_incomingOverlay!);
+  }
+
+  void _scheduleIncomingOverlayRetry() {
+    if (_incomingOverlayRetryTimer?.isActive ?? false) return;
+    _incomingOverlayRetryTimer = Timer(const Duration(milliseconds: 100), () {
+      _incomingOverlayRetryTimer = null;
+      if (incomingCall.value != null && _incomingOverlay == null) {
+        _showIncomingOverlay();
+      }
+    });
   }
 
   Widget _headsUpAction({
@@ -1050,6 +1098,8 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
   }
 
   void _removeIncomingOverlay() {
+    _incomingOverlayRetryTimer?.cancel();
+    _incomingOverlayRetryTimer = null;
     _incomingOverlay?.remove();
     _incomingOverlay = null;
   }
@@ -1171,6 +1221,9 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       restartSocket();
+      if (incomingCall.value != null) {
+        _showIncomingOverlay();
+      }
       if (hasActiveCall && callToken.value != null) {
         KeepAwakeController.reassert();
         ensureRoomConnected();

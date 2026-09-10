@@ -92,6 +92,27 @@ class AppFeatureFlagEnforcementTest extends TestCase
             ->assertOk();
     }
 
+    public function test_payment_provider_callbacks_bypass_client_version_checks(): void
+    {
+        config([
+            'app_features.force_app_upgrade_enabled' => true,
+            'app_features.android_min_version_code' => 99,
+        ]);
+
+        $this->postJson('/api/payments/razorpay/webhook', [])
+            ->assertStatus(422)
+            ->assertJsonMissing(['error' => 'APP_UPGRADE_REQUIRED']);
+
+        $this->postJson('/api/payments/apple/notifications', [])
+            ->assertStatus(422)
+            ->assertJsonMissing(['error' => 'APP_UPGRADE_REQUIRED']);
+
+        Sanctum::actingAs($this->member);
+        $this->getJson('/api/profile')
+            ->assertStatus(426)
+            ->assertJsonPath('error', 'APP_UPGRADE_REQUIRED');
+    }
+
     public function test_disabled_feature_apis_are_rejected(): void
     {
         Sanctum::actingAs($this->member);
