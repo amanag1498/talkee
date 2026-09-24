@@ -889,120 +889,25 @@ class SevenUpDownService
     {
         $treasuryBalance = (int) $this->financials->account()->treasury_balance_coins;
         $liabilities = $this->potLiabilities($totals, $multipliers);
-        $potsWithBets = collect($totals)->filter(fn (int $total) => $total > 0)->keys()->values()->all();
-        $eligiblePots = collect($potsWithBets)
-            ->filter(fn (string $pot) => $liabilities[$pot] <= $treasuryBalance)
+        $minimumLiability = min($liabilities);
+        $minimumLiabilityPots = collect(self::POTS)
+            ->filter(fn (string $pot) => $liabilities[$pot] === $minimumLiability)
             ->values()
             ->all();
-
-        $meta = [
-            'mode' => 'treasury_affordable',
-            'treasury_balance_before_settlement' => $treasuryBalance,
-            'pot_multipliers' => $multipliers,
-            'pot_totals' => $totals,
-            'pot_payouts' => $liabilities,
-            'eligible_pots' => $eligiblePots,
-        ];
-
-        if ($treasuryBalance <= 0) {
-            return [
-                'pot' => $this->minimumLiabilityPot($totals, $liabilities),
-                'meta' => [
-                    ...$meta,
-                    'reason' => 'treasury_recovery_minimum_bet',
-                ],
-            ];
-        }
-
-        if (count($potsWithBets) === 1) {
-            $onlyPot = $potsWithBets[0];
-            if (! in_array($onlyPot, $eligiblePots, true)) {
-                return [
-                    'pot' => $this->emptyPotFallback($totals),
-                    'meta' => [
-                        ...$meta,
-                        'single_pot_roll' => null,
-                        'reason' => 'single_pot_not_affordable',
-                    ],
-                ];
-            }
-
-            $roll = random_int(1, 100);
-            if ($roll <= 75) {
-                return [
-                    'pot' => $onlyPot,
-                    'meta' => [
-                        ...$meta,
-                        'single_pot_roll' => $roll,
-                        'single_pot_win_probability_percent' => 75,
-                    ],
-                ];
-            }
-
-            return [
-                'pot' => $this->emptyPotFallback($totals),
-                'meta' => [
-                    ...$meta,
-                    'single_pot_roll' => $roll,
-                    'single_pot_win_probability_percent' => 75,
-                    'reason' => 'single_pot_probability_miss',
-                ],
-            ];
-        }
-
-        if ($eligiblePots === []) {
-            if ($this->allPotsHaveBets($totals)) {
-                return [
-                    'pot' => $this->minimumLiabilityPot($totals, $liabilities),
-                    'meta' => [
-                        ...$meta,
-                        'reason' => 'treasury_overdraft_minimum_bet',
-                    ],
-                ];
-            }
-
-            return [
-                'pot' => $this->emptyPotFallback($totals),
-                'meta' => [
-                    ...$meta,
-                    'reason' => 'no_eligible_pot',
-                ],
-            ];
-        }
 
         return [
-            'pot' => $eligiblePots[random_int(0, count($eligiblePots) - 1)],
-            'meta' => $meta,
+            'pot' => $minimumLiabilityPots[random_int(0, count($minimumLiabilityPots) - 1)],
+            'meta' => [
+                'mode' => 'treasury_affordable',
+                'reason' => 'minimum_liability_all_pots',
+                'treasury_balance_before_settlement' => $treasuryBalance,
+                'pot_multipliers' => $multipliers,
+                'pot_totals' => $totals,
+                'pot_payouts' => $liabilities,
+                'minimum_liability' => $minimumLiability,
+                'eligible_pots' => $minimumLiabilityPots,
+            ],
         ];
-    }
-
-    private function minimumLiabilityPot(array $totals, array $liabilities): string
-    {
-        return (string) collect($totals)
-            ->filter(fn (int $total) => $total > 0)
-            ->keys()
-            ->sortBy(fn (string $pot) => $liabilities[$pot])
-            ->first();
-    }
-
-    private function allPotsHaveBets(array $totals): bool
-    {
-        return collect($totals)->every(fn (int $total) => $total > 0);
-    }
-
-    private function emptyPotFallback(array $totals): ?string
-    {
-        $emptyPots = collect($totals)
-            ->filter(fn (int $total) => $total === 0)
-            ->keys()
-            ->values()
-            ->all();
-
-        if ($emptyPots === []) {
-            return null;
-        }
-
-        return $emptyPots[random_int(0, count($emptyPots) - 1)];
     }
 
     private function roundPayload(SevenUpDownRound $round, ?User $viewer = null): array

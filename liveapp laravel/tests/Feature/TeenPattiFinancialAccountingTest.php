@@ -148,8 +148,9 @@ class TeenPattiFinancialAccountingTest extends TestCase
         $settled = $service->settleRound($round->fresh());
 
         $this->assertSame('settled', $settled->status);
-        $this->assertContains($settled->winning_pot, ['B', 'C']);
-        $this->assertSame(['B', 'C'], $settled->meta['winning_decision']['eligible_pots']);
+        $this->assertSame('C', $settled->winning_pot);
+        $this->assertSame(['C'], $settled->meta['winning_decision']['eligible_pots']);
+        $this->assertSame(150, $settled->meta['winning_decision']['minimum_liability']);
         $this->assertSame(582, $settled->meta['winning_decision']['treasury_balance_before_settlement']);
         $this->assertSame(['A' => 600, 'B' => 300, 'C' => 150], $settled->meta['winning_decision']['pot_payouts']);
     }
@@ -184,7 +185,9 @@ class TeenPattiFinancialAccountingTest extends TestCase
             'B' => 300,
             'C' => 303,
         ], $settled->meta['winning_decision']['pot_payouts']);
-        $this->assertSame('treasury_overdraft_minimum_bet', $settled->meta['winning_decision']['reason']);
+        $this->assertSame(300, $settled->meta['winning_decision']['minimum_liability']);
+        $this->assertSame(['B'], $settled->meta['winning_decision']['eligible_pots']);
+        $this->assertSame('minimum_liability_all_pots', $settled->meta['winning_decision']['reason']);
         $this->assertSame(-15, (int) $account->treasury_balance_coins);
         $this->assertSame(17, (int) $account->company_commission_balance_coins);
         $this->assertSame(1, TeenPattiFinancialLedgerEntry::query()->where('event_type', 'payout_debit')->count());
@@ -222,7 +225,9 @@ class TeenPattiFinancialAccountingTest extends TestCase
 
         $this->assertSame('settled', $settled->status);
         $this->assertSame('A', $settled->winning_pot);
-        $this->assertSame('treasury_recovery_minimum_bet', $settled->meta['winning_decision']['reason']);
+        $this->assertSame(300, $settled->meta['winning_decision']['minimum_liability']);
+        $this->assertSame(['A'], $settled->meta['winning_decision']['eligible_pots']);
+        $this->assertSame('minimum_liability_all_pots', $settled->meta['winning_decision']['reason']);
         $this->assertSame(-310, (int) $account->treasury_balance_coins);
     }
 

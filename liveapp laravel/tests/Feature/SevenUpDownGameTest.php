@@ -159,7 +159,7 @@ class SevenUpDownGameTest extends TestCase
         ], $settled->meta['winning_decision']['pot_payouts']);
     }
 
-    public function test_treasury_affordable_single_occupied_pot_uses_teen_patti_seventy_five_percent_flow(): void
+    public function test_treasury_affordable_single_occupied_pot_chooses_a_zero_liability_pot(): void
     {
         config()->set('games.seven_up_down.winning_strategy_mode', 'treasury_affordable');
         SevenUpDownFinancialAccount::query()
@@ -175,21 +175,13 @@ class SevenUpDownGameTest extends TestCase
         $settled = $service->settleRound($round->fresh());
         $decision = $settled->meta['winning_decision'];
 
-        $this->assertSame(['DOWN'], $decision['eligible_pots']);
-        $this->assertSame(75, $decision['single_pot_win_probability_percent']);
-        $this->assertGreaterThanOrEqual(1, (int) $decision['single_pot_roll']);
-        $this->assertLessThanOrEqual(100, (int) $decision['single_pot_roll']);
-
-        if ((int) $decision['single_pot_roll'] <= 75) {
-            $this->assertSame('DOWN', $settled->winning_pot);
-            $this->assertArrayNotHasKey('reason', $decision);
-        } else {
-            $this->assertContains($settled->winning_pot, ['SEVEN', 'UP']);
-            $this->assertSame('single_pot_probability_miss', $decision['reason']);
-        }
+        $this->assertSame(['SEVEN', 'UP'], $decision['eligible_pots']);
+        $this->assertSame(0, $decision['minimum_liability']);
+        $this->assertContains($settled->winning_pot, ['SEVEN', 'UP']);
+        $this->assertSame('minimum_liability_all_pots', $decision['reason']);
     }
 
-    public function test_treasury_affordable_randomly_selects_only_between_affordable_occupied_pots(): void
+    public function test_treasury_affordable_includes_empty_pots_in_liability_comparison(): void
     {
         config()->set('games.seven_up_down.winning_strategy_mode', 'treasury_affordable');
         SevenUpDownFinancialAccount::query()
@@ -207,10 +199,9 @@ class SevenUpDownGameTest extends TestCase
         $settled = $service->settleRound($round->fresh());
         $decision = $settled->meta['winning_decision'];
 
-        $this->assertSame(['DOWN', 'SEVEN'], $decision['eligible_pots']);
-        $this->assertContains($settled->winning_pot, ['DOWN', 'SEVEN']);
-        $this->assertNotSame('UP', $settled->winning_pot);
-        $this->assertArrayNotHasKey('single_pot_win_probability_percent', $decision);
+        $this->assertSame(['UP'], $decision['eligible_pots']);
+        $this->assertSame(0, $decision['minimum_liability']);
+        $this->assertSame('UP', $settled->winning_pot);
     }
 
     public function test_treasury_affordable_uses_empty_pot_when_no_occupied_pot_is_affordable(): void
@@ -231,8 +222,9 @@ class SevenUpDownGameTest extends TestCase
         $settled = $service->settleRound($round->fresh());
 
         $this->assertSame('UP', $settled->winning_pot);
-        $this->assertSame([], $settled->meta['winning_decision']['eligible_pots']);
-        $this->assertSame('no_eligible_pot', $settled->meta['winning_decision']['reason']);
+        $this->assertSame(['UP'], $settled->meta['winning_decision']['eligible_pots']);
+        $this->assertSame(0, $settled->meta['winning_decision']['minimum_liability']);
+        $this->assertSame('minimum_liability_all_pots', $settled->meta['winning_decision']['reason']);
     }
 
     public function test_treasury_affordable_uses_minimum_liability_when_all_pots_are_unaffordable(): void
@@ -254,16 +246,18 @@ class SevenUpDownGameTest extends TestCase
         $round->forceFill(['locks_at' => now()->subSeconds(2), 'ends_at' => now()->subSecond()])->save();
         $settled = $service->settleRound($round->fresh());
 
-        $this->assertSame('DOWN', $settled->winning_pot);
+        $this->assertContains($settled->winning_pot, ['DOWN', 'UP']);
         $this->assertSame([
             'DOWN' => 303,
             'SEVEN' => 400,
             'UP' => 303,
         ], $settled->meta['winning_decision']['pot_payouts']);
-        $this->assertSame('treasury_overdraft_minimum_bet', $settled->meta['winning_decision']['reason']);
+        $this->assertSame(303, $settled->meta['winning_decision']['minimum_liability']);
+        $this->assertSame(['DOWN', 'UP'], $settled->meta['winning_decision']['eligible_pots']);
+        $this->assertSame('minimum_liability_all_pots', $settled->meta['winning_decision']['reason']);
     }
 
-    public function test_treasury_affordable_uses_minimum_liability_while_treasury_is_in_recovery(): void
+    public function test_treasury_affordable_accepts_zero_liability_while_treasury_is_in_recovery(): void
     {
         config()->set('games.seven_up_down.winning_strategy_mode', 'treasury_affordable');
 
@@ -280,8 +274,10 @@ class SevenUpDownGameTest extends TestCase
         $round->forceFill(['locks_at' => now()->subSeconds(2), 'ends_at' => now()->subSecond()])->save();
         $settled = $service->settleRound($round->fresh());
 
-        $this->assertSame('DOWN', $settled->winning_pot);
-        $this->assertSame('treasury_recovery_minimum_bet', $settled->meta['winning_decision']['reason']);
+        $this->assertSame('UP', $settled->winning_pot);
+        $this->assertSame(0, $settled->meta['winning_decision']['minimum_liability']);
+        $this->assertSame(['UP'], $settled->meta['winning_decision']['eligible_pots']);
+        $this->assertSame('minimum_liability_all_pots', $settled->meta['winning_decision']['reason']);
     }
 
     public function test_admin_can_open_game_dashboard_and_settings_surface(): void
