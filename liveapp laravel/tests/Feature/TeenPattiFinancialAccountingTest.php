@@ -58,7 +58,7 @@ class TeenPattiFinancialAccountingTest extends TestCase
     {
         $user = User::factory()->create();
         Wallet::query()->where('user_id', $user->id)->update(['balance' => 1000]);
-        $this->openRound();
+        $round = $this->openRound();
 
         $service = app(TeenPattiService::class);
         $snapshot = $service->placeBet($user, 'B', 50, 'tp-financial-refund');
@@ -68,13 +68,20 @@ class TeenPattiFinancialAccountingTest extends TestCase
         $this->assertSame(47, (int) $account->treasury_balance_coins);
         $this->assertSame(3, (int) $account->company_commission_balance_coins);
 
-        $service->refundBet(\App\Models\TeenPattiBet::query()->findOrFail((int) $bet['id']), 'test reversal');
+        $refundedBet = $service->refundBet(\App\Models\TeenPattiBet::query()->findOrFail((int) $bet['id']), 'test reversal');
+        $round->forceFill([
+            'locks_at' => now()->subSeconds(2),
+            'ends_at' => now()->subSecond(),
+        ])->save();
+        $service->settleRound($round->fresh());
 
         $account->refresh();
         $this->assertSame(0, (int) $account->treasury_balance_coins);
         $this->assertSame(0, (int) $account->company_commission_balance_coins);
         $this->assertSame(1000, (int) Wallet::query()->where('user_id', $user->id)->value('balance'));
+        $this->assertSame('refunded', $refundedBet->fresh()->status);
         $this->assertSame(1, TeenPattiFinancialLedgerEntry::query()->where('event_type', 'bet_refund_reversal')->count());
+        $this->assertSame(0, TeenPattiFinancialLedgerEntry::query()->where('event_type', 'payout_debit')->count());
     }
 
     public function test_retrying_the_same_bet_does_not_duplicate_the_financial_allocation(): void
@@ -92,6 +99,26 @@ class TeenPattiFinancialAccountingTest extends TestCase
         $this->assertSame(10, (int) $account->company_commission_balance_coins);
         $this->assertSame(1, TeenPattiFinancialLedgerEntry::query()->where('event_type', 'bet_allocation')->count());
         $this->assertSame(800, (int) Wallet::query()->where('user_id', $user->id)->value('balance'));
+    }
+
+    public function test_round_liability_and_payout_use_the_snapshotted_multiplier(): void
+    {
+        $user = User::factory()->create();
+        Wallet::query()->where('user_id', $user->id)->update(['balance' => 1000]);
+        $round = $this->openRound();
+        $service = app(TeenPattiService::class);
+        $service->placeBet($user, 'A', 100, 'tp-snapshotted-liability');
+
+        config()->set('games.teen_patti.payout_multiplier', 9);
+        $round->forceFill([
+            'locks_at' => now()->subSeconds(2),
+            'ends_at' => now()->subSecond(),
+        ])->save();
+        $settled = $service->settleRound($round->fresh());
+
+        $this->assertSame(3, $settled->meta['winning_decision']['payout_multiplier']);
+        $this->assertSame(['A' => 300, 'B' => 0, 'C' => 0], $settled->meta['winning_decision']['pot_payouts']);
+        $this->assertSame(1200, (int) Wallet::query()->where('user_id', $user->id)->value('balance'));
     }
 
     public function test_treasury_affordable_strategy_excludes_pots_that_would_overdraw_treasury(): void
@@ -127,7 +154,7 @@ class TeenPattiFinancialAccountingTest extends TestCase
         $this->assertSame(['A' => 600, 'B' => 300, 'C' => 150], $settled->meta['winning_decision']['pot_payouts']);
     }
 
-    public function test_treasury_affordable_strategy_overdrafts_once_to_minimum_bet_pot_when_all_pots_are_unaffordable(): void
+    public function test_treasury_affordable_strategy_uses_minimum_liability_when_all_pots_are_unaffordable(): void
     {
         config()->set('games.teen_patti.winning_strategy_mode', 'treasury_affordable');
 
@@ -138,9 +165,9 @@ class TeenPattiFinancialAccountingTest extends TestCase
 
         $round = $this->openRound();
         $service = app(TeenPattiService::class);
-        $service->placeBet($users[0], 'A', 100, 'tp-no-affordable-a');
+        $service->placeBet($users[0], 'A', 101, 'tp-no-affordable-a');
         $service->placeBet($users[1], 'B', 100, 'tp-no-affordable-b');
-        $service->placeBet($users[2], 'C', 100, 'tp-no-affordable-c');
+        $service->placeBet($users[2], 'C', 101, 'tp-no-affordable-c');
 
         $round->forceFill([
             'locks_at' => now()->subSeconds(2),
@@ -151,17 +178,22 @@ class TeenPattiFinancialAccountingTest extends TestCase
         $account = TeenPattiFinancialAccount::query()->where('game_key', 'teen_patti')->firstOrFail();
 
         $this->assertSame('settled', $settled->status);
-        $this->assertSame('A', $settled->winning_pot);
+        $this->assertSame('B', $settled->winning_pot);
+        $this->assertSame([
+            'A' => 303,
+            'B' => 300,
+            'C' => 303,
+        ], $settled->meta['winning_decision']['pot_payouts']);
         $this->assertSame('treasury_overdraft_minimum_bet', $settled->meta['winning_decision']['reason']);
         $this->assertSame(-15, (int) $account->treasury_balance_coins);
-        $this->assertSame(15, (int) $account->company_commission_balance_coins);
+        $this->assertSame(17, (int) $account->company_commission_balance_coins);
         $this->assertSame(1, TeenPattiFinancialLedgerEntry::query()->where('event_type', 'payout_debit')->count());
-        $this->assertSame(1200, (int) Wallet::query()->where('user_id', $users[0]->id)->value('balance'));
-        $this->assertSame(900, (int) Wallet::query()->where('user_id', $users[1]->id)->value('balance'));
-        $this->assertSame(900, (int) Wallet::query()->where('user_id', $users[2]->id)->value('balance'));
+        $this->assertSame(899, (int) Wallet::query()->where('user_id', $users[0]->id)->value('balance'));
+        $this->assertSame(1200, (int) Wallet::query()->where('user_id', $users[1]->id)->value('balance'));
+        $this->assertSame(899, (int) Wallet::query()->where('user_id', $users[2]->id)->value('balance'));
     }
 
-    public function test_treasury_affordable_strategy_uses_minimum_bet_while_treasury_is_in_recovery(): void
+    public function test_treasury_affordable_strategy_uses_minimum_liability_while_treasury_is_in_recovery(): void
     {
         config()->set('games.teen_patti.winning_strategy_mode', 'treasury_affordable');
 
@@ -202,7 +234,9 @@ class TeenPattiFinancialAccountingTest extends TestCase
             'starts_at' => now()->subSecond(),
             'locks_at' => now()->addMinute(),
             'ends_at' => now()->addSeconds(65),
-            'meta' => [],
+            'meta' => [
+                'payout_multiplier' => 3,
+            ],
         ]);
     }
 }

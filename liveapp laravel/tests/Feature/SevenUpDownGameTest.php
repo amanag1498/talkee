@@ -96,17 +96,67 @@ class SevenUpDownGameTest extends TestCase
     public function test_refund_restores_wallet_and_reverses_financial_allocation(): void
     {
         $user = $this->fundedUser();
-        $this->openRound();
+        $round = $this->openRound();
         $service = app(SevenUpDownService::class);
         $result = $service->placeBet($user, 'UP', 50, 'sud-refund');
 
-        $service->refundBet(SevenUpDownBet::query()->findOrFail($result['bet']['id']), 'test');
+        $refundedBet = $service->refundBet(SevenUpDownBet::query()->findOrFail($result['bet']['id']), 'test');
+        $round->forceFill(['locks_at' => now()->subSeconds(2), 'ends_at' => now()->subSecond()])->save();
+        $service->settleRound($round->fresh());
 
         $account = SevenUpDownFinancialAccount::query()->where('game_key', 'seven_up_down')->firstOrFail();
         $this->assertSame(1000, (int) Wallet::query()->where('user_id', $user->id)->value('balance'));
         $this->assertSame(0, (int) $account->treasury_balance_coins);
         $this->assertSame(0, (int) $account->company_commission_balance_coins);
+        $this->assertSame('refunded', $refundedBet->fresh()->status);
         $this->assertSame(1, SevenUpDownFinancialLedgerEntry::query()->where('event_type', 'bet_refund_reversal')->count());
+        $this->assertSame(0, SevenUpDownFinancialLedgerEntry::query()->where('event_type', 'payout_debit')->count());
+    }
+
+    public function test_highest_bet_strategy_ranks_payout_liability_instead_of_raw_bet_total(): void
+    {
+        config()->set('games.seven_up_down.winning_strategy_mode', 'highest_bet');
+
+        $downUser = $this->fundedUser();
+        $sevenUser = $this->fundedUser();
+        $round = $this->openRound();
+        $service = app(SevenUpDownService::class);
+        $service->placeBet($downUser, 'DOWN', 100, 'sud-highest-liability-down');
+        $service->placeBet($sevenUser, 'SEVEN', 80, 'sud-highest-liability-seven');
+
+        $round->forceFill(['locks_at' => now()->subSeconds(2), 'ends_at' => now()->subSecond()])->save();
+        $settled = $service->settleRound($round->fresh());
+
+        $this->assertSame('SEVEN', $settled->winning_pot);
+        $this->assertSame([
+            'DOWN' => 300,
+            'SEVEN' => 320,
+            'UP' => 0,
+        ], $settled->meta['winning_decision']['pot_payouts']);
+    }
+
+    public function test_minimum_bet_strategy_ranks_payout_liability_instead_of_raw_bet_total(): void
+    {
+        config()->set('games.seven_up_down.winning_strategy_mode', 'minimum_bet');
+
+        $downUser = $this->fundedUser();
+        $sevenUser = $this->fundedUser();
+        $upUser = $this->fundedUser();
+        $round = $this->openRound();
+        $service = app(SevenUpDownService::class);
+        $service->placeBet($downUser, 'DOWN', 101, 'sud-minimum-liability-down');
+        $service->placeBet($sevenUser, 'SEVEN', 100, 'sud-minimum-liability-seven');
+        $service->placeBet($upUser, 'UP', 102, 'sud-minimum-liability-up');
+
+        $round->forceFill(['locks_at' => now()->subSeconds(2), 'ends_at' => now()->subSecond()])->save();
+        $settled = $service->settleRound($round->fresh());
+
+        $this->assertSame('DOWN', $settled->winning_pot);
+        $this->assertSame([
+            'DOWN' => 303,
+            'SEVEN' => 400,
+            'UP' => 306,
+        ], $settled->meta['winning_decision']['pot_payouts']);
     }
 
     public function test_treasury_affordable_single_occupied_pot_uses_teen_patti_seventy_five_percent_flow(): void
@@ -185,7 +235,7 @@ class SevenUpDownGameTest extends TestCase
         $this->assertSame('no_eligible_pot', $settled->meta['winning_decision']['reason']);
     }
 
-    public function test_treasury_affordable_uses_minimum_real_bet_when_all_pots_are_unaffordable(): void
+    public function test_treasury_affordable_uses_minimum_liability_when_all_pots_are_unaffordable(): void
     {
         config()->set('games.seven_up_down.winning_strategy_mode', 'treasury_affordable');
 
@@ -194,9 +244,9 @@ class SevenUpDownGameTest extends TestCase
         $upUser = $this->fundedUser();
         $round = $this->openRound();
         $service = app(SevenUpDownService::class);
-        $service->placeBet($downUser, 'DOWN', 50, 'sud-overdraft-down');
+        $service->placeBet($downUser, 'DOWN', 101, 'sud-overdraft-down');
         $service->placeBet($sevenUser, 'SEVEN', 100, 'sud-overdraft-seven');
-        $service->placeBet($upUser, 'UP', 150, 'sud-overdraft-up');
+        $service->placeBet($upUser, 'UP', 101, 'sud-overdraft-up');
         SevenUpDownFinancialAccount::query()
             ->where('game_key', 'seven_up_down')
             ->update(['treasury_balance_coins' => 1]);
@@ -205,10 +255,15 @@ class SevenUpDownGameTest extends TestCase
         $settled = $service->settleRound($round->fresh());
 
         $this->assertSame('DOWN', $settled->winning_pot);
+        $this->assertSame([
+            'DOWN' => 303,
+            'SEVEN' => 400,
+            'UP' => 303,
+        ], $settled->meta['winning_decision']['pot_payouts']);
         $this->assertSame('treasury_overdraft_minimum_bet', $settled->meta['winning_decision']['reason']);
     }
 
-    public function test_treasury_affordable_uses_minimum_real_bet_while_treasury_is_in_recovery(): void
+    public function test_treasury_affordable_uses_minimum_liability_while_treasury_is_in_recovery(): void
     {
         config()->set('games.seven_up_down.winning_strategy_mode', 'treasury_affordable');
 

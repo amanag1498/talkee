@@ -472,7 +472,7 @@ class SevenUpDownService
                         'dice_total' => $diceOne + $diceTwo,
                     ])->save();
                 }
-                foreach ($lockedRound->bets as $bet) {
+                foreach ($lockedRound->bets->whereNull('refunded_at') as $bet) {
                     $isWinner = $bet->pot === $lockedRound->winning_pot;
                     $expectedPayout = $isWinner ? ((int) $bet->amount * (int) $bet->multiplier) : 0;
                     $bet->forceFill([
@@ -709,7 +709,7 @@ class SevenUpDownService
                 return $lockedRound;
             }
 
-            $bets = $lockedRound->bets;
+            $bets = $lockedRound->bets->whereNull('refunded_at')->values();
             $winnerResult = $this->determineWinningPot($lockedRound, $bets);
             $winner = $winnerResult['pot'];
             $strategyMeta = $winnerResult['meta'];
@@ -807,6 +807,8 @@ class SevenUpDownService
             'SEVEN' => (int) $round->total_bet_seven,
             'UP' => (int) $round->total_bet_up,
         ];
+        $multipliers = (array) data_get($round->meta, 'pot_multipliers', $this->potMultipliers());
+        $liabilities = $this->potLiabilities($totals, $multipliers);
         $mode = $this->winningStrategyMode();
         if ($bets->isEmpty()) {
             return [
@@ -819,8 +821,8 @@ class SevenUpDownService
         }
 
         $pot = match ($mode) {
-            'minimum_bet' => collect($totals)->sort()->keys()->first(),
-            'highest_bet' => collect($totals)->sortDesc()->keys()->first(),
+            'minimum_bet' => collect($liabilities)->sort()->keys()->first(),
+            'highest_bet' => collect($liabilities)->sortDesc()->keys()->first(),
             'treasury_affordable' => null,
             'probability' => $this->weightedPot(),
             default => self::POTS[random_int(0, count(self::POTS) - 1)],
@@ -829,7 +831,7 @@ class SevenUpDownService
         if ($mode === 'treasury_affordable') {
             return $this->treasuryAffordableWinningPot(
                 $totals,
-                (array) data_get($round->meta, 'pot_multipliers', $this->potMultipliers()),
+                $multipliers,
             );
         }
 
@@ -837,6 +839,8 @@ class SevenUpDownService
             'pot' => $pot,
             'meta' => [
                 'mode' => $mode,
+                'pot_totals' => $totals,
+                'pot_payouts' => $liabilities,
             ],
         ];
     }
@@ -887,7 +891,7 @@ class SevenUpDownService
         $liabilities = $this->potLiabilities($totals, $multipliers);
         $potsWithBets = collect($totals)->filter(fn (int $total) => $total > 0)->keys()->values()->all();
         $eligiblePots = collect($potsWithBets)
-            ->filter(fn (string $pot) => $liabilities[$pot] < $treasuryBalance)
+            ->filter(fn (string $pot) => $liabilities[$pot] <= $treasuryBalance)
             ->values()
             ->all();
 
@@ -902,7 +906,7 @@ class SevenUpDownService
 
         if ($treasuryBalance <= 0) {
             return [
-                'pot' => $this->minimumRealBetPot($totals),
+                'pot' => $this->minimumLiabilityPot($totals, $liabilities),
                 'meta' => [
                     ...$meta,
                     'reason' => 'treasury_recovery_minimum_bet',
@@ -949,7 +953,7 @@ class SevenUpDownService
         if ($eligiblePots === []) {
             if ($this->allPotsHaveBets($totals)) {
                 return [
-                    'pot' => $this->minimumRealBetPot($totals),
+                    'pot' => $this->minimumLiabilityPot($totals, $liabilities),
                     'meta' => [
                         ...$meta,
                         'reason' => 'treasury_overdraft_minimum_bet',
@@ -972,12 +976,12 @@ class SevenUpDownService
         ];
     }
 
-    private function minimumRealBetPot(array $totals): string
+    private function minimumLiabilityPot(array $totals, array $liabilities): string
     {
         return (string) collect($totals)
             ->filter(fn (int $total) => $total > 0)
-            ->sort()
             ->keys()
+            ->sortBy(fn (string $pot) => $liabilities[$pot])
             ->first();
     }
 

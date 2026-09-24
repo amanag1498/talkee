@@ -92,6 +92,11 @@ class TeenPattiService
         return max(2, (int) config('games.teen_patti.payout_multiplier', 3));
     }
 
+    private function roundPayoutMultiplier(TeenPattiRound $round): int
+    {
+        return max(2, (int) data_get($round->meta, 'payout_multiplier', $this->payoutMultiplier()));
+    }
+
     public function winningStrategyMode(): string
     {
         $mode = strtolower(trim((string) config('games.teen_patti.winning_strategy_mode', 'treasury_affordable')));
@@ -490,10 +495,11 @@ class TeenPattiService
             }
 
             if ($lockedRound->status === 'settled' && in_array($lockedRound->winning_pot, ['A', 'B', 'C'], true)) {
-                foreach ($lockedRound->bets as $bet) {
+                $payoutMultiplier = $this->roundPayoutMultiplier($lockedRound);
+                foreach ($lockedRound->bets->whereNull('refunded_at') as $bet) {
                     $isWinner = $bet->pot === $lockedRound->winning_pot;
                     $expectedStatus = $isWinner ? 'won' : 'lost';
-                    $expectedPayoutCoins = $isWinner ? ((int) $bet->amount * $this->payoutMultiplier()) : 0;
+                    $expectedPayoutCoins = $isWinner ? ((int) $bet->amount * $payoutMultiplier) : 0;
 
                     if ($bet->status !== $expectedStatus || (int) $bet->payout_coins !== $expectedPayoutCoins) {
                         $bet->forceFill([
@@ -740,15 +746,16 @@ class TeenPattiService
                 return $lockedRound;
             }
 
-            $bets = $lockedRound->bets;
+            $bets = $lockedRound->bets->whereNull('refunded_at')->values();
             $winnerResult = $this->determineWinningPot($lockedRound, $bets);
             $winner = $winnerResult['pot'];
             $strategyMeta = $winnerResult['meta'];
+            $payoutMultiplier = $this->roundPayoutMultiplier($lockedRound);
             $cards = $this->buildCardReveal();
 
             foreach ($bets as $bet) {
                 $isWinner = $bet->pot === $winner;
-                $payoutCoins = $isWinner ? ((int) $bet->amount * $this->payoutMultiplier()) : 0;
+                $payoutCoins = $isWinner ? ((int) $bet->amount * $payoutMultiplier) : 0;
 
                 $bet->forceFill([
                     'status' => $isWinner ? 'won' : 'lost',
@@ -803,6 +810,7 @@ class TeenPattiService
                 'betting_lock_seconds' => $this->bettingLockSeconds(),
                 'result_display_seconds' => $this->resultDisplaySeconds(),
                 'display_until' => $displayUntil->toIso8601String(),
+                'payout_multiplier' => $this->payoutMultiplier(),
             ],
         ]);
 
@@ -824,6 +832,10 @@ class TeenPattiService
             'B' => (int) $round->total_bet_b,
             'C' => (int) $round->total_bet_c,
         ];
+        $multiplier = $this->roundPayoutMultiplier($round);
+        $payouts = collect($totals)
+            ->map(fn (int $total) => $total * $multiplier)
+            ->all();
 
         $mode = $this->winningStrategyMode();
         if ($bets->isEmpty()) {
@@ -837,39 +849,38 @@ class TeenPattiService
         }
 
         $pot = match ($mode) {
-            'minimum_bet' => collect($totals)->sort()->keys()->first(),
-            'highest_bet' => collect($totals)->sortDesc()->keys()->first(),
-            'probability' => $this->probabilityWeightedPot($totals),
+            'minimum_bet' => collect($payouts)->sort()->keys()->first(),
+            'highest_bet' => collect($payouts)->sortDesc()->keys()->first(),
+            'probability' => $this->probabilityWeightedPot($payouts),
             'treasury_affordable' => null,
             default => ['A', 'B', 'C'][random_int(0, 2)],
         };
 
         if ($mode === 'treasury_affordable') {
-            return $this->treasuryAffordableWinningPot($totals);
+            return $this->treasuryAffordableWinningPot($totals, $payouts, $multiplier);
         }
 
         return [
             'pot' => $pot,
             'meta' => [
                 'mode' => $mode,
+                'payout_multiplier' => $multiplier,
+                'pot_totals' => $totals,
+                'pot_payouts' => $payouts,
             ],
         ];
     }
 
-    private function treasuryAffordableWinningPot(array $totals): array
+    private function treasuryAffordableWinningPot(array $totals, array $payouts, int $multiplier): array
     {
         $treasuryBalance = (int) $this->financials->account()->treasury_balance_coins;
-        $multiplier = $this->payoutMultiplier();
-        $payouts = collect($totals)
-            ->map(fn (int $total) => $total * $multiplier)
-            ->all();
         $potsWithBets = collect($totals)
             ->filter(fn (int $total) => $total > 0)
             ->keys()
             ->values()
             ->all();
         $eligiblePots = collect($potsWithBets)
-            ->filter(fn (string $pot) => (int) $payouts[$pot] < $treasuryBalance)
+            ->filter(fn (string $pot) => (int) $payouts[$pot] <= $treasuryBalance)
             ->values()
             ->all();
 
@@ -884,7 +895,7 @@ class TeenPattiService
 
         if ($treasuryBalance <= 0) {
             return [
-                'pot' => $this->minimumRealBetPot($totals),
+                'pot' => $this->minimumLiabilityPot($totals, $payouts),
                 'meta' => [
                     ...$meta,
                     'reason' => 'treasury_recovery_minimum_bet',
@@ -931,7 +942,7 @@ class TeenPattiService
         if ($eligiblePots === []) {
             if ($this->allPotsHaveBets($totals)) {
                 return [
-                    'pot' => $this->minimumRealBetPot($totals),
+                    'pot' => $this->minimumLiabilityPot($totals, $payouts),
                     'meta' => [
                         ...$meta,
                         'reason' => 'treasury_overdraft_minimum_bet',
@@ -954,12 +965,12 @@ class TeenPattiService
         ];
     }
 
-    private function minimumRealBetPot(array $totals): string
+    private function minimumLiabilityPot(array $totals, array $payouts): string
     {
         return (string) collect($totals)
             ->filter(fn (int $total) => $total > 0)
-            ->sort()
             ->keys()
+            ->sortBy(fn (string $pot) => $payouts[$pot])
             ->first();
     }
 
@@ -968,9 +979,9 @@ class TeenPattiService
         return collect($totals)->every(fn (int $total) => $total > 0);
     }
 
-    private function probabilityWeightedPot(array $totals): string
+    private function probabilityWeightedPot(array $payouts): string
     {
-        $highestPot = collect($totals)->sortDesc()->keys()->first();
+        $highestPot = collect($payouts)->sortDesc()->keys()->first();
         $others = collect(['A', 'B', 'C'])->reject(fn ($pot) => $pot === $highestPot)->values();
         $roll = random_int(1, 100);
 
@@ -1051,7 +1062,7 @@ class TeenPattiService
             'fake_totals' => $fakeTotals,
             'total_bets_count' => (int) $round->total_bets_count,
             'participant_count' => (int) $round->bets->pluck('user_id')->unique()->count(),
-            'payout_multiplier' => $this->payoutMultiplier(),
+            'payout_multiplier' => $this->roundPayoutMultiplier($round),
             'viewer_bets' => $viewerBets,
         ];
     }
