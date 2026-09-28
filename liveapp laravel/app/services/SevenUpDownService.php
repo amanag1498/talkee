@@ -894,17 +894,94 @@ class SevenUpDownService
             ->filter(fn (string $pot) => $liabilities[$pot] === $minimumLiability)
             ->values()
             ->all();
+        $affordablePots = collect(self::POTS)
+            ->filter(fn (string $pot) => $liabilities[$pot] <= $treasuryBalance)
+            ->values()
+            ->all();
+        $potsWithBets = collect($totals)
+            ->filter(fn (int $total) => $total > 0)
+            ->keys()
+            ->values()
+            ->all();
+
+        $meta = [
+            'mode' => 'treasury_affordable',
+            'treasury_balance_before_settlement' => $treasuryBalance,
+            'pot_multipliers' => $multipliers,
+            'pot_totals' => $totals,
+            'pot_payouts' => $liabilities,
+            'minimum_liability' => $minimumLiability,
+            'eligible_pots' => $affordablePots,
+        ];
+
+        if ($treasuryBalance < 0) {
+            return [
+                'pot' => $minimumLiabilityPots[random_int(0, count($minimumLiabilityPots) - 1)],
+                'meta' => [
+                    ...$meta,
+                    'reason' => 'treasury_recovery_minimum_liability',
+                    'eligible_pots' => $minimumLiabilityPots,
+                ],
+            ];
+        }
+
+        if (count($potsWithBets) === 1) {
+            $onlyPot = $potsWithBets[0];
+
+            if (in_array($onlyPot, $affordablePots, true)) {
+                $roll = random_int(1, 100);
+                if ($roll <= 75) {
+                    return [
+                        'pot' => $onlyPot,
+                        'meta' => [
+                            ...$meta,
+                            'reason' => 'single_pot_probability_hit',
+                            'single_pot_roll' => $roll,
+                            'single_pot_win_probability_percent' => 75,
+                        ],
+                    ];
+                }
+
+                $emptyPots = collect(self::POTS)
+                    ->reject(fn (string $pot) => $pot === $onlyPot)
+                    ->values()
+                    ->all();
+
+                return [
+                    'pot' => $emptyPots[random_int(0, count($emptyPots) - 1)],
+                    'meta' => [
+                        ...$meta,
+                        'reason' => 'single_pot_probability_miss',
+                        'single_pot_roll' => $roll,
+                        'single_pot_win_probability_percent' => 75,
+                    ],
+                ];
+            }
+
+            return [
+                'pot' => $affordablePots[random_int(0, count($affordablePots) - 1)],
+                'meta' => [
+                    ...$meta,
+                    'reason' => 'single_pot_not_affordable',
+                ],
+            ];
+        }
+
+        if ($affordablePots !== []) {
+            return [
+                'pot' => $affordablePots[random_int(0, count($affordablePots) - 1)],
+                'meta' => [
+                    ...$meta,
+                    'reason' => 'random_affordable_pot',
+                ],
+            ];
+        }
 
         return [
             'pot' => $minimumLiabilityPots[random_int(0, count($minimumLiabilityPots) - 1)],
             'meta' => [
-                'mode' => 'treasury_affordable',
-                'reason' => 'minimum_liability_all_pots',
-                'treasury_balance_before_settlement' => $treasuryBalance,
-                'pot_multipliers' => $multipliers,
-                'pot_totals' => $totals,
-                'pot_payouts' => $liabilities,
-                'minimum_liability' => $minimumLiability,
+                ...$meta,
+                'reason' => 'no_affordable_pot_minimum_liability',
                 'eligible_pots' => $minimumLiabilityPots,
             ],
         ];

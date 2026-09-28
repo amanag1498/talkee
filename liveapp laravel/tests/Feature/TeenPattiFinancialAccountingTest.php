@@ -148,11 +148,12 @@ class TeenPattiFinancialAccountingTest extends TestCase
         $settled = $service->settleRound($round->fresh());
 
         $this->assertSame('settled', $settled->status);
-        $this->assertSame('C', $settled->winning_pot);
-        $this->assertSame(['C'], $settled->meta['winning_decision']['eligible_pots']);
+        $this->assertContains($settled->winning_pot, ['B', 'C']);
+        $this->assertSame(['B', 'C'], $settled->meta['winning_decision']['eligible_pots']);
         $this->assertSame(150, $settled->meta['winning_decision']['minimum_liability']);
         $this->assertSame(582, $settled->meta['winning_decision']['treasury_balance_before_settlement']);
         $this->assertSame(['A' => 600, 'B' => 300, 'C' => 150], $settled->meta['winning_decision']['pot_payouts']);
+        $this->assertSame('random_affordable_pot', $settled->meta['winning_decision']['reason']);
     }
 
     public function test_treasury_affordable_strategy_uses_minimum_liability_when_all_pots_are_unaffordable(): void
@@ -187,7 +188,7 @@ class TeenPattiFinancialAccountingTest extends TestCase
         ], $settled->meta['winning_decision']['pot_payouts']);
         $this->assertSame(300, $settled->meta['winning_decision']['minimum_liability']);
         $this->assertSame(['B'], $settled->meta['winning_decision']['eligible_pots']);
-        $this->assertSame('minimum_liability_all_pots', $settled->meta['winning_decision']['reason']);
+        $this->assertSame('no_affordable_pot_minimum_liability', $settled->meta['winning_decision']['reason']);
         $this->assertSame(-15, (int) $account->treasury_balance_coins);
         $this->assertSame(17, (int) $account->company_commission_balance_coins);
         $this->assertSame(1, TeenPattiFinancialLedgerEntry::query()->where('event_type', 'payout_debit')->count());
@@ -227,8 +228,102 @@ class TeenPattiFinancialAccountingTest extends TestCase
         $this->assertSame('A', $settled->winning_pot);
         $this->assertSame(300, $settled->meta['winning_decision']['minimum_liability']);
         $this->assertSame(['A'], $settled->meta['winning_decision']['eligible_pots']);
-        $this->assertSame('minimum_liability_all_pots', $settled->meta['winning_decision']['reason']);
+        $this->assertSame('treasury_recovery_minimum_liability', $settled->meta['winning_decision']['reason']);
         $this->assertSame(-310, (int) $account->treasury_balance_coins);
+    }
+
+    public function test_treasury_affordable_strategy_includes_zero_liability_pots_with_affordable_bet_pots(): void
+    {
+        config()->set('games.teen_patti.winning_strategy_mode', 'treasury_affordable');
+
+        $users = User::factory()->count(2)->create();
+        foreach ($users as $user) {
+            Wallet::query()->where('user_id', $user->id)->update(['balance' => 1000]);
+        }
+
+        $round = $this->openRound();
+        $service = app(TeenPattiService::class);
+        $service->placeBet($users[0], 'B', 50, 'tp-zero-affordable-b');
+        $service->placeBet($users[1], 'C', 500, 'tp-zero-affordable-c');
+
+        TeenPattiFinancialAccount::query()
+            ->where('game_key', 'teen_patti')
+            ->update(['treasury_balance_coins' => 490]);
+
+        $round->forceFill([
+            'locks_at' => now()->subSeconds(2),
+            'ends_at' => now()->subSecond(),
+        ])->save();
+
+        $settled = $service->settleRound($round->fresh());
+        $decision = $settled->meta['winning_decision'];
+
+        $this->assertContains($settled->winning_pot, ['A', 'B']);
+        $this->assertSame(['A', 'B'], $decision['eligible_pots']);
+        $this->assertSame(['A' => 0, 'B' => 150, 'C' => 1500], $decision['pot_payouts']);
+        $this->assertSame('random_affordable_pot', $decision['reason']);
+    }
+
+    public function test_single_affordable_bet_pot_has_seventy_five_percent_chance_against_empty_pots(): void
+    {
+        config()->set('games.teen_patti.winning_strategy_mode', 'treasury_affordable');
+
+        $user = User::factory()->create();
+        Wallet::query()->where('user_id', $user->id)->update(['balance' => 1000]);
+
+        $round = $this->openRound();
+        $service = app(TeenPattiService::class);
+        $service->placeBet($user, 'A', 50, 'tp-single-affordable-a');
+
+        TeenPattiFinancialAccount::query()
+            ->where('game_key', 'teen_patti')
+            ->update(['treasury_balance_coins' => 150]);
+
+        $round->forceFill([
+            'locks_at' => now()->subSeconds(2),
+            'ends_at' => now()->subSecond(),
+        ])->save();
+
+        $settled = $service->settleRound($round->fresh());
+        $decision = $settled->meta['winning_decision'];
+
+        $this->assertSame(['A', 'B', 'C'], $decision['eligible_pots']);
+        $this->assertSame(75, $decision['single_pot_win_probability_percent']);
+        if ($decision['single_pot_roll'] <= 75) {
+            $this->assertSame('A', $settled->winning_pot);
+            $this->assertSame('single_pot_probability_hit', $decision['reason']);
+        } else {
+            $this->assertContains($settled->winning_pot, ['B', 'C']);
+            $this->assertSame('single_pot_probability_miss', $decision['reason']);
+        }
+    }
+
+    public function test_zero_treasury_uses_affordability_instead_of_recovery_mode(): void
+    {
+        config()->set('games.teen_patti.winning_strategy_mode', 'treasury_affordable');
+
+        $user = User::factory()->create();
+        Wallet::query()->where('user_id', $user->id)->update(['balance' => 1000]);
+
+        $round = $this->openRound();
+        $service = app(TeenPattiService::class);
+        $service->placeBet($user, 'A', 50, 'tp-zero-treasury-a');
+
+        TeenPattiFinancialAccount::query()
+            ->where('game_key', 'teen_patti')
+            ->update(['treasury_balance_coins' => 0]);
+
+        $round->forceFill([
+            'locks_at' => now()->subSeconds(2),
+            'ends_at' => now()->subSecond(),
+        ])->save();
+
+        $settled = $service->settleRound($round->fresh());
+        $decision = $settled->meta['winning_decision'];
+
+        $this->assertContains($settled->winning_pot, ['B', 'C']);
+        $this->assertSame(['B', 'C'], $decision['eligible_pots']);
+        $this->assertSame('single_pot_not_affordable', $decision['reason']);
     }
 
     private function openRound(): TeenPattiRound
