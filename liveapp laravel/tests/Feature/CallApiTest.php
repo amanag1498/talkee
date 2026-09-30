@@ -2,14 +2,18 @@
 
 namespace Tests\Feature;
 
+use App\Models\Agency;
 use App\Models\CallSession;
 use App\Models\Host;
 use App\Models\HostAvailability;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Models\WalletTransaction;
 use App\Services\CallBillingService;
+use App\Services\LiveKitRoomAdminService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -367,6 +371,126 @@ class CallApiTest extends TestCase
         $call->refresh();
         $this->assertSame(12, (int) $call->coin_rate_per_minute);
         $this->assertSame(36, (int) $call->total_coins_charged);
+    }
+
+    public function test_delayed_billing_creates_one_idempotent_debit_per_minute(): void
+    {
+        [$caller, $receiver, $host] = $this->makeCallableUsersWithHost(balance: 10_000);
+        $call = CallSession::query()->create([
+            'caller_id' => $caller->id,
+            'receiver_id' => $receiver->id,
+            'host_id' => $host->id,
+            'agency_id' => $host->agency_id,
+            'type' => 'video',
+            'status' => 'accepted',
+            'accepted_at' => now()->subSeconds(181),
+            'started_at' => now()->subSeconds(181),
+            'coin_rate_per_minute' => 1000,
+        ]);
+
+        $billing = app(CallBillingService::class);
+        $billing->ensureInitialCharge($call);
+        $this->assertTrue($billing->syncAcceptedCallBilling($call->fresh()));
+
+        $transactions = WalletTransaction::query()
+            ->where('wallet_id', $caller->wallet->id)
+            ->where('reference', 'like', "call_billing:{$call->id}:%")
+            ->orderBy('id')
+            ->get();
+
+        $this->assertSame([1000, 1000, 1000, 1000], $transactions->pluck('coins')->map(fn ($coins) => (int) $coins)->all());
+        $this->assertSame([
+            "call_billing:{$call->id}:1",
+            "call_billing:{$call->id}:2",
+            "call_billing:{$call->id}:3",
+            "call_billing:{$call->id}:4",
+        ], $transactions->pluck('reference')->all());
+        $this->assertSame(6000, (int) $caller->wallet->fresh()->balance);
+    }
+
+    public function test_new_billing_continues_from_legacy_call_reference_without_double_charging(): void
+    {
+        [$caller, $receiver, $host] = $this->makeCallableUsersWithHost(balance: 4000);
+        $wallet = $caller->wallet;
+        $call = CallSession::query()->create([
+            'caller_id' => $caller->id,
+            'receiver_id' => $receiver->id,
+            'host_id' => $host->id,
+            'type' => 'video',
+            'status' => 'accepted',
+            'accepted_at' => now()->subSeconds(61),
+            'started_at' => now()->subSeconds(61),
+            'coin_rate_per_minute' => 1000,
+        ]);
+        WalletTransaction::query()->create([
+            'wallet_id' => $wallet->id,
+            'type' => 'debit',
+            'coins' => 1000,
+            'category' => 'video_call',
+            'reference' => "call_billing:{$call->id}",
+            'counterparty_user_id' => $receiver->id,
+            'balance_before' => 5000,
+            'balance_after' => 4000,
+        ]);
+
+        $this->assertTrue(app(CallBillingService::class)->syncAcceptedCallBilling($call));
+
+        $this->assertDatabaseHas('wallet_transactions', [
+            'wallet_id' => $wallet->id,
+            'reference' => "call_billing:{$call->id}:2",
+            'coins' => 1000,
+        ]);
+        $this->assertSame(2, WalletTransaction::query()->where('wallet_id', $wallet->id)->count());
+        $this->assertSame(3000, (int) $wallet->fresh()->balance);
+    }
+
+    public function test_video_call_payout_matches_gd_remake_split(): void
+    {
+        $agencyOwner = User::factory()->create();
+        $agency = Agency::query()->create([
+            'owner_user_id' => $agencyOwner->id,
+            'name' => 'Test Agency',
+        ]);
+        [$caller, $receiver, $host] = $this->makeCallableUsersWithHost(
+            balance: 5000,
+            hostAttributes: ['agency_id' => $agency->id],
+        );
+        $call = CallSession::query()->create([
+            'caller_id' => $caller->id,
+            'receiver_id' => $receiver->id,
+            'host_id' => $host->id,
+            'agency_id' => $agency->id,
+            'type' => 'video',
+            'status' => 'ended',
+            'accepted_at' => now()->subSeconds(59),
+            'started_at' => now()->subSeconds(59),
+            'ended_at' => now(),
+            'coin_rate_per_minute' => 1000,
+        ]);
+
+        $billed = app(CallBillingService::class)->processEndedCall($call);
+
+        $this->assertSame(1000, (int) $billed->total_coins_charged);
+        $this->assertSame(600, (int) $billed->host_earning);
+        $this->assertSame(100, (int) $billed->agency_earning);
+        $this->assertSame(300, (int) $billed->platform_earning);
+    }
+
+    public function test_livekit_room_is_deleted_to_disconnect_both_call_participants(): void
+    {
+        Config::set('services.livekit.http_url', 'https://livekit.test');
+        Config::set('services.livekit.api_key', 'test-key');
+        Config::set('services.livekit.api_secret', 'test-secret');
+        Http::fake([
+            'https://livekit.test/twirp/livekit.RoomService/DeleteRoom' => Http::response([], 200),
+        ]);
+
+        app(LiveKitRoomAdminService::class)->deleteRoom('call_2676_room');
+
+        Http::assertSent(fn ($request) => $request->url() === 'https://livekit.test/twirp/livekit.RoomService/DeleteRoom'
+            && $request['room'] === 'call_2676_room'
+            && str_starts_with((string) $request->header('Authorization')[0], 'Bearer ')
+        );
     }
 
     private function makeCallableUsers(int $balance = 5000): array

@@ -39,12 +39,12 @@ class CallBillingService
                 (int) config('calls.minimum_billable_minutes', 1),
                 (int) ceil($durationSeconds / 60)
             );
-            $targetCoins = $elapsedBillableMinutes * $rate;
             $alreadyBilledCoins = $this->billedCoinsForCall($call);
-            $paidThroughSeconds = intdiv($alreadyBilledCoins, $rate) * 60;
-            $deltaCoins = max(0, $targetCoins - $alreadyBilledCoins);
+            $alreadyBilledMinutes = intdiv($alreadyBilledCoins, $rate);
+            $paidThroughSeconds = $alreadyBilledMinutes * 60;
+            $minutesToCharge = max(0, $elapsedBillableMinutes - $alreadyBilledMinutes);
 
-            if ($deltaCoins <= 0) {
+            if ($minutesToCharge <= 0) {
                 if ($paidThroughSeconds > 0 && $durationSeconds >= $paidThroughSeconds) {
                     $wallet = Wallet::query()
                         ->where('user_id', $call->caller_id)
@@ -59,7 +59,7 @@ class CallBillingService
                         $call,
                         $wallet,
                         $rate,
-                        intdiv($alreadyBilledCoins, $rate) + 1,
+                        $alreadyBilledMinutes + 1,
                         'Call next minute prepaid'
                     );
                 }
@@ -72,30 +72,16 @@ class CallBillingService
                 ->lockForUpdate()
                 ->first();
 
-            if (! $wallet || (int) $wallet->balance < $deltaCoins) {
-                $affordableMinutes = $wallet ? intdiv((int) $wallet->balance, $rate) : 0;
-                if ($affordableMinutes > 0) {
-                    $this->createDebit(
-                        $call,
-                        $wallet,
-                        $affordableMinutes * $rate,
-                        max(1, intdiv($alreadyBilledCoins, $rate) + $affordableMinutes),
-                        'Call billed until wallet balance was exhausted'
-                    );
-                }
-
-                return false;
-            }
-
-            $this->createDebit(
+            $affordableMinutes = $wallet ? intdiv((int) $wallet->balance, $rate) : 0;
+            $minutesCharged = $this->createMinuteDebits(
                 $call,
                 $wallet,
-                $deltaCoins,
-                $elapsedBillableMinutes,
+                min($minutesToCharge, $affordableMinutes),
+                $alreadyBilledMinutes + 1,
                 'Call active minute billed'
             );
 
-            return true;
+            return $minutesCharged === $minutesToCharge;
         });
     }
 
@@ -108,7 +94,7 @@ class CallBillingService
                 return $call;
             }
 
-            if (!$call->accepted_at) {
+            if (! $call->accepted_at) {
                 $call->update([
                     'duration_seconds' => 0,
                     'billable_minutes' => 0,
@@ -139,17 +125,17 @@ class CallBillingService
             $alreadyBilledCoins = $this->billedCoinsForCall($call);
             $deltaCoins = max(0, $totalCoins - $alreadyBilledCoins);
 
-            if ($deltaCoins > 0 && (!$wallet || $wallet->balance < $deltaCoins)) {
+            if ($deltaCoins > 0 && (! $wallet || $wallet->balance < $deltaCoins)) {
                 $affordableAdditionalMinutes = $wallet && $rate > 0
                     ? intdiv((int) $wallet->balance, $rate)
                     : 0;
 
                 if ($affordableAdditionalMinutes > 0) {
-                    $this->createDebit(
+                    $this->createMinuteDebits(
                         $call,
                         $wallet,
-                        $affordableAdditionalMinutes * $rate,
-                        max(1, intdiv($alreadyBilledCoins, max(1, $rate)) + $affordableAdditionalMinutes),
+                        $affordableAdditionalMinutes,
+                        intdiv($alreadyBilledCoins, max(1, $rate)) + 1,
                         'Call final billing until wallet balance was exhausted'
                     );
                     $alreadyBilledCoins = $this->billedCoinsForCall($call);
@@ -187,11 +173,11 @@ class CallBillingService
             $platformEarning = max(0, $totalCoins - $hostEarning - $agencyEarning);
 
             if ($deltaCoins > 0 && $wallet && $wallet->balance >= $deltaCoins) {
-                $this->createDebit(
+                $this->createMinuteDebits(
                     $call,
                     $wallet,
-                    $deltaCoins,
-                    $billableMinutes,
+                    intdiv($deltaCoins, max(1, $rate)),
+                    intdiv($alreadyBilledCoins, max(1, $rate)) + 1,
                     sprintf('%s call billed for %d minute(s)', ucfirst($call->type), $billableMinutes)
                 );
             }
@@ -243,7 +229,7 @@ class CallBillingService
 
     public function billingReference(int $callId): string
     {
-        return 'call_billing:' . $callId;
+        return 'call_billing:'.$callId;
     }
 
     private function chargeDelta(CallSession $call, int $coins, int $billableMinutes, string $description): void
@@ -273,8 +259,51 @@ class CallBillingService
         });
     }
 
-    private function createDebit(CallSession $call, Wallet $wallet, int $coins, int $billableMinutes, string $description): WalletTransaction
+    private function createMinuteDebits(
+        CallSession $call,
+        ?Wallet $wallet,
+        int $minuteCount,
+        int $firstMinute,
+        string $description
+    ): int {
+        if (! $wallet || $minuteCount <= 0) {
+            return 0;
+        }
+
+        $charged = 0;
+        $rate = (int) $call->coin_rate_per_minute;
+
+        for ($offset = 0; $offset < $minuteCount; $offset++) {
+            if ((int) $wallet->balance < $rate) {
+                break;
+            }
+
+            if ($this->createDebit($call, $wallet, $rate, $firstMinute + $offset, $description)) {
+                $charged++;
+            }
+        }
+
+        return $charged;
+    }
+
+    private function createDebit(CallSession $call, Wallet $wallet, int $coins, int $billableMinutes, string $description): ?WalletTransaction
     {
+        if ($coins <= 0) {
+            return null;
+        }
+
+        $reference = sprintf('%s:%d', $this->billingReference($call->id), $billableMinutes);
+        $existing = WalletTransaction::query()
+            ->where('wallet_id', $wallet->id)
+            ->where('type', 'debit')
+            ->where('reference', $reference)
+            ->lockForUpdate()
+            ->first();
+
+        if ($existing) {
+            return null;
+        }
+
         $balanceBefore = (int) $wallet->balance;
         $balanceAfter = $balanceBefore - $coins;
         $wallet->decrement('balance', $coins);
@@ -285,7 +314,7 @@ class CallBillingService
             'type' => 'debit',
             'coins' => $coins,
             'category' => $call->type === 'video' ? 'video_call' : 'audio_call',
-            'reference' => $this->billingReference($call->id),
+            'reference' => $reference,
             'counterparty_user_id' => $call->receiver_id,
             'meta' => [
                 'call_session_id' => $call->id,
@@ -302,8 +331,13 @@ class CallBillingService
     private function billedCoinsForCall(CallSession $call): int
     {
         return (int) WalletTransaction::query()
+            ->whereHas('wallet', fn ($query) => $query->where('user_id', $call->caller_id))
             ->where('type', 'debit')
-            ->where('reference', $this->billingReference($call->id))
+            ->where(function ($query) use ($call) {
+                $reference = $this->billingReference($call->id);
+                $query->where('reference', $reference)
+                    ->orWhere('reference', 'like', $reference.':%');
+            })
             ->sum('coins');
     }
 }

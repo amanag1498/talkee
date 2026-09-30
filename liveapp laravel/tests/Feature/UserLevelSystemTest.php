@@ -4,11 +4,13 @@ namespace Tests\Feature;
 
 use App\Models\CallSession;
 use App\Models\Host;
+use App\Models\LevelSpendEvent;
 use App\Models\RechargePlan;
 use App\Models\User;
 use App\Models\UserLevel;
 use App\Models\UserNotification;
 use App\Models\Wallet;
+use App\Models\WalletTransaction;
 use App\Services\CallBillingService;
 use App\Services\UserLevelService;
 use App\Services\WalletService;
@@ -112,16 +114,14 @@ class UserLevelSystemTest extends TestCase
 
         $this->assertSame(1000, (int) $caller->lifetime_spend_coins);
         $this->assertSame(2, (int) $caller->level?->level);
-        $this->assertDatabaseHas('wallet_transactions', [
-            'wallet_id' => $caller->wallet->id,
-            'category' => 'audio_call',
-            'type' => 'debit',
-            'coins' => 1000,
-        ]);
-        $this->assertDatabaseHas('level_spend_events', [
-            'user_id' => $caller->id,
-            'spend_coins' => 1000,
-        ]);
+        $transactions = WalletTransaction::query()
+            ->where('wallet_id', $caller->wallet->id)
+            ->where('category', 'audio_call')
+            ->where('type', 'debit')
+            ->get();
+        $this->assertCount(10, $transactions);
+        $this->assertSame(1000, (int) $transactions->sum('coins'));
+        $this->assertSame(1000, (int) LevelSpendEvent::query()->where('user_id', $caller->id)->sum('spend_coins'));
     }
 
     public function test_failed_spend_and_earnings_do_not_count_toward_levels(): void

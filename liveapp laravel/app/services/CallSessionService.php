@@ -16,11 +16,11 @@ class CallSessionService
     public function __construct(
         private HostAvailabilityService $availabilityService,
         private CallBillingService $billingService,
+        private LiveKitRoomAdminService $liveKitRoomAdmin,
         private LiveRoomSeatService $liveRoomSeatService,
         private ModerationService $moderation,
         private UserBlockService $userBlocks,
-    ) {
-    }
+    ) {}
 
     public function requestCall(User $caller, int $receiverId, string $type): CallSession
     {
@@ -31,10 +31,10 @@ class CallSessionService
 
             $receiver = User::query()->with(['host.agency', 'hostAvailability'])->findOrFail($receiverId);
             $host = $receiver->host;
-            if (!$host) {
+            if (! $host) {
                 throw new InvalidArgumentException('Receiver is not a host.');
             }
-            if (!$host->callTypeEnabled($type)) {
+            if (! $host->callTypeEnabled($type)) {
                 throw new InvalidArgumentException(sprintf(
                     'Receiver is not accepting %s calls right now.',
                     strtolower($type) === 'video' ? 'video' : 'audio'
@@ -72,7 +72,7 @@ class CallSessionService
             $callerWallet = Wallet::query()->lockForUpdate()->where('user_id', $caller->id)->first();
             $coinRatePerMinute = $this->resolveCoinRatePerMinute($host, $type);
             $minimumBalance = $this->minimumRequiredBalance($coinRatePerMinute);
-            if (!$callerWallet || $callerWallet->balance < $minimumBalance) {
+            if (! $callerWallet || $callerWallet->balance < $minimumBalance) {
                 throw new InvalidArgumentException('Insufficient coins to start call.');
             }
 
@@ -166,7 +166,7 @@ class CallSessionService
             if (in_array($call->status, ['rejected', 'missed', 'ended', 'failed'], true)) {
                 throw new InvalidArgumentException('Call is already closed.');
             }
-            if (!in_array($call->status, ['requested', 'ringing'], true)) {
+            if (! in_array($call->status, ['requested', 'ringing'], true)) {
                 throw new InvalidArgumentException('Call cannot be accepted.');
             }
 
@@ -198,6 +198,8 @@ class CallSessionService
                 'receiver_id' => $call->receiver_id,
                 'livekit_room_name' => $call->livekit_room_name,
                 'type' => $call->type,
+                'accepted_at' => optional($call->accepted_at)->toIso8601String(),
+                'started_at' => optional($call->started_at)->toIso8601String(),
             ]);
 
             return $call->fresh();
@@ -228,13 +230,13 @@ class CallSessionService
     {
         return DB::transaction(function () use ($call, $actor) {
             $call = CallSession::query()->lockForUpdate()->findOrFail($call->id);
-            if (!in_array($actor->id, [$call->caller_id, $call->receiver_id], true)) {
+            if (! in_array($actor->id, [$call->caller_id, $call->receiver_id], true)) {
                 abort(403, 'You cannot reject this call.');
             }
             if (in_array($call->status, ['rejected', 'missed', 'ended', 'failed'], true)) {
                 return $call->fresh();
             }
-            if (!in_array($call->status, ['requested', 'ringing'], true)) {
+            if (! in_array($call->status, ['requested', 'ringing'], true)) {
                 throw new InvalidArgumentException('Call cannot be rejected.');
             }
 
@@ -253,15 +255,15 @@ class CallSessionService
 
     public function endCall(CallSession $call, User $actor, ?string $reason = null): CallSession
     {
-        return DB::transaction(function () use ($call, $actor, $reason) {
+        $endedCall = DB::transaction(function () use ($call, $actor, $reason) {
             $call = CallSession::query()->lockForUpdate()->findOrFail($call->id);
-            if (!in_array($actor->id, [$call->caller_id, $call->receiver_id], true) && !$actor->hasRole('admin')) {
+            if (! in_array($actor->id, [$call->caller_id, $call->receiver_id], true) && ! $actor->hasRole('admin')) {
                 abort(403, 'You cannot end this call.');
             }
             if (in_array($call->status, ['ended', 'failed', 'missed', 'rejected'], true)) {
                 return $call->fresh();
             }
-            if (!in_array($call->status, ['requested', 'ringing', 'accepted'], true)) {
+            if (! in_array($call->status, ['requested', 'ringing', 'accepted'], true)) {
                 throw new InvalidArgumentException('Call cannot be ended.');
             }
 
@@ -306,6 +308,10 @@ class CallSessionService
 
             return $call->fresh();
         });
+
+        $this->terminateLiveKitRoom($endedCall);
+
+        return $endedCall;
     }
 
     public function markMissedCalls(): int
@@ -319,7 +325,7 @@ class CallSessionService
         foreach ($calls as $call) {
             DB::transaction(function () use ($call) {
                 $locked = CallSession::query()->lockForUpdate()->find($call->id);
-                if (!$locked || !in_array($locked->status, ['requested', 'ringing'], true)) {
+                if (! $locked || ! in_array($locked->status, ['requested', 'ringing'], true)) {
                     return;
                 }
 
@@ -365,10 +371,10 @@ class CallSessionService
                 continue;
             }
 
-            DB::transaction(function () use ($call, &$ended) {
+            $endedCall = DB::transaction(function () use ($call, &$ended) {
                 $locked = CallSession::query()->lockForUpdate()->find($call->id);
                 if (! $locked || $locked->status !== 'accepted') {
-                    return;
+                    return null;
                 }
 
                 $locked->update([
@@ -387,7 +393,13 @@ class CallSessionService
                 ]);
 
                 $ended++;
+
+                return $billed->fresh();
             });
+
+            if ($endedCall) {
+                $this->terminateLiveKitRoom($endedCall);
+            }
         }
 
         return $ended;
@@ -395,10 +407,10 @@ class CallSessionService
 
     public function issueParticipantToken(CallSession $call, User $actor): array
     {
-        if (!in_array($actor->id, [$call->caller_id, $call->receiver_id], true)) {
+        if (! in_array($actor->id, [$call->caller_id, $call->receiver_id], true)) {
             abort(403, 'You cannot access this token.');
         }
-        if ($call->status !== 'accepted' || !$call->livekit_room_name) {
+        if ($call->status !== 'accepted' || ! $call->livekit_room_name) {
             throw new InvalidArgumentException('Call room is not ready.');
         }
 
@@ -427,12 +439,14 @@ class CallSessionService
             'token' => $token,
             'identity' => (string) $actor->id,
             'type' => $call->type,
+            'accepted_at' => optional($call->accepted_at)->toIso8601String(),
+            'started_at' => optional($call->started_at)->toIso8601String(),
         ];
     }
 
     public function handleDisconnect(int $userId): ?CallSession
     {
-        return DB::transaction(function () use ($userId) {
+        $endedCall = DB::transaction(function () use ($userId) {
             $call = CallSession::query()
                 ->whereIn('status', ['requested', 'ringing', 'accepted'])
                 ->where(function ($query) use ($userId) {
@@ -442,7 +456,7 @@ class CallSessionService
                 ->latest('id')
                 ->first();
 
-            if (!$call) {
+            if (! $call) {
                 return null;
             }
 
@@ -483,11 +497,34 @@ class CallSessionService
 
             return $call->fresh();
         });
+
+        if ($endedCall?->accepted_at) {
+            $this->terminateLiveKitRoom($endedCall);
+        }
+
+        return $endedCall;
     }
 
     private function makeRoomName(CallSession $call): string
     {
         return sprintf('call_%d_%s', $call->id, Str::lower(Str::random(8)));
+    }
+
+    private function terminateLiveKitRoom(CallSession $call): void
+    {
+        if (! $call->accepted_at || ! $call->livekit_room_name) {
+            return;
+        }
+
+        try {
+            $this->liveKitRoomAdmin->deleteRoom($call->livekit_room_name);
+        } catch (\Throwable $e) {
+            Log::warning('CALL_LIVEKIT_ROOM_DELETE_FAILED', [
+                'call_id' => $call->id,
+                'room_id' => $call->livekit_room_name,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function assertNoActiveCallForUser(int $userId, string $message): void

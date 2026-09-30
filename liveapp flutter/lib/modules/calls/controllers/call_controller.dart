@@ -53,6 +53,7 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
   bool _isExitingCall = false;
   bool _terminalStateHandled = false;
   bool _roomBusy = false;
+  bool _mediaDisconnectHandling = false;
   bool _callWakeLockAcquired = false;
   final Set<String> _handledEvents = <String>{};
   OverlayEntry? _callOverlay;
@@ -506,8 +507,9 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
     listener
       ..on<RoomDisconnectedEvent>((event) {
         roomError.value = 'Disconnected: ${event.reason ?? 'unknown'}';
-        reconnecting.value = true;
+        reconnecting.value = false;
         roomRevision.value++;
+        unawaited(_endCallAfterMediaDisconnect(localParticipantDisconnected: true));
       })
       ..on<RoomReconnectingEvent>((_) {
         reconnecting.value = true;
@@ -519,11 +521,48 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
         roomRevision.value++;
       })
       ..on<ParticipantConnectedEvent>((_) => roomRevision.value++)
-      ..on<ParticipantDisconnectedEvent>((_) => roomRevision.value++)
+      ..on<ParticipantDisconnectedEvent>((_) {
+        roomRevision.value++;
+        unawaited(_endCallAfterMediaDisconnect(localParticipantDisconnected: false));
+      })
       ..on<TrackSubscribedEvent>((_) => roomRevision.value++)
       ..on<TrackUnsubscribedEvent>((_) => roomRevision.value++)
       ..on<LocalTrackPublishedEvent>((_) => roomRevision.value++)
       ..on<LocalTrackUnpublishedEvent>((_) => roomRevision.value++);
+  }
+
+  Future<void> _endCallAfterMediaDisconnect({required bool localParticipantDisconnected}) async {
+    if (_mediaDisconnectHandling || _terminalHandling || _terminalStateHandled || _isExitingCall) return;
+
+    final callId = currentCallId;
+    if (callId <= 0 || !hasActiveCall) return;
+
+    _mediaDisconnectHandling = true;
+    final call = activeCall.value ?? const <String, dynamic>{};
+    final currentUserId = _auth.currentUser?.id;
+    final callerId = (call['caller_id'] as num?)?.toInt();
+    final localIsCaller = currentUserId != null && callerId == currentUserId;
+    final disconnectedIsCaller = localParticipantDisconnected ? localIsCaller : !localIsCaller;
+
+    try {
+      final endedPayload = await _callService.endCall(
+        callId,
+        reason: disconnectedIsCaller ? 'caller_disconnected' : 'receiver_disconnected',
+      );
+      await _handleTerminalState(
+        state: 'ended',
+        message: 'Call disconnected.',
+        payload: endedPayload,
+      );
+    } catch (_) {
+      await _handleTerminalState(
+        state: 'ended',
+        message: 'Call disconnected.',
+        payload: call,
+      );
+    } finally {
+      _mediaDisconnectHandling = false;
+    }
   }
 
   Future<void> toggleMute() async {
@@ -1292,6 +1331,7 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
     _terminalHandling = false;
     _terminalStateHandled = false;
     _isExitingCall = false;
+    _mediaDisconnectHandling = false;
     roomError.value = '';
     reconnecting.value = false;
     _stopTicker();

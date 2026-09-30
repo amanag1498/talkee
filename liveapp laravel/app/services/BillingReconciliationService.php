@@ -9,9 +9,7 @@ use Illuminate\Http\Request;
 
 class BillingReconciliationService
 {
-    public function __construct(private RechargeOrderService $rechargeOrders)
-    {
-    }
+    public function __construct(private RechargeOrderService $rechargeOrders) {}
 
     public function walletTransactionsQuery(Request $request): Builder
     {
@@ -25,6 +23,7 @@ class BillingReconciliationService
                 if ($category === 'entry_pack_purchase') {
                     $q->where('type', 'debit')
                         ->where('reference', 'like', 'ENTRY_PACK_PURCHASE:%');
+
                     return;
                 }
                 $q->where('category', $category);
@@ -39,7 +38,9 @@ class BillingReconciliationService
                             ->where('payment_orders.status', $request->string('recharge_status'));
                     });
             })
-            ->when($request->filled('call_id'), fn ($q) => $q->where('reference', $this->billingReference($request->integer('call_id'))))
+            ->when($request->filled('call_id'), function ($q) use ($request) {
+                $this->whereCallReference($q, $request->integer('call_id'));
+            })
             ->when($request->filled('user_id'), function ($q) use ($request) {
                 $q->whereHas('wallet', fn ($wallet) => $wallet->where('user_id', $request->integer('user_id')));
             })
@@ -69,17 +70,17 @@ class BillingReconciliationService
             ->get(['id']);
 
         $callsMissingWallet = $billedEndedCalls->filter(function (CallSession $call) {
-            return !WalletTransaction::query()
-                ->where('reference', $this->billingReference($call->id))
+            return ! WalletTransaction::query()
+                ->where(fn ($query) => $this->whereCallReference($query, $call->id))
                 ->exists();
         })->count();
 
-        $callsMissingLedger = $billedEndedCalls->filter(fn (CallSession $call) => !$call->earningLedger()->exists())->count();
+        $callsMissingLedger = $billedEndedCalls->filter(fn (CallSession $call) => ! $call->earningLedger()->exists())->count();
 
         $walletDebitMismatch = $billedEndedCalls->filter(function (CallSession $call) {
             $walletDebitTotal = (int) WalletTransaction::query()
                 ->where('type', 'debit')
-                ->where('reference', $this->billingReference($call->id))
+                ->where(fn ($query) => $this->whereCallReference($query, $call->id))
                 ->sum('coins');
 
             return $walletDebitTotal !== (int) $call->total_coins_charged;
@@ -108,6 +109,16 @@ class BillingReconciliationService
 
     public function billingReference(int $callId): string
     {
-        return 'call_billing:' . $callId;
+        return 'call_billing:'.$callId;
+    }
+
+    private function whereCallReference(Builder $query, int $callId): Builder
+    {
+        $reference = $this->billingReference($callId);
+
+        return $query->where(function ($referenceQuery) use ($reference) {
+            $referenceQuery->where('reference', $reference)
+                ->orWhere('reference', 'like', $reference.':%');
+        });
     }
 }

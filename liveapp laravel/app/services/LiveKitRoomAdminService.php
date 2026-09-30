@@ -7,6 +7,39 @@ use Illuminate\Support\Facades\Log;
 
 class LiveKitRoomAdminService
 {
+    public function deleteRoom(string $roomId): void
+    {
+        $baseUrl = $this->httpBaseUrl();
+        $token = LivekitToken::serverToken(roomId: $roomId);
+
+        if ($baseUrl === '' || $token === '') {
+            throw new \RuntimeException('LiveKit admin credentials are not configured.');
+        }
+
+        $response = Http::withToken($token)
+            ->acceptJson()
+            ->timeout(8)
+            ->post(rtrim($baseUrl, '/').'/twirp/livekit.RoomService/DeleteRoom', [
+                'room' => $roomId,
+            ]);
+
+        if ($response->successful() || $response->status() === 404) {
+            return;
+        }
+
+        Log::error('LIVEKIT_DELETE_ROOM_FAILED', [
+            'room_id' => $roomId,
+            'status' => $response->status(),
+            'body' => $response->body(),
+        ]);
+
+        throw new \RuntimeException(sprintf(
+            'LiveKit DeleteRoom failed (%d): %s',
+            $response->status(),
+            trim($response->body())
+        ));
+    }
+
     public function setParticipantCanPublish(string $roomId, string $identity, bool $canPublish, ?array $publishSources = null): void
     {
         $baseUrl = $this->httpBaseUrl();
