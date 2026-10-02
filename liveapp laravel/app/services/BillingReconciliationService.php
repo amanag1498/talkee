@@ -67,24 +67,65 @@ class BillingReconciliationService
             ->where('status', 'ended')
             ->whereNotNull('billing_processed_at')
             ->where('total_coins_charged', '>', 0)
-            ->get(['id', 'total_coins_charged']);
+            ->pluck('total_coins_charged', 'id');
 
-        $callsMissingWallet = $billedEndedCalls->filter(function (CallSession $call) {
-            return ! WalletTransaction::query()
-                ->where(fn ($query) => $this->whereCallReference($query, $call->id))
-                ->exists();
-        })->count();
+        $walletReferences = [];
+        $walletDebitTotals = [];
+        $walletRefundTotals = [];
+        if ($billedEndedCalls->isNotEmpty()) {
+            WalletTransaction::query()
+                ->where('reference', 'like', 'call_billing:%')
+                ->select(['id', 'reference', 'type', 'coins'])
+                ->chunkById(1000, function ($transactions) use ($billedEndedCalls, &$walletReferences, &$walletDebitTotals): void {
+                    foreach ($transactions as $transaction) {
+                        if (! preg_match('/^call_billing:([0-9]+)(?::.*)?$/', (string) $transaction->reference, $matches)) {
+                            continue;
+                        }
 
-        $callsMissingLedger = $billedEndedCalls->filter(fn (CallSession $call) => ! $call->earningLedger()->exists())->count();
+                        $callId = (int) $matches[1];
+                        if (! $billedEndedCalls->has($callId)) {
+                            continue;
+                        }
 
-        $walletDebitMismatch = $billedEndedCalls->filter(function (CallSession $call) {
-            $walletDebitTotal = (int) WalletTransaction::query()
-                ->where('type', 'debit')
-                ->where(fn ($query) => $this->whereCallReference($query, $call->id))
-                ->sum('coins');
+                        $walletReferences[$callId] = true;
+                        if ($transaction->type === 'debit') {
+                            $walletDebitTotals[$callId] = ($walletDebitTotals[$callId] ?? 0) + (int) $transaction->coins;
+                        }
+                    }
+                });
 
-            return $walletDebitTotal !== (int) $call->total_coins_charged;
-        })->count();
+            WalletTransaction::query()
+                ->where('type', 'credit')
+                ->where('reference', 'like', 'call_billing_refund:%')
+                ->select(['id', 'reference', 'coins'])
+                ->chunkById(1000, function ($transactions) use ($billedEndedCalls, &$walletRefundTotals): void {
+                    foreach ($transactions as $transaction) {
+                        if (! preg_match('/^call_billing_refund:([0-9]+)$/', (string) $transaction->reference, $matches)) {
+                            continue;
+                        }
+
+                        $callId = (int) $matches[1];
+                        if ($billedEndedCalls->has($callId)) {
+                            $walletRefundTotals[$callId] = ($walletRefundTotals[$callId] ?? 0) + (int) $transaction->coins;
+                        }
+                    }
+                });
+        }
+
+        $callsMissingWallet = 0;
+        $walletDebitMismatch = 0;
+        foreach ($billedEndedCalls as $callId => $chargedCoins) {
+            $callsMissingWallet += ! isset($walletReferences[$callId]) ? 1 : 0;
+            $netDebit = ($walletDebitTotals[$callId] ?? 0) - ($walletRefundTotals[$callId] ?? 0);
+            $walletDebitMismatch += $netDebit !== (int) $chargedCoins ? 1 : 0;
+        }
+
+        $callsMissingLedger = CallSession::query()
+            ->where('status', 'ended')
+            ->whereNotNull('billing_processed_at')
+            ->where('total_coins_charged', '>', 0)
+            ->whereDoesntHave('earningLedger')
+            ->count();
 
         $duplicateBilling = WalletTransaction::query()
             ->selectRaw('reference, COUNT(*) as duplicate_count')
@@ -92,6 +133,7 @@ class BillingReconciliationService
             ->where('reference', 'like', 'call_billing:%:%')
             ->groupBy('reference')
             ->having('duplicate_count', '>', 1)
+            ->get()
             ->count();
 
         $failedCallsWithBilling = CallSession::query()

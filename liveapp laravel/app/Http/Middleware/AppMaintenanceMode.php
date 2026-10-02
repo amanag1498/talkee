@@ -46,6 +46,10 @@ class AppMaintenanceMode
             return true;
         }
 
+        if ($request->is('api/livekit/webhook')) {
+            return true;
+        }
+
         if ($request->is('api/app-config') || $request->is('api/app/settings')) {
             return true;
         }

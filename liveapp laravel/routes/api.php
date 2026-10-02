@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\{PlanController, SubscriptionController, LiveRoomCo
 use App\Http\Controllers\Api\TeenPattiController;
 use App\Http\Controllers\Api\GreedyGameController;
 use App\Http\Controllers\Api\SevenUpDownController;
+use App\Http\Controllers\Api\LiveKitWebhookController;
 use App\Http\Controllers\Auth\FirebaseAuthApiController;
 use App\Http\Controllers\Auth\DemoAuthApiController;
 use App\Http\Controllers\Api\UserBlockController;
@@ -14,6 +15,7 @@ use App\Services\ThemeUnlockService;
 use Illuminate\Http\Request;
 
 Route::get('/ping', fn() => response()->json(['ok' => true, 'ts' => now()]));
+Route::post('/livekit/webhook', LiveKitWebhookController::class);
 Route::get('/app-config', fn(Request $request, AppSettingsService $settings, ThemeUnlockService $themes) => response()->json([
     'ok' => true,
     'data' => $settings->publicAppPayload(

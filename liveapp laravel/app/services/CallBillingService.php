@@ -123,6 +123,9 @@ class CallBillingService
                 ->first();
 
             $alreadyBilledCoins = $this->billedCoinsForCall($call);
+            if ($alreadyBilledCoins > $totalCoins && $wallet) {
+                $this->refundOverbilledCoins($call, $wallet, $alreadyBilledCoins - $totalCoins);
+            }
             $deltaCoins = max(0, $totalCoins - $alreadyBilledCoins);
 
             if ($deltaCoins > 0 && (! $wallet || $wallet->balance < $deltaCoins)) {
@@ -325,6 +328,35 @@ class CallBillingService
             'balance_before' => $balanceBefore,
             'balance_after' => $balanceAfter,
             'description' => $description,
+        ]);
+    }
+
+    private function refundOverbilledCoins(CallSession $call, Wallet $wallet, int $coins): void
+    {
+        $reference = 'call_billing_refund:'.$call->id;
+        if (WalletTransaction::query()->where('reference', $reference)->lockForUpdate()->exists()) {
+            return;
+        }
+
+        $balanceBefore = (int) $wallet->balance;
+        $balanceAfter = $balanceBefore + $coins;
+        $wallet->increment('balance', $coins);
+        $wallet->balance = $balanceAfter;
+
+        WalletTransaction::query()->create([
+            'wallet_id' => $wallet->id,
+            'type' => 'credit',
+            'coins' => $coins,
+            'category' => 'refund',
+            'reference' => $reference,
+            'counterparty_user_id' => $call->receiver_id,
+            'meta' => [
+                'call_session_id' => $call->id,
+                'description' => 'Unused call minutes refunded after media disconnect',
+            ],
+            'balance_before' => $balanceBefore,
+            'balance_after' => $balanceAfter,
+            'description' => 'Unused call minutes refunded after media disconnect',
         ]);
     }
 

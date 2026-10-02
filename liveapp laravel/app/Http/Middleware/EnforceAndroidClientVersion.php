@@ -53,6 +53,7 @@ class EnforceAndroidClientVersion
     {
         return $this->isTrustedRealtimeServerRequest($request)
             || $this->isPaymentProviderCallback($request)
+            || $request->is('api/livekit/webhook')
             || $request->is('api/ping')
             || $request->is('api/health/*')
             || $request->is('api/metrics')

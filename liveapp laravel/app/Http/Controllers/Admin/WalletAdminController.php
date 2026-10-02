@@ -47,6 +47,10 @@ class WalletAdminController extends Controller
         $agencyCoinSupply = (int) AgencyWallet::query()->sum('balance');
         $coinSupply = $userCoinSupply + $agencyCoinSupply;
         $reconciliation = $this->reconciliationService->anomalies();
+        $orderCount = PaymentOrder::query()->count();
+        $successfulOrders = $orderCount > 0
+            ? PaymentOrder::query()->where('status', 'success')->count()
+            : 0;
         $walletSummary = [
             'total_credits' => (int) WalletTransaction::query()->where('type', 'credit')->sum('coins'),
             'total_debits' => (int) WalletTransaction::query()->where('type', 'debit')->sum('coins'),
@@ -54,8 +58,8 @@ class WalletAdminController extends Controller
             'top_spenders' => WalletTransaction::query()->where('type', 'debit')->distinct('wallet_id')->count('wallet_id'),
             'user_coin_supply' => $userCoinSupply,
             'agency_coin_supply' => $agencyCoinSupply,
-            'recharge_conversion' => PaymentOrder::query()->count() > 0
-                ? round((PaymentOrder::query()->where('status', 'success')->count() / max(1, PaymentOrder::query()->count())) * 100, 1)
+            'recharge_conversion' => $orderCount > 0
+                ? round(($successfulOrders / $orderCount) * 100, 1)
                 : 0,
         ];
 

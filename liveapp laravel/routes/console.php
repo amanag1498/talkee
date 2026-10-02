@@ -21,6 +21,8 @@ use App\Models\GreedyRound;
 use App\Services\ProdUserDataPurgeService;
 use App\Services\DatabaseDatetimeShiftService;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -116,10 +118,20 @@ Artisan::command('calls:enforce-active-billing {--loop : Keep checking active ca
     }
 
     $sleepSeconds = max(1, min(30, (int) $this->option('sleep')));
+    if (DB::connection()->getDriverName() === 'mysql') {
+        // A busy call row must not block billing for every other active call.
+        DB::statement('SET SESSION innodb_lock_wait_timeout = 2');
+    }
     $this->info("Active call billing loop started. Checking every {$sleepSeconds} second(s).");
 
     while (true) {
-        $runOnce();
+        try {
+            $runOnce();
+        } catch (\Throwable $e) {
+            Log::error('CALL_ACTIVE_BILLING_LOOP_FAIL', [
+                'error' => $e->getMessage(),
+            ]);
+        }
         sleep($sleepSeconds);
     }
 })->purpose('Debit active private calls and end calls that cannot pay the elapsed billable minutes');

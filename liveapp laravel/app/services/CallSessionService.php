@@ -6,6 +6,7 @@ use App\Models\CallSession;
 use App\Models\LiveRoom;
 use App\Models\User;
 use App\Models\Wallet;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -255,7 +256,8 @@ class CallSessionService
 
     public function endCall(CallSession $call, User $actor, ?string $reason = null): CallSession
     {
-        $endedCall = DB::transaction(function () use ($call, $actor, $reason) {
+        $endRequestedAt = now();
+        $endedCall = DB::transaction(function () use ($call, $actor, $reason, $endRequestedAt) {
             $call = CallSession::query()->lockForUpdate()->findOrFail($call->id);
             if (! in_array($actor->id, [$call->caller_id, $call->receiver_id], true) && ! $actor->hasRole('admin')) {
                 abort(403, 'You cannot end this call.');
@@ -270,7 +272,7 @@ class CallSessionService
             $wasAccepted = (bool) $call->accepted_at;
             $call->update([
                 'status' => $wasAccepted ? 'ended' : 'failed',
-                'ended_at' => now(),
+                'ended_at' => $endRequestedAt,
                 'end_reason' => $this->normalizeEndReason(
                     $reason,
                     $call,
@@ -364,38 +366,50 @@ class CallSessionService
                     'call_id' => $call->id,
                     'error' => $e->getMessage(),
                 ]);
-                $canContinue = false;
+
+                // A database lock or connection failure is not proof that the
+                // caller is out of coins. Retry this call on the next pass.
+                continue;
             }
 
             if ($canContinue) {
                 continue;
             }
 
-            $endedCall = DB::transaction(function () use ($call, &$ended) {
-                $locked = CallSession::query()->lockForUpdate()->find($call->id);
-                if (! $locked || $locked->status !== 'accepted') {
-                    return null;
-                }
+            try {
+                $endedCall = DB::transaction(function () use ($call, &$ended) {
+                    $locked = CallSession::query()->lockForUpdate()->find($call->id);
+                    if (! $locked || $locked->status !== 'accepted') {
+                        return null;
+                    }
 
-                $locked->update([
-                    'status' => 'ended',
-                    'ended_at' => now(),
-                    'end_reason' => 'insufficient_balance',
+                    $locked->update([
+                        'status' => 'ended',
+                        'ended_at' => now(),
+                        'end_reason' => 'insufficient_balance',
+                    ]);
+
+                    $billed = $this->billingService->processEndedCall($locked->fresh());
+                    $this->releaseUsers($billed);
+                    $this->publishCallEvent('call_ended', $billed->fresh(), [
+                        'reason' => $billed->end_reason,
+                        'duration_seconds' => $billed->duration_seconds,
+                        'billable_minutes' => $billed->billable_minutes,
+                        'total_coins_charged' => $billed->total_coins_charged,
+                    ]);
+
+                    $ended++;
+
+                    return $billed->fresh();
+                });
+            } catch (\Throwable $e) {
+                Log::error('CALL_ACTIVE_BILLING_END_FAIL', [
+                    'call_id' => $call->id,
+                    'error' => $e->getMessage(),
                 ]);
 
-                $billed = $this->billingService->processEndedCall($locked->fresh());
-                $this->releaseUsers($billed);
-                $this->publishCallEvent('call_ended', $billed->fresh(), [
-                    'reason' => $billed->end_reason,
-                    'duration_seconds' => $billed->duration_seconds,
-                    'billable_minutes' => $billed->billable_minutes,
-                    'total_coins_charged' => $billed->total_coins_charged,
-                ]);
-
-                $ended++;
-
-                return $billed->fresh();
-            });
+                continue;
+            }
 
             if ($endedCall) {
                 $this->terminateLiveKitRoom($endedCall);
@@ -446,7 +460,8 @@ class CallSessionService
 
     public function handleDisconnect(int $userId): ?CallSession
     {
-        $endedCall = DB::transaction(function () use ($userId) {
+        $disconnectedAt = now();
+        $endedCall = DB::transaction(function () use ($userId, $disconnectedAt) {
             $call = CallSession::query()
                 ->whereIn('status', ['requested', 'ringing', 'accepted'])
                 ->where(function ($query) use ($userId) {
@@ -464,13 +479,13 @@ class CallSessionService
             if (in_array($call->status, ['requested', 'ringing'], true)) {
                 $call->update([
                     'status' => $role === 'receiver' ? 'missed' : 'failed',
-                    'ended_at' => now(),
+                    'ended_at' => $disconnectedAt,
                     'end_reason' => $role === 'receiver' ? 'receiver_disconnected' : 'caller_disconnected',
                 ]);
             } elseif ($call->status === 'accepted') {
                 $call->update([
                     'status' => 'ended',
-                    'ended_at' => now(),
+                    'ended_at' => $disconnectedAt,
                     'end_reason' => $role === 'receiver' ? 'receiver_disconnected' : 'caller_disconnected',
                 ]);
                 $call = $this->billingService->processEndedCall($call->fresh());
@@ -499,6 +514,63 @@ class CallSessionService
         });
 
         if ($endedCall?->accepted_at) {
+            $this->terminateLiveKitRoom($endedCall);
+        }
+
+        return $endedCall;
+    }
+
+    public function endCallForMediaDeparture(string $roomName, ?int $userId, CarbonImmutable $occurredAt): ?CallSession
+    {
+        $endedCall = DB::transaction(function () use ($roomName, $userId, $occurredAt) {
+            $call = CallSession::query()
+                ->where('livekit_room_name', $roomName)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $call || $call->status !== 'accepted') {
+                return null;
+            }
+            if ($userId !== null && ! in_array($userId, [(int) $call->caller_id, (int) $call->receiver_id], true)) {
+                return null;
+            }
+
+            $start = $call->started_at ?? $call->accepted_at;
+            $endedAt = $occurredAt->min(now());
+            if ($start && $endedAt->lessThan($start)) {
+                $endedAt = $start;
+            }
+
+            $reason = $userId === null
+                ? 'media_room_closed'
+                : ($userId === (int) $call->caller_id ? 'caller_disconnected' : 'receiver_disconnected');
+            $call->update([
+                'status' => 'ended',
+                'ended_at' => $endedAt,
+                'end_reason' => $reason,
+            ]);
+
+            $billed = $this->billingService->processEndedCall($call->fresh());
+            $this->releaseUsers($billed);
+            $this->publishCallEvent('call_ended', $billed->fresh(), [
+                'reason' => $billed->end_reason,
+                'duration_seconds' => $billed->duration_seconds,
+                'billable_minutes' => $billed->billable_minutes,
+                'total_coins_charged' => $billed->total_coins_charged,
+            ]);
+
+            Log::info('CALL_MEDIA_DEPARTURE_HANDLED', [
+                'call_id' => $billed->id,
+                'room_name' => $roomName,
+                'user_id' => $userId,
+                'ended_at' => $endedAt->toIso8601String(),
+                'reason' => $reason,
+            ]);
+
+            return $billed->fresh();
+        });
+
+        if ($endedCall) {
             $this->terminateLiveKitRoom($endedCall);
         }
 

@@ -10,10 +10,13 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\BillingReconciliationService;
+use App\Services\CallBillingService;
 use App\Services\CallReportService;
+use App\Services\CallSessionService;
 use App\Services\HostAvailabilityService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class CallServerParityTest extends TestCase
@@ -86,6 +89,64 @@ class CallServerParityTest extends TestCase
         $this->assertSame(2000, (int) $call->fresh()->total_coins_charged);
         $this->assertSame(1, $anomalies['duplicate_billing_references']);
         $this->assertSame(0, $anomalies['call_wallet_debit_total_mismatch']);
+    }
+
+    public function test_reconciliation_does_not_issue_a_query_for_every_billed_call(): void
+    {
+        $caller = User::factory()->create();
+        $receiver = User::factory()->create();
+        for ($minute = 0; $minute < 25; $minute++) {
+            CallSession::query()->create([
+                'caller_id' => $caller->id,
+                'receiver_id' => $receiver->id,
+                'type' => 'video',
+                'status' => 'ended',
+                'coin_rate_per_minute' => 1000,
+                'total_coins_charged' => 1000,
+                'billing_processed_at' => now(),
+            ]);
+        }
+
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+        try {
+            $anomalies = app(BillingReconciliationService::class)->anomalies();
+            $queryCount = count(DB::getQueryLog());
+        } finally {
+            DB::disableQueryLog();
+        }
+
+        $this->assertSame(25, $anomalies['calls_missing_wallet_transaction']);
+        $this->assertSame(25, $anomalies['calls_missing_earning_ledger']);
+        $this->assertSame(25, $anomalies['call_wallet_debit_total_mismatch']);
+        $this->assertLessThanOrEqual(20, $queryCount);
+    }
+
+    public function test_temporary_billing_failure_does_not_end_an_accepted_call(): void
+    {
+        $caller = User::factory()->create();
+        $receiver = User::factory()->create();
+        $call = CallSession::query()->create([
+            'caller_id' => $caller->id,
+            'receiver_id' => $receiver->id,
+            'type' => 'video',
+            'status' => 'accepted',
+            'coin_rate_per_minute' => 1000,
+            'accepted_at' => now()->subMinute(),
+            'started_at' => now()->subMinute(),
+        ]);
+
+        $this->mock(CallBillingService::class)
+            ->shouldReceive('syncAcceptedCallBilling')
+            ->once()
+            ->andThrow(new \RuntimeException('Lock wait timeout'));
+
+        $this->assertSame(0, app(CallSessionService::class)->enforceAcceptedCallBilling());
+        $this->assertDatabaseHas('call_sessions', [
+            'id' => $call->id,
+            'status' => 'accepted',
+            'end_reason' => null,
+        ]);
     }
 
     public function test_call_financial_summary_uses_earning_ledger_and_is_user_scoped(): void
