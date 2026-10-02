@@ -174,9 +174,14 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     _speakers = widget.room.speakers;
     final currentUser = Get.find<AuthService>().currentUser;
     _hostUserId =
-        widget.room.meta?['host_user_id'] as int? ??
-        widget.room.meta?['host_id'] as int?;
-    _hostName = widget.room.meta?['host_name']?.toString();
+        widget.room.hostUserId ??
+        _safeInt(widget.room.meta?['host_user_id']) ??
+        _safeInt(widget.room.meta?['host_id']);
+    _hostName =
+        widget.room.hostName ?? widget.room.meta?['host_name']?.toString();
+    if (_myUserId != null && _hostUserId == _myUserId) {
+      _currentRole = 'host';
+    }
     if (_isHost && currentUser != null) {
       _hostName ??= currentUser.name;
       _hostUserId ??= currentUser.id;
@@ -332,10 +337,10 @@ class _AudioRoomPageState extends State<AudioRoomPage>
       if (!_isHost) {
         try {
           final hostParticipant = room.remoteParticipants.values.firstWhere(
-            (participant) => participant.identity.startsWith('host-'),
+            _isHostParticipant,
           );
           _hostName ??= hostParticipant.name;
-          _hostUserId ??= _userIdFromIdentity(hostParticipant.identity);
+          _hostUserId ??= _participantUserId(hostParticipant);
         } catch (_) {}
       }
       if (!_followLoaded) {
@@ -400,7 +405,11 @@ class _AudioRoomPageState extends State<AudioRoomPage>
       int? pendingRequestId;
       String? requestStatus;
       bool mutedByHost = false;
-      String role = _currentRole;
+      String role = (data['my_role']?.toString() ?? _currentRole).toLowerCase();
+      final snapshotHostUserId = _safeInt(data['host_user_id']);
+      if (_myUserId != null && snapshotHostUserId == _myUserId) {
+        role = 'host';
+      }
 
       if (_myUserId != null) {
         final mine =
@@ -413,7 +422,9 @@ class _AudioRoomPageState extends State<AudioRoomPage>
           if (requestStatus == 'pending') {
             pendingRequestId = (latest['request_id'] as num?)?.toInt();
           }
-          role = (latest['role']?.toString() ?? role).toLowerCase();
+          if (data['my_role'] == null && role != 'host') {
+            role = (latest['role']?.toString() ?? role).toLowerCase();
+          }
           mutedByHost = latest['muted_by_host'] == true;
         }
       }
@@ -437,6 +448,11 @@ class _AudioRoomPageState extends State<AudioRoomPage>
         _maxParticipants =
             (data['max_participants'] as num?)?.toInt() ?? _maxParticipants;
         _currentRole = role;
+        _hostUserId = snapshotHostUserId ?? _hostUserId;
+        final snapshotHostName = data['host_name']?.toString().trim();
+        if (snapshotHostName != null && snapshotHostName.isNotEmpty) {
+          _hostName = snapshotHostName;
+        }
         _mutedByHost = mutedByHost;
       });
       _speakerSheetTick.value++;
@@ -1039,7 +1055,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     if (_isHost) return _room?.localParticipant;
     for (final participant
         in _room?.remoteParticipants.values ?? const <RemoteParticipant>[]) {
-      if (participant.identity.startsWith('host-')) {
+      if (_isHostParticipant(participant)) {
         return participant;
       }
     }
@@ -1728,6 +1744,13 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     return null;
   }
 
+  bool _isHostParticipant(Participant participant) {
+    final userId = _participantUserId(participant);
+    return participant.identity.startsWith('host-') ||
+        (_hostUserId != null && userId == _hostUserId) ||
+        _participantMetadata(participant)['role'] == 'host';
+  }
+
   bool _isParticipantSpeaking(Participant participant) {
     final active = _room?.activeSpeakers ?? const <Participant>[];
     return active.any((speaker) => speaker.identity == participant.identity);
@@ -2087,7 +2110,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
                 (speaker) =>
                     _isHost
                         ? speaker is LocalParticipant
-                        : speaker.identity.startsWith('host-'),
+                        : _isHostParticipant(speaker),
               ) ??
               false,
           isPkWinner: battle.winnerRoomId == widget.room.roomId,
@@ -2100,7 +2123,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
                   (speaker) =>
                       _isHost
                           ? speaker is LocalParticipant
-                          : speaker.identity.startsWith('host-'),
+                          : _isHostParticipant(speaker),
                 ) ??
                 false,
           ),
@@ -2138,8 +2161,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
         speaking:
             _room?.activeSpeakers.any(
               (p) =>
-                  p.identity.startsWith('host-') ||
-                  (_isHost && p is LocalParticipant),
+                  _isHostParticipant(p) || (_isHost && p is LocalParticipant),
             ) ??
             false,
         muted: _isHost ? _mutedByHost || !_micOn : false,
@@ -2167,7 +2189,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
               speaking:
                   _room?.activeSpeakers.any(
                     (p) =>
-                        p.identity.startsWith('host-') ||
+                        _isHostParticipant(p) ||
                         (_isHost && p is LocalParticipant),
                   ) ??
                   false,
@@ -2178,6 +2200,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
 
     for (final speaker in _speakers) {
       final userId = (speaker['user_id'] as num?)?.toInt();
+      if (userId != null && userId == _hostUserId) continue;
       final isMe = userId != null && userId == _myUserId;
       final mutedByHost = speaker['muted_by_host'] == true;
       final personallyBlocked = _personalBlocks.isBlocked(userId);
@@ -2369,14 +2392,13 @@ class _AudioRoomPageState extends State<AudioRoomPage>
     final speakerIds = _speakerUserIds();
     final result = <Participant>[];
 
-    if (local != null && _isListener) {
+    if (local != null && _isListener && !_isHostParticipant(local)) {
       result.add(local);
     }
 
     for (final participant in remote) {
       final userId = _participantUserId(participant);
-      final isHostParticipant = participant.identity.startsWith('host-');
-      if (isHostParticipant) continue;
+      if (_isHostParticipant(participant)) continue;
       if (userId != null && speakerIds.contains(userId)) continue;
       result.add(participant);
     }
@@ -3678,8 +3700,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
         speaking:
             _room?.activeSpeakers.any(
               (p) =>
-                  p.identity.startsWith('host-') ||
-                  (_isHost && p is LocalParticipant),
+                  _isHostParticipant(p) || (_isHost && p is LocalParticipant),
             ) ??
             false,
         muted: _isHost ? (_mutedByHost || !_micOn) : false,
@@ -3699,7 +3720,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
               speaking:
                   _room?.activeSpeakers.any(
                     (p) =>
-                        p.identity.startsWith('host-') ||
+                        _isHostParticipant(p) ||
                         (_isHost && p is LocalParticipant),
                   ) ??
                   false,
@@ -3710,6 +3731,7 @@ class _AudioRoomPageState extends State<AudioRoomPage>
 
     for (final speaker in _speakers) {
       final userId = (speaker['user_id'] as num?)?.toInt();
+      if (userId != null && userId == _hostUserId) continue;
       final isMe = userId != null && userId == _myUserId;
       final mutedByHost = speaker['muted_by_host'] == true;
       final muted = _isSpeakerUserMuted(

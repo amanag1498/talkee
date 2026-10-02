@@ -526,11 +526,14 @@ class LiveRoomController extends Controller
 
     protected function roomPayload(LiveRoom $room): array
     {
+        $room->loadMissing('host.user');
         return [
             'room_id'      => $room->room_id,
             'title'        => $room->title,
             'room_type'    => $room->room_type ?? 'video',
             'status'       => $room->status,
+            'host_id'      => $room->host?->user_id,
+            'host_name'    => $room->host?->stage_name ?: $room->host?->user?->name,
             'scheduled_at' => optional($room->scheduled_at)?->toIso8601String(),
             'started_at'   => optional($room->started_at)?->toIso8601String(),
             'ended_at'     => optional($room->ended_at)?->toIso8601String(),

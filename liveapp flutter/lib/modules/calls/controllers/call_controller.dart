@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:livekit_client/livekit_client.dart';
@@ -47,6 +48,7 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
   Timer? _ticker;
   Timer? _ringingTimer;
   Timer? _incomingOverlayRetryTimer;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   DateTime? _callClockAnchor;
   Future<void>? _socketStartInFlight;
   bool _navigationBusy = false;
@@ -56,7 +58,11 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
   bool _roomBusy = false;
   bool _audioRouteSyncInFlight = false;
   bool _mediaDisconnectHandling = false;
+  bool _pendingDisconnectSyncInFlight = false;
+  bool _retryPendingDisconnectAfterInFlight = false;
+  bool _callStatusCheckInFlight = false;
   bool _callWakeLockAcquired = false;
+  final Map<int, String> _pendingDisconnects = <int, String>{};
   final Set<String> _handledEvents = <String>{};
   OverlayEntry? _callOverlay;
   OverlayEntry? _incomingOverlay;
@@ -195,6 +201,16 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
   void onInit() {
     super.onInit();
     WidgetsBinding.instance.addObserver(this);
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
+      final noNetwork = results.isEmpty || results.every((result) => result == ConnectivityResult.none);
+      if (noNetwork && hasActiveCall &&
+          (hasActiveRoom ||
+           callState.value == 'connecting' ||
+           callState.value == 'connected' ||
+           callState.value == 'reconnecting')) {
+        unawaited(_endCallAfterMediaDisconnect(localParticipantDisconnected: true));
+      }
+    });
     _startSocketIfPossible();
   }
 
@@ -234,8 +250,13 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
       url: AppUrls.wsCalls,
       bearerToken: token,
       onConnectionState: (state) {
+        if (state == 'connected') {
+          unawaited(_flushPendingDisconnects());
+          unawaited(_verifyActiveCallStillAccepted());
+        }
+        if (_terminalHandling || _terminalStateHandled || !hasActiveCall) return;
         reconnecting.value = state == 'reconnecting' || state == 'disconnected';
-        if (state == 'reconnecting') {
+        if (state == 'reconnecting' && !hasActiveRoom) {
           callState.value = 'reconnecting';
         }
       },
@@ -464,16 +485,22 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
 
   Future<void> ensureRoomConnected() async {
     if (_roomBusy) return;
+    if (_terminalHandling || _terminalStateHandled || _isExitingCall) return;
     final tokenData = callToken.value;
     if (tokenData == null) return;
     if (_room != null) return;
+    final connectingCallId = currentCallId;
     _roomBusy = true;
     roomConnecting.value = true;
     roomError.value = '';
+    Room? connectingRoom;
+    EventsListener<RoomEvent>? connectingListener;
     try {
       await CallAudioRoute.prepare();
       final room = Room(roomOptions: LiveKitVideoQuality.callOptions);
       final listener = room.createListener();
+      connectingRoom = room;
+      connectingListener = listener;
       _bindRoomEvents(room, listener);
 
       await room.connect(
@@ -482,6 +509,8 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
         connectOptions: const ConnectOptions(autoSubscribe: true),
       );
 
+      if (_terminalHandling || _terminalStateHandled || currentCallId != connectingCallId) return;
+
       final shouldUseCamera = isVideoCall;
       camOn.value = shouldUseCamera;
       speakerOn.value = true;
@@ -489,16 +518,31 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
       await room.localParticipant?.setCameraEnabled(shouldUseCamera);
       await _applyPreferredAudioRoute();
 
+      if (_terminalHandling || _terminalStateHandled || currentCallId != connectingCallId) return;
+
       _room = room;
       _roomListener = listener;
+      connectingRoom = null;
+      connectingListener = null;
       _startTicker();
       callState.value = 'connected';
       reconnecting.value = false;
       roomRevision.value++;
     } catch (_) {
-      roomError.value = 'Failed to connect call media.';
-      callState.value = 'failed';
+      if (!_terminalStateHandled) {
+        roomError.value = 'Failed to connect call media.';
+        callState.value = 'failed';
+      }
     } finally {
+      connectingListener?.dispose();
+      if (connectingRoom != null) {
+        try {
+          await connectingRoom.disconnect();
+        } catch (_) {}
+        try {
+          connectingRoom.dispose();
+        } catch (_) {}
+      }
       roomConnecting.value = false;
       _roomBusy = false;
     }
@@ -508,19 +552,17 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
     listener
       ..on<RoomDisconnectedEvent>((event) {
         roomError.value = 'Disconnected: ${event.reason ?? 'unknown'}';
-        reconnecting.value = false;
         roomRevision.value++;
         unawaited(_endCallAfterMediaDisconnect(localParticipantDisconnected: true));
       })
       ..on<RoomReconnectingEvent>((_) {
-        reconnecting.value = true;
         roomRevision.value++;
+        unawaited(_endCallAfterMediaDisconnect(localParticipantDisconnected: true));
       })
-      ..on<RoomReconnectedEvent>((_) async {
-        reconnecting.value = false;
-        roomError.value = '';
+      ..on<RoomReconnectedEvent>((_) {
+        // A network-lost private call must not silently rejoin an old room.
         roomRevision.value++;
-        await _applyPreferredAudioRoute();
+        unawaited(_endCallAfterMediaDisconnect(localParticipantDisconnected: true));
       })
       ..on<ParticipantConnectedEvent>((_) => roomRevision.value++)
       ..on<ParticipantDisconnectedEvent>((_) {
@@ -545,25 +587,77 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
     final callerId = (call['caller_id'] as num?)?.toInt();
     final localIsCaller = currentUserId != null && callerId == currentUserId;
     final disconnectedIsCaller = localParticipantDisconnected ? localIsCaller : !localIsCaller;
+    final reason = disconnectedIsCaller ? 'caller_disconnected' : 'receiver_disconnected';
 
+    _pendingDisconnects[callId] = reason;
     try {
-      final endedPayload = await _callService.endCall(
-        callId,
-        reason: disconnectedIsCaller ? 'caller_disconnected' : 'receiver_disconnected',
-      );
+      // The phone may have no internet. Leave the call locally first; send the
+      // server end request now if possible and retry when the socket returns.
       await _handleTerminalState(
         state: 'ended',
-        message: 'Call disconnected.',
-        payload: endedPayload,
-      );
-    } catch (_) {
-      await _handleTerminalState(
-        state: 'ended',
-        message: 'Call disconnected.',
-        payload: call,
+        message: localParticipantDisconnected
+            ? 'Call ended because the connection was lost.'
+            : 'Call disconnected.',
+        showSummary: false,
       );
     } finally {
       _mediaDisconnectHandling = false;
+      unawaited(_flushPendingDisconnects());
+    }
+  }
+
+  Future<void> _flushPendingDisconnects() async {
+    if (_pendingDisconnectSyncInFlight) {
+      _retryPendingDisconnectAfterInFlight = true;
+      return;
+    }
+    if (_pendingDisconnects.isEmpty) return;
+
+    _pendingDisconnectSyncInFlight = true;
+    try {
+      for (final entry in _pendingDisconnects.entries.toList()) {
+        try {
+          await _callService.endCall(entry.key, reason: entry.value)
+              .timeout(const Duration(seconds: 5));
+          _pendingDisconnects.remove(entry.key);
+        } catch (_) {
+          // LiveKit's participant_left webhook can also end the call while this
+          // device is offline. Keep this request for the next socket reconnect.
+        }
+      }
+    } finally {
+      _pendingDisconnectSyncInFlight = false;
+      if (_retryPendingDisconnectAfterInFlight) {
+        _retryPendingDisconnectAfterInFlight = false;
+        if (_socketService.isConnected) {
+          unawaited(_flushPendingDisconnects());
+        }
+      }
+    }
+  }
+
+  Future<void> _verifyActiveCallStillAccepted() async {
+    if (_callStatusCheckInFlight || _terminalHandling || _terminalStateHandled || !hasActiveRoom) return;
+    final callId = currentCallId;
+    if (callId <= 0) return;
+
+    _callStatusCheckInFlight = true;
+    try {
+      // This endpoint refuses tokens for calls the server has already ended.
+      // A missed WebSocket call_ended event must not leave an old room active.
+      await _callService.fetchCallToken(callId).timeout(const Duration(seconds: 5));
+    } on DioException catch (error) {
+      if (currentCallId == callId &&
+          (error.response?.statusCode == 403 ||
+           error.response?.statusCode == 404 ||
+           error.response?.statusCode == 422)) {
+        await _endCallAfterMediaDisconnect(localParticipantDisconnected: true);
+      }
+    } catch (_) {
+      // A temporary API failure is not proof the call has ended. The local
+      // connectivity and LiveKit listeners handle actual media loss.
+    } finally {
+      _callStatusCheckInFlight = false;
     }
   }
 
@@ -611,8 +705,12 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
   Future<void> minimizeCall() async {
     if (!hasActiveCall || callState.value == 'idle') return;
     callMinimized.value = true;
-    _showOverlay();
     await _dismissCallPresentationForMinimize();
+    ensureMinimizedCallOverlay();
+  }
+
+  void ensureMinimizedCallOverlay() {
+    if (hasActiveCall && callMinimized.value) _showOverlay();
   }
 
   Future<void> restoreCall() async {
@@ -742,7 +840,13 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
   }
 
   void _showOverlay() {
-    if (_callOverlay != null || Get.overlayContext == null) return;
+    if (_callOverlay != null) return;
+    final overlayState =
+        Get.key.currentState?.overlay ??
+        (Get.overlayContext != null
+            ? Overlay.maybeOf(Get.overlayContext!, rootOverlay: true)
+            : null);
+    if (overlayState == null) return;
     _callOverlay = OverlayEntry(
       builder: (context) {
         final media = MediaQuery.of(context);
@@ -893,7 +997,7 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
         );
       },
     );
-    Overlay.of(Get.overlayContext!).insert(_callOverlay!);
+    overlayState.insert(_callOverlay!);
   }
 
   void _showIncomingOverlay() {
@@ -1080,6 +1184,7 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
     Map<String, dynamic>? payload,
     bool destructive = false,
     bool failure = false,
+    bool showSummary = true,
   }) async {
     if (_terminalHandling || _terminalStateHandled || _isExitingCall) return;
     _terminalHandling = true;
@@ -1104,6 +1209,7 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
     activeCall.value = null;
     callToken.value = null;
     _releaseCallWakeLock();
+    reconnecting.value = false;
     roomError.value = '';
     callMinimized.value = false;
     _stopRingingTimeout();
@@ -1112,7 +1218,7 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
     if (message != null && message.isNotEmpty) {
       _showMessage(message);
     }
-    if (_shouldShowUserCallSummary(summaryPayload)) {
+    if (showSummary && _shouldShowUserCallSummary(summaryPayload)) {
       await _showUserCallSummary(summaryPayload!);
     }
     await _safeExitCallRoute();
@@ -1261,6 +1367,7 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
   @override
   void onClose() {
     WidgetsBinding.instance.removeObserver(this);
+    _connectivitySubscription?.cancel();
     _removeOverlay();
     _removeIncomingOverlay();
     _stopRingingTimeout();
@@ -1276,6 +1383,7 @@ class AppCallController extends GetxController with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       restartSocket();
+      unawaited(_verifyActiveCallStillAccepted());
       if (incomingCall.value != null) {
         _showIncomingOverlay();
       }

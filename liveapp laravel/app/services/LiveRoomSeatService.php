@@ -536,6 +536,16 @@ class LiveRoomSeatService
         return [
             'room_id' => $room->room_id,
             'room_type' => (string) ($room->room_type ?? 'video'),
+            'host_user_id' => $room->host?->user_id,
+            'host_name' => $room->host?->stage_name ?: $room->host?->user?->name,
+            'my_role' => $room->host?->user_id === $actor->id
+                ? 'host'
+                : LiveRoomParticipant::query()
+                    ->where('live_room_id', $room->id)
+                    ->where('user_id', $actor->id)
+                    ->whereNull('left_at')
+                    ->latest('id')
+                    ->value('role'),
             'speaker_request_approval_mode' => $this->speakerRequestsAutoApprove($room) ? 'automatic' : 'host',
             'requests' => $requests->values()->all(),
             'speakers' => $speakers->all(),

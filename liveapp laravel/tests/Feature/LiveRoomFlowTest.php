@@ -87,6 +87,66 @@ class LiveRoomFlowTest extends TestCase
             ->count());
     }
 
+    public function test_audio_host_join_repairs_stale_role_and_exposes_host_identity(): void
+    {
+        Redis::shouldReceive('set')->once()->andReturn(true);
+        Redis::shouldReceive('sadd')->once()->andReturn(1);
+        [$hostUser, $room] = $this->makeLiveRoom();
+        $room->update(['room_type' => 'audio']);
+        LiveRoomParticipant::query()
+            ->where('live_room_id', $room->id)
+            ->where('user_id', $hostUser->id)
+            ->update(['role' => 'listener']);
+        Sanctum::actingAs($hostUser);
+
+        $this->postJson("/api/live/rooms/{$room->room_id}/join", [
+            'role' => 'listener',
+            'session_id' => 'host-audio-session',
+        ])->assertOk()
+            ->assertJsonPath('role', 'host')
+            ->assertJsonPath('host_id', $hostUser->id)
+            ->assertJsonPath('host_name', 'Room Host');
+
+        $this->getJson("/api/live/rooms/{$room->room_id}/seat-requests")
+            ->assertOk()
+            ->assertJsonPath('data.host_user_id', $hostUser->id)
+            ->assertJsonPath('data.host_name', 'Room Host')
+            ->assertJsonPath('data.my_role', 'host')
+            ->assertJsonPath('data.listener_count', 0);
+
+        $this->assertSame('host', LiveRoomParticipant::query()
+            ->where('live_room_id', $room->id)
+            ->where('user_id', $hostUser->id)
+            ->whereNull('left_at')
+            ->value('role'));
+    }
+
+    public function test_audio_listener_join_receives_host_name_and_seat_role(): void
+    {
+        Redis::shouldReceive('set')->once()->andReturn(true);
+        Redis::shouldReceive('sadd')->once()->andReturn(1);
+        [$hostUser, $room] = $this->makeLiveRoom();
+        $room->update(['room_type' => 'audio']);
+        $listener = User::factory()->create();
+        $listener->assignRole('user');
+        $this->grantSubscription($listener);
+        Sanctum::actingAs($listener);
+
+        $this->postJson("/api/live/rooms/{$room->room_id}/join", [
+            'role' => 'listener',
+            'session_id' => 'listener-audio-session',
+        ])->assertOk()
+            ->assertJsonPath('role', 'listener')
+            ->assertJsonPath('host_id', $hostUser->id)
+            ->assertJsonPath('host_name', 'Room Host');
+
+        $this->getJson("/api/live/rooms/{$room->room_id}/seat-requests")
+            ->assertOk()
+            ->assertJsonPath('data.host_user_id', $hostUser->id)
+            ->assertJsonPath('data.my_role', 'listener')
+            ->assertJsonPath('data.speaker_count', 0);
+    }
+
     public function test_join_missing_room_returns_clean_room_not_found_error(): void
     {
         $viewer = User::factory()->create();

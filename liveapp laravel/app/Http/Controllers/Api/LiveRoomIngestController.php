@@ -233,6 +233,7 @@ public function join(Request $request, string $room_id)
 
         $participant->forceFill([
             'last_seen_at' => $now,
+            ...($role === 'host' && $participant->role !== 'host' ? ['role' => 'host'] : []),
         ])->save();
 
         $room->forceFill(['last_activity_at' => $now])->save();
@@ -293,6 +294,8 @@ public function join(Request $request, string $room_id)
         'room_type'     => (string) ($room->room_type ?? 'video'),
         'identity'      => $identity,
         'role'          => $role,
+        'host_id'       => $room->host?->user_id,
+        'host_name'     => $room->host?->stage_name ?: $room->host?->user?->name,
         'ws_url'        => (string) config('services.livekit.ws_url', 'ws://localhost:7880'),
         'token'         => $token,
         'speakers'      => $snapshot['speakers'] ?? [],

@@ -16,6 +16,7 @@ import '../../../../app/widgets/haptics.dart';
 import '../../games/fortune_wheel/services/fortune_wheel_preload_service.dart';
 import '../../games/fortune_wheel/widgets/fortune_wheel_panel.dart';
 import '../../Live/views/live_preflight_sheet.dart';
+import '../../calls/controllers/call_controller.dart';
 import '../../calls/controllers/live_users_controller.dart';
 import '../../notifications/widgets/bell_badge_btn.dart';
 import '../../calls/views/live_users_view.dart';
@@ -79,7 +80,11 @@ class _HomeShellState extends State<_HomeShell> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !Get.isRegistered<FortuneWheelPreloadService>()) return;
+      if (!mounted) return;
+      if (Get.isRegistered<AppCallController>()) {
+        Get.find<AppCallController>().ensureMinimizedCallOverlay();
+      }
+      if (!Get.isRegistered<FortuneWheelPreloadService>()) return;
       final fortune = Get.find<FortuneWheelPreloadService>();
       _fortuneSnapshotWorker = ever(
         fortune.snapshot,
@@ -105,6 +110,8 @@ class _HomeShellState extends State<_HomeShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _fortuneDialogVisible) return;
       if (!Get.isRegistered<FortuneWheelPreloadService>()) return;
+      if (Get.isRegistered<AppCallController>() &&
+          Get.find<AppCallController>().hasActiveCall) return;
 
       final settings = Get.find<AppSettingsService>();
       final snapshot = Get.find<FortuneWheelPreloadService>().snapshot.value;
